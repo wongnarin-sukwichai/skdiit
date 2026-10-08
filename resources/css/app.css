@@ -1,0 +1,103 @@
+@import 'tailwindcss';
+
+@source '../../storage/framework/views/*.php';
+@source "../**/*.blade.php";
+@source "../**/*.js";
+@source "../**/*.vue";
+
+/* Admin dark mode is toggled with the .dark class on <html> */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+    --font-sans: 'Anuphan', ui-sans-serif, system-ui, sans-serif;
+
+    /* SKDIIT brand gold */
+    --color-gold-50: #fffbea;
+    --color-gold-100: #fff3c4;
+    --color-gold-200: #ffe58a;
+    --color-gold-300: #ffd84d;
+    --color-gold-400: #ffcc29;
+    --color-gold-500: #f5b800;
+    --color-gold-600: #d49b00;
+    --color-gold-700: #a87700;
+
+    /* Near-black surfaces */
+    --color-ink-950: #070707;
+    --color-ink-900: #0e0e0e;
+    --color-ink-850: #141414;
+    --color-ink-800: #1a1a1a;
+    --color-ink-700: #262626;
+    --color-ink-600: #3a3a3a;
+}
+
+/* Tailwind v4 dropped the pointer cursor on buttons; restore it for everything clickable */
+@layer base {
+    button:not(:disabled),
+    [role='button']:not([aria-disabled='true']),
+    select:not(:disabled),
+    summary,
+    label:has(input[type='checkbox'], input[type='radio']),
+    input[type='checkbox']:not(:disabled),
+    input[type='radio']:not(:disabled) {
+        cursor: pointer;
+    }
+
+    button:disabled,
+    select:disabled,
+    input:disabled {
+        cursor: not-allowed;
+    }
+}
+
+html { scroll-behavior: smooth; }
+body { background: var(--color-ink-950); }
+
+/* ---- Transitions ---- */
+.fade-enter-active,
+.fade-leave-active { transition: opacity .25s ease; }
+.fade-enter-from,
+.fade-leave-to { opacity: 0; }
+
+.modal-enter-active,
+.modal-leave-active { transition: opacity .2s ease; }
+.modal-enter-active .modal-panel,
+.modal-leave-active .modal-panel { transition: transform .2s ease, opacity .2s ease; }
+.modal-enter-from,
+.modal-leave-to { opacity: 0; }
+.modal-enter-from .modal-panel,
+.modal-leave-to .modal-panel { transform: translateY(12px) scale(.98); opacity: 0; }
+
+/* ---- Brand decorations ---- */
+.gold-text {
+    background: linear-gradient(180deg, #ffe58a 0%, #ffcc29 45%, #d49b00 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+.front-bg {
+    background:
+        radial-gradient(1200px 500px at 85% -10%, rgba(245, 184, 0, .18), transparent 60%),
+        radial-gradient(800px 600px at -10% 90%, rgba(245, 184, 0, .10), transparent 60%),
+        linear-gradient(rgba(255, 255, 255, .025) 1px, transparent 1px) 0 0 / 44px 44px,
+        linear-gradient(90deg, rgba(255, 255, 255, .025) 1px, transparent 1px) 0 0 / 44px 44px,
+        #070707;
+}
+
+.gold-streaks {
+    background:
+        linear-gradient(115deg, transparent 40%, rgba(255, 204, 41, .55) 41%, transparent 43%),
+        linear-gradient(115deg, transparent 52%, rgba(255, 204, 41, .25) 53%, transparent 56%),
+        linear-gradient(115deg, transparent 63%, rgba(255, 204, 41, .4) 63.5%, transparent 65%);
+}
+
+.glow-line {
+    background: linear-gradient(90deg, transparent, rgba(255, 204, 41, .7), transparent);
+    height: 1px;
+}
+
+/* Dark scrollbars */
+.dark ::-webkit-scrollbar,
+.front-bg ::-webkit-scrollbar { width: 8px; height: 8px; }
+.dark ::-webkit-scrollbar-thumb,
+.front-bg ::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 8px; }
