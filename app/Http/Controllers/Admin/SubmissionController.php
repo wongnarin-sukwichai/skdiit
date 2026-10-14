@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Models\SubmissionFile;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Illuminate\Support\Str;
 use App\Enums\SubmissionAction;
 use App\Enums\SubmissionStatus;
 use App\Http\Controllers\Controller;
@@ -24,21 +27,32 @@ class SubmissionController extends Controller
 {
     public function index(Request $request): Response
     {
-        $filters = $request->only('q', 'track', 'status');
-
+        $filters = $request->only('q', 'track', 'status', 'queue');
         $submissions = Submission::query()
             ->with('track', 'authors')
+            // This round's reviews: assigned, sent, late, cannot review
+            ->withReviewCounts()
+            ->withCount('notes')
+            ->when(in_array($filters['queue'] ?? null, Submission::QUEUES, true), fn ($query) => $query->queue($filters['queue']))
             ->when($filters['q'] ?? null, fn ($query, string $q) => $query->where(fn ($query) => $query
                 ->where('code', 'like', "%{$q}%")
                 ->orWhere('title_th', 'like', "%{$q}%")
                 ->orWhere('title_en', 'like', "%{$q}%")
                 ->orWhereHas('authors', fn ($query) => $query->where('name', 'like', "%{$q}%"))))
             ->when($filters['track'] ?? null, fn ($query, $track) => $query->where('track_id', $track))
-            ->when($filters['status'] ?? null, fn ($query, string $status) => $query->where('status', $status))
+            ->when(! isset($filters['queue']) ? ($filters['status'] ?? null) : null, fn ($query, string $status) => $query->where('status', $status))
             ->latest()
             ->paginate(15)
             ->withQueryString()
-            ->through(fn (Submission $submission) => $submission->toClient());
+            ->through(fn (Submission $submission) => [
+                ...$submission->toClient(),
+                'notes' => $submission->notes_count,
+                'reviewProgress' => $submission->status === SubmissionStatus::InReview
+                    ? ['total' => $submission->reviews_total, 'done' => $submission->reviews_done, 'late' => $submission->reviews_late]
+                    : null,
+                // Whose move it is (editor / reviewer / author) and what to do, so nobody waits on the wrong person
+                'waitingOn' => $submission->waitingOn(),
+            ]);
 
         return Inertia::render('Admin/Submissions/Index', [
             'submissions' => $submissions,
@@ -46,8 +60,9 @@ class SubmissionController extends Controller
             'tracks' => Track::ordered()->get()->map->toClient(),
             'statuses' => array_column(SubmissionStatus::cases(), 'value'),
             'optionBCount' => Submission::where('status', SubmissionStatus::OptionB)->count(),
-            'deadline' => Submission::deadline()?->toIso8601String(),
-            'isOpen' => Submission::isOpen(),
+            'cameraReadyCount' => Submission::whereNotNull('camera_ready_path')->count(),
+            'queues' => Submission::queueCounts(),
+            ...Submission::window(),
         ]);
     }
 
@@ -60,14 +75,17 @@ class SubmissionController extends Controller
             'tracks' => Track::ordered()->get()->map->toClient(),
             // Name or email of the signed-in editor matches an author (the editor decides, nothing is blocked)
             'conflict' => $submission->conflictsWith($request->user()),
-            'deadline' => Submission::deadline()?->toIso8601String(),
-            'isOpen' => Submission::isOpen(),
+            // Staff coordinate with the author: their phone (reviewers and the author's own page never get it)
+            'contactPhone' => $submission->user?->phone,
+            'versions' => $submission->versionsFor('staff'),
+            'notes' => $submission->notes()->with('user')->orderByDesc('pinned')->latest()->get()->map->toClient($request->user()),
+            ...Submission::window(),
             'canScreen' => $submission->canBeScreened(),
             // Full history with who did what (staff only)
             'history' => $submission->events()->with('user')->get()->map->toClient(withActor: true),
             // Peer review: current round's reviewers, and who else from the track can be assigned
             'reviewRound' => $submission->review_round,
-            'reviews' => $submission->currentReviews()->with('reviewer')->get()->map->toClient(withReviewer: true),
+            'reviews' => $submission->currentReviews()->with('reviewer', 'remindedBy')->get()->map->toClient(withReviewer: true),
             'canAssign' => $submission->canAssignReviewers(),
             'canDecide' => $submission->canBeDecided(),
             'canStartRound' => $submission->canStartReviewRound(),
@@ -76,6 +94,8 @@ class SubmissionController extends Controller
                 ? ReviewerAssignmentController::availableReviewers($submission)->map(fn (User $reviewer) => [
                     ...$reviewer->only('id', 'name', 'email'),
                     'conflict' => $submission->conflictsWith($reviewer),
+                    'open' => $reviewer->open_reviews_count,
+                    'late' => $reviewer->late_reviews_count,
                 ])
                 : [],
         ]);
@@ -181,6 +201,54 @@ class SubmissionController extends Controller
     }
 
     /** Download the camera-ready file (Option A): its author or submission managers. */
+    /**
+     * Every camera-ready file in one ZIP for compiling the Proceeding, named by paper code and first author,
+     * with an index (index.csv: code, titles, authors, track, file name).
+     */
+    public function cameraReadyZip(): BinaryFileResponse
+    {
+        $papers = Submission::with('authors', 'track')->whereNotNull('camera_ready_path')->orderBy('code')->get();
+        abort_if($papers->isEmpty(), 404);
+
+        $path = tempnam(sys_get_temp_dir(), 'skdiit-zip');
+        $zip = new \ZipArchive;
+        $zip->open($path, \ZipArchive::OVERWRITE);
+
+        $index = fopen('php://temp', 'r+');
+        fwrite($index, "\xEF\xBB\xBF"); // UTF-8 BOM so Excel shows Thai correctly
+        fputcsv($index, ['code', 'title_th', 'title_en', 'authors', 'track', 'file']);
+
+        foreach ($papers as $paper) {
+            $ext = pathinfo($paper->camera_ready_name, PATHINFO_EXTENSION) ?: 'pdf';
+            $name = $paper->code.'-'.(Str::slug(Str::limit($paper->authors->first()?->name ?? '', 30, ''), '-', 'th') ?: 'paper').'.'.$ext;
+            $zip->addFile(Storage::path($paper->camera_ready_path), $name);
+            fputcsv($index, [$paper->code, $paper->title_th, $paper->title_en, $paper->authors->pluck('name')->implode(', '), $paper->track?->name_th, $name]);
+        }
+
+        rewind($index);
+        $zip->addFromString('index.csv', stream_get_contents($index));
+        fclose($index);
+        $zip->close();
+
+        return response()->download($path, 'skdiit2027-camera-ready-'.now()->format('Ymd-His').'.zip')->deleteFileAfterSend();
+    }
+
+    public function versionFile(Request $request, SubmissionFile $file): StreamedResponse
+    {
+        $submission = $file->submission;
+        $user = $request->user();
+        abort_unless(
+            $submission->user_id === $user->id
+                || $user->moduleAccess('submissions')
+                || $submission->reviews()->where('reviewer_id', $user->id)->exists(),
+            404
+        );
+
+        return $request->boolean('inline') && $file->isPdf()
+            ? Storage::response($file->path, $file->name)
+            : Storage::download($file->path, $file->name);
+    }
+
     public function cameraReady(Request $request, Submission $submission): StreamedResponse
     {
         $user = $request->user();

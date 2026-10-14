@@ -2,14 +2,21 @@
 import { useI18n } from '@/i18n';
 import { registrantStats } from '@/data/mock';
 
-const { t, formatNumber } = useI18n();
+// Labels come from admin.stats.{key}
+defineProps({
+    stats: { type: Object, default: () => registrantStats },
+    cards: {
+        type: Array,
+        default: () => [
+            { key: 'total', icon: 'user' },
+            { key: 'attend', icon: 'users' },
+            { key: 'submitted', icon: 'file-lines' },
+            { key: 'underReview', icon: 'file-circle-check' },
+        ],
+    },
+});
 
-const cards = [
-    { key: 'total', icon: 'user' },
-    { key: 'attend', icon: 'users' },
-    { key: 'submitted', icon: 'file-lines' },
-    { key: 'underReview', icon: 'file-circle-check' },
-];
+const { t, formatNumber } = useI18n();
 </script>
 
 <template>
@@ -24,7 +31,7 @@ const cards = [
                 <Fa :icon="card.icon" />
             </span>
             <div class="relative">
-                <p class="text-3xl font-bold">{{ formatNumber(registrantStats[card.key]) }}</p>
+                <p class="text-3xl font-bold">{{ formatNumber(stats[card.key]) }}</p>
                 <p class="text-sm text-neutral-500 dark:text-neutral-300">{{ t(`admin.stats.${card.key}`) }}</p>
             </div>
         </div>

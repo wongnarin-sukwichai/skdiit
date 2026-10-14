@@ -60,6 +60,16 @@ function remove() {
     });
 }
 
+// Reminder: recorded with who sent it (the email goes out once SMTP is set up)
+const remindBusy = ref(null);
+function remind(review) {
+    router.post(`/admin/submissions/${props.submissionId}/reviews/${review.id}/remind`, {}, {
+        preserveScroll: true,
+        onStart: () => (remindBusy.value = review.id),
+        onFinish: () => (remindBusy.value = null),
+    });
+}
+
 const expanded = ref(new Set());
 function toggle(id) {
     const next = new Set(expanded.value);
@@ -101,11 +111,29 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
                     </span>
 
                     <ReviewBadge kind="state" :value="review.state" />
+                    <span v-if="review.unavailable" class="w-full rounded-lg border border-neutral-300 bg-neutral-50 px-3 py-2 text-xs text-neutral-700 dark:border-white/15 dark:bg-white/5 dark:text-neutral-200">
+                        <Fa icon="user-xmark" class="mr-1 text-red-500" /><b>{{ t('reviews.unavailable.panel') }}</b> · {{ formatDate(review.unavailable.at, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) }}
+                        <span class="mt-0.5 block">{{ review.unavailable.reason }}</span>
+                    </span>
+                    <span v-if="review.reminder" class="w-full text-xs text-neutral-500 sm:w-auto dark:text-neutral-400" :title="t('reviews.panel.remindedCount', { n: review.reminder.count })">
+                        <Fa icon="bell" class="mr-1" />{{ t('reviews.panel.lastReminder', { name: review.reminder.by ?? '—', date: formatDate(review.reminder.at, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) }) }}
+                    </span>
                     <ReviewBadge v-if="review.recommendation" kind="recommendation" :value="review.recommendation" />
 
                     <div class="flex gap-1.5">
+                        <a v-if="review.attachment" :href="review.attachment.url" :class="iconBtn" :title="`${t('reviews.form.attachment')}: ${review.attachment.name}`"><Fa icon="paperclip" class="text-xs" /></a>
                         <button v-if="review.comment" :class="iconBtn" :title="t('reviews.panel.showComment')" @click="toggle(review.id)">
                             <Fa :icon="expanded.has(review.id) ? 'chevron-up' : 'comment'" class="text-xs" />
+                        </button>
+                        <!-- Reminder (sample until email is set up) -->
+                        <button
+                            v-if="['pending', 'overdue'].includes(review.state)"
+                            :class="[iconBtn, review.state === 'overdue' ? 'border-red-400 text-red-600 dark:border-red-500/50 dark:text-red-300' : '']"
+                            :title="t('reviews.panel.remind')"
+                            :disabled="remindBusy === review.id"
+                            @click="remind(review)"
+                        >
+                            <Fa icon="bell" class="text-xs" />
                         </button>
                         <template v-if="canAssign && review.state !== 'submitted' && editingId !== review.id">
                             <button :class="iconBtn" :title="t('reviews.panel.changeDue')" @click="editDue(review)"><Fa icon="calendar-days" class="text-xs" /></button>
@@ -116,6 +144,10 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
                 <Transition name="fade">
                     <blockquote v-if="expanded.has(review.id)" class="mt-3 rounded-lg bg-neutral-50 px-3 py-2 text-sm whitespace-pre-line text-neutral-700 dark:bg-white/5 dark:text-neutral-200">
                         {{ review.comment }}
+                        <span v-if="review.commentToEditor" class="mt-2 block rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 dark:border-amber-400/20 dark:bg-amber-400/5">
+                            <b class="text-xs text-amber-700 dark:text-amber-300"><Fa icon="lock" class="mr-1" />{{ t('reviews.form.toEditor') }}</b>
+                            <span class="block whitespace-pre-line">{{ review.commentToEditor }}</span>
+                        </span>
                         <span class="mt-1 block text-xs text-neutral-500 dark:text-neutral-400">{{ t('reviews.submittedOn') }} {{ formatDate(review.submittedAt, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) }}</span>
                     </blockquote>
                 </Transition>
@@ -129,7 +161,7 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
                 <select v-model="form.reviewer_id" :class="[input, border(form.errors.reviewer_id)]" :disabled="!options.length">
                     <option value="" disabled>{{ options.length ? t('reviews.panel.choose') : t('reviews.panel.noOptions') }}</option>
                     <option v-for="option in options" :key="option.id" :value="option.id">
-                        {{ option.conflict ? '⚠ ' : '' }}{{ option.name }} ({{ option.email }})
+                        {{ option.conflict ? '⚠ ' : '' }}{{ option.name }} · {{ t('reviews.panel.load', { open: option.open, late: option.late }) }}
                     </option>
                 </select>
                 <input v-model="form.due_date" type="date" :min="today" :class="[input, border(form.errors.due_date)]" :aria-label="t('reviews.due')" required>
@@ -143,6 +175,10 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
             </div>
             <span v-if="form.errors.reviewer_id" class="block text-xs text-red-500 dark:text-red-400">{{ t(form.errors.reviewer_id) }}</span>
             <span v-if="form.errors.due_date" class="block text-xs text-red-500 dark:text-red-400">{{ t(form.errors.due_date) }}</span>
+            <p v-if="selected" class="text-xs text-neutral-500 dark:text-neutral-400">
+                <Fa icon="briefcase" class="mr-1" /> {{ selected.email }} · {{ t('reviews.panel.loadDetail', { open: selected.open, late: selected.late }) }}
+                <span v-if="selected.late" class="ml-1 text-red-600 dark:text-red-400"><Fa icon="triangle-exclamation" /></span>
+            </p>
             <Transition name="fade">
                 <p v-if="selected?.conflict" class="flex items-start gap-2 rounded-lg border border-orange-300 bg-orange-50 px-3 py-2 text-xs text-orange-800 dark:border-orange-400/30 dark:bg-orange-400/10 dark:text-orange-200">
                     <Fa icon="triangle-exclamation" class="mt-0.5" /> {{ t('reviews.panel.conflict') }}

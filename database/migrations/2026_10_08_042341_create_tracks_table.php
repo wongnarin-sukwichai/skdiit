@@ -29,13 +29,20 @@ return new class extends Migration
 
         // Starting tracks; admin renames them later in Settings
         $now = now();
-        DB::table('tracks')->insert(array_map(fn (int $i) => [
-            'name_en' => "Track-{$i}",
-            'name_th' => "Track-{$i}",
-            'sort_order' => $i,
+        $names = [
+            'Smart Knowledge Library and Information',
+            'Smart Spaces and Cyber-Physical Environments',
+            'Digital Media, Communication and Society',
+            'Digital Innovation and Transformation',
+            'Artificial Intelligence and Intelligent Technologies',
+        ];
+        DB::table('tracks')->insert(array_map(fn (string $name, int $i) => [
+            'name_en' => $name,
+            'name_th' => $name,
+            'sort_order' => $i + 1,
             'created_at' => $now,
             'updated_at' => $now,
-        ], range(1, 5)));
+        ], $names, array_keys($names)));
     }
 
     /**

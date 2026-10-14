@@ -7,7 +7,7 @@ import DeadlineNotice from '@/Components/Admin/DeadlineNotice.vue';
 import RevisionNotice from '@/Components/Admin/RevisionNotice.vue';
 import ReviewerFeedback from '@/Components/Admin/ReviewerFeedback.vue';
 import { useI18n } from '@/i18n';
-import { affiliationByKey } from '@/data/mock';
+import { useAffiliations } from '@/composables/useAffiliations';
 import { formatFileSize } from '@/utils/format';
 
 const props = defineProps({
@@ -16,6 +16,8 @@ const props = defineProps({
     maxMb: { type: Number, required: true },
     deadline: { type: String, default: null },
     isOpen: { type: Boolean, required: true },
+    opensAt: { type: String, default: null },
+    phase: { type: String, required: true }, // upcoming | open | closed (Submission::window())
 });
 
 const { t, tr } = useI18n();
@@ -25,6 +27,7 @@ const isRevision = computed(() => ['screening_revision', 'revision_minor', 'revi
 
 // A new paper starts with the signed-in user as the first author
 const me = usePage().props.auth.user;
+const { affiliationOf } = useAffiliations();
 // uid keeps list animations attached to the right author; the server ignores it
 let nextUid = 0;
 const withUid = (author) => ({ ...author, uid: nextUid++ });
@@ -38,9 +41,19 @@ const form = useForm({
     keywords_th: props.submission?.keywords_th ?? '',
     keywords_en: props.submission?.keywords_en ?? '',
     authors: props.submission?.authors.map((a) => withUid({ ...a, email: a.email ?? '' }))
-        ?? [withUid({ name: me.name, affiliation: tr(affiliationByKey[me.affiliation]) ?? '', email: me.email })],
+        ?? [withUid({ name: me.name, affiliation: affiliationOf(me), email: me.email })],
     file: null,
+    // Revision answers (MySubmissionController::validatedAnswers): review id => text, a note to the editor, a letter
+    responses: Object.fromEntries((props.submission?.reviewsToAnswer ?? []).map((r) => [r.id, ''])),
+    response_editor: '',
+    response_file: null,
 });
+const toAnswer = computed(() => props.submission?.reviewsToAnswer ?? []);
+const letterPicker = ref(null);
+function pickLetter(event) {
+    form.response_file = event.target.files[0] ?? null;
+}
+const responseErr = (id) => form.errors[`responses.${id}`];
 
 // Authors: add, remove, reorder (drag or arrows)
 function addAuthor() {
@@ -115,11 +128,50 @@ const sectionTitle = 'mb-4 flex items-center gap-2 text-lg font-semibold';
         />
         <template v-if="isRevision">
             <RevisionNotice :status="submission.status" :comment="submission.feedback" :due-date="submission.revisionDueDate" in-form />
-            <ReviewerFeedback :rounds="submission.reviewFeedback" />
+            <ReviewerFeedback v-if="!toAnswer.length" :rounds="submission.reviewFeedback" />
         </template>
-        <DeadlineNotice v-else :deadline="deadline" :is-open="isOpen" />
+        <DeadlineNotice v-else :opens-at="opensAt" :deadline="deadline" :phase="phase" />
 
         <form class="space-y-10" novalidate @submit.prevent="submit">
+            <!-- Revision: how each comment was addressed (or a response letter) -->
+            <section v-if="isRevision" class="rounded-xl border border-gold-300 bg-gold-50/50 p-4 dark:border-gold-400/30 dark:bg-gold-400/5">
+                <h2 :class="sectionTitle"><Fa icon="reply" class="text-gold-400" /> {{ t('versions.form.title') }}</h2>
+                <p class="mb-4 text-sm text-neutral-600 dark:text-neutral-300">{{ t(toAnswer.length ? 'versions.form.intro' : 'versions.form.introScreening') }}</p>
+
+                <div v-for="review in toAnswer" :key="review.id" class="mb-4 grid gap-3 md:grid-cols-2">
+                    <div class="rounded-lg bg-white p-3 text-sm dark:bg-ink-900">
+                        <p class="mb-1 text-xs font-semibold text-neutral-500 dark:text-neutral-400">{{ t('reviews.feedback.reviewer', { n: review.number }) }} · {{ t(`reviews.recommendation.${review.recommendation}`) }}</p>
+                        <p class="max-h-48 overflow-y-auto whitespace-pre-line text-neutral-700 dark:text-neutral-200">{{ review.comment }}</p>
+                    </div>
+                    <label class="block">
+                        <span class="mb-1 block text-xs font-semibold text-gold-700 dark:text-gold-300">{{ t('versions.form.answer', { n: review.number }) }} <span v-if="!form.response_file" :class="required">*</span></span>
+                        <textarea v-model="form.responses[review.id]" rows="5" :placeholder="t('versions.form.answerPlaceholder')" :class="[input, border(responseErr(review.id))]" />
+                        <span v-if="responseErr(review.id)" :class="errorText">{{ message(responseErr(review.id)) }}</span>
+                    </label>
+                </div>
+
+                <label class="mb-4 block">
+                    <span class="mb-1 block text-xs font-semibold text-neutral-600 dark:text-neutral-300">{{ t('versions.form.toEditor') }}</span>
+                    <textarea v-model="form.response_editor" rows="2" :placeholder="t('versions.form.toEditorPlaceholder')" :class="[input, border(form.errors.response_editor)]" />
+                </label>
+
+                <div>
+                    <p class="mb-1 text-xs font-semibold text-neutral-600 dark:text-neutral-300">{{ t('versions.form.letter') }}</p>
+                    <div class="flex flex-wrap items-center gap-3">
+                        <button type="button" class="flex items-center gap-2 rounded-lg border border-neutral-300 px-4 py-2 text-sm transition hover:border-gold-400 dark:border-white/15" @click="letterPicker.click()">
+                            <Fa icon="paperclip" /> {{ form.response_file ? t('reviews.form.changeFile') : t('reviews.form.chooseFile') }}
+                        </button>
+                        <span v-if="form.response_file" class="flex items-center gap-2 text-sm">
+                            {{ form.response_file.name }}
+                            <button type="button" class="text-neutral-400 hover:text-red-500" :aria-label="t('common.cancel')" @click="form.response_file = null; letterPicker.value = ''"><Fa icon="xmark" /></button>
+                        </span>
+                        <input ref="letterPicker" type="file" accept=".pdf,.doc,.docx" class="hidden" @change="pickLetter">
+                    </div>
+                    <span v-if="form.errors.response_file" :class="errorText">{{ message(form.errors.response_file) }}</span>
+                    <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">{{ t(toAnswer.length ? 'versions.form.letterHint' : 'versions.form.letterHintScreening') }}</p>
+                </div>
+            </section>
+
             <!-- Track -->
             <section>
                 <h2 :class="sectionTitle"><Fa icon="layer-group" class="text-gold-400" /> {{ t('submissions.fields.track') }}</h2>

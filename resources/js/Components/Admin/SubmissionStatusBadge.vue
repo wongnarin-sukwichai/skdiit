@@ -1,6 +1,7 @@
 <script setup>
 defineProps({
     status: { type: String, required: true }, // App\Enums\SubmissionStatus
+    plain: { type: Boolean, default: false }, // coloured text only, no pill (busy tables)
 });
 
 // Later workflow statuses get their colours here as they are built
@@ -19,10 +20,14 @@ const styles = {
     option_b: 'bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-500/15 dark:text-violet-300 dark:border-violet-500/40',
     journal_accepted: 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/40',
 };
+
+// Plain: keep only the text colours of the pill style
+const textOnly = (status) => styles[status].split(' ').filter((c) => /(^|:)text-/.test(c)).join(' ');
 </script>
 
 <template>
-    <span :class="styles[status]" class="inline-flex items-center rounded-full border px-3 py-0.5 text-xs font-medium whitespace-nowrap">
+    <span v-if="plain" :class="textOnly(status)" class="text-sm font-medium whitespace-nowrap">{{ $t(`submissions.status.${status}`) }}</span>
+    <span v-else :class="styles[status]" class="inline-flex items-center rounded-full border px-3 py-0.5 text-xs font-medium whitespace-nowrap">
         {{ $t(`submissions.status.${status}`) }}
     </span>
 </template>

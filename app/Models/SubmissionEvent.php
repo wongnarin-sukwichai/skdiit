@@ -17,6 +17,11 @@ class SubmissionEvent extends Model
         return ['action' => SubmissionAction::class, 'meta' => 'array'];
     }
 
+    public function submission(): BelongsTo
+    {
+        return $this->belongsTo(Submission::class);
+    }
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);

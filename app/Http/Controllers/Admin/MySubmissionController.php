@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use Illuminate\Validation\ValidationException;
 use App\Enums\SubmissionAction;
 use App\Enums\SubmissionStatus;
 use App\Http\Controllers\Controller;
@@ -31,39 +32,47 @@ class MySubmissionController extends Controller
         'file.mimes' => 'validation.file_type',
         'file.max' => 'validation.file_size',
         'file.uploaded' => 'validation.file_size',
+        'response_file.mimes' => 'validation.file_type',
+        'response_file.max' => 'validation.file_size',
+        'response_file.uploaded' => 'validation.file_size',
         'track_id.exists' => 'validation.required',
     ];
 
     public function index(Request $request): Response
     {
         return Inertia::render('Admin/MySubmissions/Index', [
-            'submissions' => $request->user()->submissions()->with('track', 'authors')->latest()->get()
+            'submissions' => $request->user()->submissions()->with('track', 'authors')->withReviewCounts()->latest()->get()
                 ->map(fn (Submission $submission) => [
                     ...$submission->toClient(),
                     'canEdit' => $submission->canBeEditedByAuthor(),
+                    'next' => $submission->nextForAuthor(),
                 ]),
-            ...$this->window(),
+            ...Submission::window(),
         ]);
     }
 
-    public function create(): Response
+    public function create(): Response|RedirectResponse
     {
-        abort_unless(Submission::isOpen(), 403);
+        if (! Submission::isOpen()) {
+            return $this->outsideWindow();
+        }
 
         return Inertia::render('Admin/MySubmissions/Form', $this->formProps());
     }
 
     public function store(Request $request): RedirectResponse
     {
-        abort_unless(Submission::isOpen(), 403);
+        // The period may have ended while the author was filling in the form
+        if (! Submission::isOpen()) {
+            return $this->outsideWindow();
+        }
 
         $data = $this->validated($request, fileRequired: true);
 
         $submission = DB::transaction(function () use ($request, $data) {
-            $submission = $request->user()->submissions()->create([
-                ...$data['fields'],
-                ...$this->storeFile($request),
-            ]);
+            $stored = $this->storeFile($request);
+            $submission = $request->user()->submissions()->create([...$data['fields'], ...$stored]);
+            $submission->addManuscript($stored, 'initial', $request->user());
             $submission->authors()->createMany($data['authors']);
             $submission->log(SubmissionAction::Submitted, $request->user());
 
@@ -89,8 +98,9 @@ class MySubmissionController extends Controller
                 ->values(),
             // Reviewer comments of decided rounds, as "Reviewer 1", "Reviewer 2", ...
             'reviewFeedback' => $submission->reviewsForAuthor(),
+            'versions' => $submission->versionsFor('author'),
             'maxMb' => (int) Setting::get('upload_max_mb'),
-            ...$this->window(),
+            ...Submission::window(),
         ]);
     }
 
@@ -114,6 +124,8 @@ class MySubmissionController extends Controller
                     : null,
                 'revisionDueDate' => $submission->revision_due_date?->toDateString(),
                 'reviewFeedback' => $submission->status->awaitsAuthorRevision() ? $submission->reviewsForAuthor() : [],
+                // Revising after review: answer each reviewer (or attach a response letter)
+                'reviewsToAnswer' => $submission->reviewsToAnswer(),
                 ...$submission->only('track_id', 'title_th', 'title_en', 'abstract_th', 'abstract_en', 'keywords_th', 'keywords_en'),
                 'authors' => $submission->authors->map->only('name', 'affiliation', 'email')->values(),
                 'file' => ['name' => $submission->file_name, 'size' => $submission->file_size, 'url' => "/admin/submissions/{$submission->id}/file"],
@@ -126,10 +138,11 @@ class MySubmissionController extends Controller
         $this->authorizeOwner($request, $submission);
         abort_unless($submission->canBeEditedByAuthor(), 403);
 
-        $data = $this->validated($request, fileRequired: false);
+        // A revision must bring the revised file; after peer review it also answers the reviewers
+        $data = $this->validated($request, fileRequired: $submission->status->awaitsAuthorRevision());
+        $answers = $this->validatedAnswers($request, $submission);
 
-        DB::transaction(function () use ($request, $submission, $data) {
-            $old = $submission->file_path;
+        DB::transaction(function () use ($request, $submission, $data, $answers) {
             $file = $request->hasFile('file') ? $this->storeFile($request) : [];
 
             $from = $submission->status;
@@ -149,13 +162,26 @@ class MySubmissionController extends Controller
             $submission->authors()->delete();
             $submission->authors()->createMany($data['authors']);
 
+            // Keep every version: the new file is added, the old one stays for comparing
+            if ($file) {
+                $version = $submission->addManuscript($file, $resubmit ? 'revision' : 'edit', $request->user());
+                if ($answers['letter']) {
+                    $letter = $answers['letter'];
+                    $submission->files()->create([
+                        'version' => $version, 'kind' => 'response', 'stage' => 'revision', 'round' => $submission->review_round,
+                        'path' => $letter->store('submissions/responses'), 'name' => $letter->getClientOriginalName(), 'size' => $letter->getSize(),
+                        'user_id' => $request->user()->id,
+                    ]);
+                }
+                foreach ($answers['texts'] as $reviewId => $body) {
+                    $submission->responses()->create(['version' => $version, 'review_id' => $reviewId ?: null, 'body' => $body]);
+                }
+            }
+
             $resubmit
                 ? $submission->log(SubmissionAction::Resubmitted, $request->user(), $from)
                 : $submission->log(SubmissionAction::Updated, $request->user());
 
-            if ($file) {
-                Storage::delete($old);
-            }
         });
 
         return redirect("/admin/my-submissions/{$submission->id}")
@@ -215,13 +241,10 @@ class MySubmissionController extends Controller
         abort_unless($submission->user_id === $request->user()->id, 404);
     }
 
-    /** Deadline info shown on the author pages. */
-    private function window(): array
+    /** Before the opening date or after the deadline: back to the list, which shows an alert. */
+    private function outsideWindow(): RedirectResponse
     {
-        return [
-            'deadline' => Submission::deadline()?->toIso8601String(),
-            'isOpen' => Submission::isOpen(),
-        ];
+        return redirect()->route('admin.my-submissions')->with('submissionWindow', true);
     }
 
     private function formProps(): array
@@ -229,11 +252,45 @@ class MySubmissionController extends Controller
         return [
             'tracks' => Track::ordered()->get()->map->toClient(),
             'maxMb' => (int) Setting::get('upload_max_mb'),
-            ...$this->window(),
+            ...Submission::window(),
         ];
     }
 
     /** @return array{fields: array<string, mixed>, authors: list<array<string, mixed>>} */
+    /**
+     * Answers that come with a revision: one per reviewer of the decided round (required unless a response
+     * letter is attached), and an optional note to the editor. Keys of 'texts': review id, or 0 for the editor.
+     */
+    private function validatedAnswers(Request $request, Submission $submission): array
+    {
+        if (! $submission->status->awaitsAuthorRevision()) {
+            return ['texts' => [], 'letter' => null];
+        }
+
+        $request->validate([
+            'responses' => ['nullable', 'array'],
+            'responses.*' => ['nullable', 'string', 'max:10000'],
+            'response_editor' => ['nullable', 'string', 'max:10000'],
+            'response_file' => ['nullable', 'file', 'mimes:pdf,doc,docx', 'max:'.((int) Setting::get('upload_max_mb') * 1024)],
+        ], self::MESSAGES);
+
+        $expected = collect($submission->reviewsToAnswer())->pluck('id');
+        $given = collect($request->input('responses', []))->map(fn ($text) => trim((string) $text))->filter();
+        if (! $request->hasFile('response_file')) {
+            $missing = $expected->reject(fn ($id) => $given->has($id));
+            if ($missing->isNotEmpty()) {
+                throw ValidationException::withMessages($missing->mapWithKeys(fn ($id) => ["responses.{$id}" => 'validation.required'])->all());
+            }
+        }
+
+        $texts = $given->only($expected->all())->all();
+        if ($note = trim((string) $request->input('response_editor'))) {
+            $texts[0] = $note;
+        }
+
+        return ['texts' => $texts, 'letter' => $request->file('response_file')];
+    }
+
     private function validated(Request $request, bool $fileRequired): array
     {
         $data = $request->validate([

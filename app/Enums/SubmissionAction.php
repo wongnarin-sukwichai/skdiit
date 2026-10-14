@@ -14,6 +14,9 @@ enum SubmissionAction: string
     case ReviewerRemoved = 'reviewer_removed';    // meta: reviewer
     case ReviewDueChanged = 'review_due_changed'; // meta: reviewer, from, to
     case ReviewSubmitted = 'review_submitted';    // meta: recommendation (reviewer is the actor)
+    case ReviewReminded = 'review_reminded';      // an editor reminded a reviewer; meta: reviewer, count
+    case NoteAdded = 'note_added';                // an editor wrote an internal note (staff only)
+    case ReviewUnavailable = 'review_unavailable'; // a reviewer told the editors they cannot review; meta: reviewer, reason
     case Decided = 'decided';                     // editor's decision after review (see to_status); meta: revision due
     case ReviewRoundStarted = 'review_round_started'; // editor sent a revised paper to reviewers again; meta: round
     case OptionChosen = 'option_chosen';              // author chose A or B; meta: option
@@ -24,6 +27,6 @@ enum SubmissionAction: string
     /** Entries the author may see (without staff names). Reviewer activity stays hidden. */
     public function visibleToAuthor(): bool
     {
-        return ! in_array($this, [self::TrackChanged, self::ReviewerAssigned, self::ReviewerRemoved, self::ReviewDueChanged, self::ReviewSubmitted], true);
+        return ! in_array($this, [self::TrackChanged, self::ReviewerAssigned, self::ReviewerRemoved, self::ReviewDueChanged, self::ReviewSubmitted, self::ReviewReminded, self::NoteAdded, self::ReviewUnavailable], true);
     }
 }

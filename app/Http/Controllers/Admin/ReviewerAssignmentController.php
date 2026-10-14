@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Enums\SubmissionAction;
+use App\Enums\SubmissionStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Review;
 use App\Models\Submission;
@@ -70,6 +71,21 @@ class ReviewerAssignmentController extends Controller
         return back()->with('success', 'admin.settings.saved');
     }
 
+    /**
+     * Remind a reviewer whose evaluation is still open. Recorded on the review (latest, by whom, how many)
+     * and in the paper history, so other editors can see it. The email itself goes out once SMTP is set up.
+     */
+    public function remind(Request $request, Submission $submission, Review $review): RedirectResponse
+    {
+        abort_unless($review->submission_id === $submission->id, 404);
+        abort_if($review->isSubmitted() || $review->isClosed(), 403);
+
+        $review->forceFill(['reminded_at' => now(), 'reminded_by' => $request->user()->id, 'reminders' => $review->reminders + 1])->save();
+        $submission->log(SubmissionAction::ReviewReminded, $request->user(), meta: ['reviewer' => $review->reviewer->name, 'count' => $review->reminders]);
+
+        return back()->with('success', 'reviews.panel.reminded');
+    }
+
     public function destroy(Request $request, Submission $submission, Review $review): RedirectResponse
     {
         $this->ensureEditable($submission, $review);
@@ -92,6 +108,15 @@ class ReviewerAssignmentController extends Controller
         return User::where('role', 'reviewer')
             ->whereHas('tracks', fn ($query) => $query->whereKey($submission->track_id))
             ->whereNotIn('id', $assigned)
+            // Workload for the picker: open assignments now, and evaluations that were (or are) late
+            ->withCount([
+                'reviews as open_reviews_count' => fn ($review) => $review->whereNull('submitted_at')
+                    ->whereHas('submission', fn ($paper) => $paper->where('status', SubmissionStatus::InReview)->whereColumn('submissions.review_round', 'reviews.round')),
+                'reviews as late_reviews_count' => fn ($review) => $review->where(fn ($late) => $late
+                    ->whereRaw('DATE(submitted_at) > due_date')
+                    ->orWhere(fn ($open) => $open->whereNull('submitted_at')->whereDate('due_date', '<', today())
+                        ->whereHas('submission', fn ($paper) => $paper->where('status', SubmissionStatus::InReview)->whereColumn('submissions.review_round', 'reviews.round')))),
+            ])
             ->orderBy('name')
             ->get();
     }

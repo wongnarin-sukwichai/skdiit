@@ -1,12 +1,15 @@
 <script setup>
 import { ref, watch } from 'vue';
 import Modal from '@/Components/Modal.vue';
-import StatusBadge from '@/Components/StatusBadge.vue';
+import RegistrantStatus from '@/Components/Admin/Registrants/RegistrantStatus.vue';
+import PaymentStatusBadge from '@/Components/PaymentStatusBadge.vue';
 import { useI18n } from '@/i18n';
 import { affiliationByKey } from '@/data/mock';
 
+// Backend registrant record (mock: adminRegistrants)
 const props = defineProps({
     registrant: { type: Object, default: null },
+    seesPapers: { type: Boolean, default: true }, // false for finance: payment status only, no paper
 });
 const emit = defineEmits(['close']);
 
@@ -36,22 +39,41 @@ watch(() => props.registrant, (value) => value && (shown.value = value), { immed
                     <dd class="mt-0.5 break-all">{{ shown.email }}</dd>
                 </div>
                 <div>
+                    <dt class="text-neutral-400">{{ t('admin.accounts.phone') }}</dt>
+                    <dd class="mt-0.5">
+                        <a v-if="shown.phone" :href="`tel:${shown.phone}`" class="text-gold-400 hover:underline">{{ shown.phone }}</a>
+                        <span v-else class="text-neutral-500">—</span>
+                    </dd>
+                </div>
+                <div>
                     <dt class="text-neutral-400">{{ t('registrants.affiliation') }}</dt>
                     <dd class="mt-0.5">{{ tr(affiliationByKey[shown.affiliation]) }}</dd>
                 </div>
                 <div>
                     <dt class="text-neutral-400">{{ t('registrants.participation') }}</dt>
-                    <dd class="mt-0.5">{{ shown.submitted ? t('auth.attendSubmit') : t('auth.attendOnly') }}</dd>
+                    <dd class="mt-0.5">{{ t(`admin.registrants.participationType.${shown.participation}`) }}</dd>
                 </div>
                 <div>
                     <dt class="text-neutral-400">{{ t('registrants.registeredAt') }}</dt>
                     <dd class="mt-0.5">{{ formatDate(shown.registeredAt, { dateStyle: 'medium', timeStyle: 'short' }) }}</dd>
                 </div>
                 <div>
-                    <dt class="text-neutral-400">{{ t('registrants.status') }}</dt>
-                    <dd class="mt-1"><StatusBadge :status="shown.status" /></dd>
+                    <dt class="text-neutral-400">{{ t(seesPapers ? 'registrants.status' : 'registrants.paymentStatus') }}</dt>
+                    <dd class="mt-1">
+                        <RegistrantStatus v-if="seesPapers" :registrant="shown" />
+                        <PaymentStatusBadge v-else :status="shown.payment" />
+                    </dd>
                 </div>
-                <div class="sm:col-span-2">
+                <div>
+                    <dt class="text-neutral-400">{{ t('admin.registrants.account') }}</dt>
+                    <dd v-if="!shown.active" class="mt-0.5 text-red-400">{{ t('admin.registrants.suspended') }}</dd>
+                    <dd v-else-if="!shown.verified" class="mt-0.5 text-amber-400">
+                        {{ t('admin.registrants.unverified') }}
+                        <span class="block text-xs text-neutral-500">{{ t('admin.registrants.unverifiedHint') }}</span>
+                    </dd>
+                    <dd v-else class="mt-0.5 text-emerald-400">{{ t('admin.registrants.active') }}</dd>
+                </div>
+                <div v-if="seesPapers && shown.participation === 'attend_submit'" class="sm:col-span-2">
                     <dt class="text-neutral-400">{{ t('registrants.paper') }}</dt>
                     <dd class="mt-0.5" :class="{ 'text-neutral-500 italic': !shown.paper }">
                         {{ shown.paper ? tr(shown.paper) : t('registrants.noPaper') }}

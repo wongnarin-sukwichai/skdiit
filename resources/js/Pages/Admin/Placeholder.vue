@@ -27,7 +27,8 @@ const title = computed(() => t(`admin.menu.${props.section}`));
                 <Fa icon="screwdriver-wrench" />
             </span>
             <h2 class="text-xl font-semibold">{{ t('common.comingSoon') }}</h2>
-            <p class="mt-2 max-w-md text-neutral-500 dark:text-neutral-400">{{ t('admin.placeholder') }}</p>
+            <p class="mt-3 max-w-xl text-neutral-700 dark:text-neutral-200">{{ t(`admin.menuDesc.${section}`) }}</p>
+            <p class="mt-2 max-w-md text-sm text-neutral-500 dark:text-neutral-400">{{ t('admin.placeholder') }}</p>
         </div>
     </Card>
 </template>

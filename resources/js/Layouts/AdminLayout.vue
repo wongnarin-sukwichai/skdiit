@@ -4,6 +4,8 @@ import { Link, router, usePage } from '@inertiajs/vue3';
 import Logo from '@/Components/Logo.vue';
 import LangSwitch from '@/Components/LangSwitch.vue';
 import FlashToast from '@/Components/FlashToast.vue';
+import ImpersonationBanner from '@/Components/ImpersonationBanner.vue';
+import NotificationBell from '@/Components/Admin/NotificationBell.vue';
 import { useI18n } from '@/i18n';
 import { useTheme } from '@/composables/useTheme';
 import { useModules } from '@/composables/useModules';
@@ -15,9 +17,19 @@ const { isDark, toggleTheme } = useTheme();
 const user = computed(() => page.props.auth.user);
 const sidebarOpen = ref(false);
 const userMenuOpen = ref(false);
+const bellOpen = ref(false);
+// Only one header dropdown open at a time
+watch(bellOpen, (open) => open && (userMenuOpen.value = false));
+watch(userMenuOpen, (open) => open && (bellOpen.value = false));
 
 // Sidebar shows only the modules this user's role can open (config/modules.php)
-const { modules: menu } = useModules();
+const { modules } = useModules();
+// Consecutive modules with the same `group` sit under one heading
+const menuGroups = computed(() => modules.value.reduce((groups, item) => {
+    const last = groups.at(-1);
+    last?.key === item.group ? last.items.push(item) : groups.push({ key: item.group, items: [item] });
+    return groups;
+}, []));
 
 const path = computed(() => page.url.split('?')[0]);
 const isActive = (href) => (href === '/admin' ? path.value === '/admin' : path.value.startsWith(href));
@@ -25,6 +37,7 @@ const isActive = (href) => (href === '/admin' ? path.value === '/admin' : path.v
 watch(() => page.url, () => {
     sidebarOpen.value = false;
     userMenuOpen.value = false;
+    bellOpen.value = false;
 });
 
 function logout() {
@@ -75,10 +88,7 @@ function logout() {
                     </Transition>
                 </button>
 
-                <button class="relative hidden size-10 place-items-center text-xl sm:grid" :aria-label="t('admin.notifications')">
-                    <Fa icon="bell" />
-                    <span class="absolute top-1.5 right-1.5 size-2.5 rounded-full bg-gold-400" />
-                </button>
+                <NotificationBell v-model:open="bellOpen" :all-href="modules.some((m) => m.key === 'notifications') ? '/admin/notifications' : '/admin'" />
 
                 <span class="hidden h-10 w-px bg-gold-400/40 sm:block" />
 
@@ -113,21 +123,26 @@ function logout() {
 
         <aside
             :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
-            class="fixed top-20 bottom-0 left-0 z-30 flex w-64 flex-col border-r border-neutral-200 bg-white transition-transform duration-300 dark:border-white/10 dark:bg-ink-900"
+            class="fixed top-20 bottom-0 left-0 z-30 flex w-72 flex-col border-r border-neutral-200 bg-white transition-transform duration-300 lg:w-80 dark:border-white/10 dark:bg-ink-900"
         >
-            <nav class="flex-1 space-y-1 overflow-y-auto p-3">
-                <Link
-                    v-for="item in menu"
-                    :key="item.key"
-                    :href="item.href"
-                    :class="isActive(item.href)
-                        ? 'bg-linear-to-r from-gold-400 to-gold-300 font-semibold text-black shadow-[0_0_20px_rgba(255,204,41,.25)]'
-                        : 'text-neutral-700 hover:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-white/5'"
-                    class="flex items-center gap-3 rounded-lg px-4 py-3 transition"
-                >
-                    <Fa :icon="item.icon" class="w-5 text-lg" :class="isActive(item.href) ? '' : 'text-neutral-500 dark:text-neutral-400'" />
-                    {{ t(`admin.menu.${item.key}`) }}
-                </Link>
+            <nav class="flex-1 overflow-y-auto p-3">
+                <div v-for="group in menuGroups" :key="group.key" class="mb-3 space-y-1">
+                    <p class="px-4 pt-2 pb-1 text-xs font-semibold tracking-wider text-neutral-400 uppercase dark:text-neutral-500">
+                        {{ t(`admin.menuGroup.${group.key}`) }}
+                    </p>
+                    <Link
+                        v-for="item in group.items"
+                        :key="item.key"
+                        :href="item.href"
+                        :class="isActive(item.href)
+                            ? 'bg-linear-to-r from-gold-400 to-gold-300 font-semibold text-black shadow-[0_0_20px_rgba(255,204,41,.25)]'
+                            : 'text-neutral-700 hover:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-white/5'"
+                        class="flex items-center gap-3 rounded-lg px-4 py-2.5 transition"
+                    >
+                        <Fa :icon="item.icon" class="w-5 shrink-0 text-lg" :class="isActive(item.href) ? '' : 'text-neutral-500 dark:text-neutral-400'" />
+                        {{ t(`admin.menu.${item.key}`) }}
+                    </Link>
+                </div>
 
                 <hr class="mx-3 my-4 border-neutral-200 dark:border-white/10">
 
@@ -141,7 +156,7 @@ function logout() {
             </p>
         </aside>
 
-        <main class="p-4 sm:p-6 lg:ml-64">
+        <main class="p-4 sm:p-6 lg:ml-80">
             <Transition name="fade" mode="out-in">
                 <div :key="page.url">
                     <slot />
@@ -150,5 +165,6 @@ function logout() {
         </main>
 
         <FlashToast />
+        <ImpersonationBanner />
     </div>
 </template>

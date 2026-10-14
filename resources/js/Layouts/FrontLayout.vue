@@ -4,8 +4,10 @@ import { Link, router, usePage } from '@inertiajs/vue3';
 import Logo from '@/Components/Logo.vue';
 import LangSwitch from '@/Components/LangSwitch.vue';
 import FlashToast from '@/Components/FlashToast.vue';
+import ImpersonationBanner from '@/Components/ImpersonationBanner.vue';
 import LoginModal from '@/Components/Front/LoginModal.vue';
 import RegisterModal from '@/Components/Front/RegisterModal.vue';
+import MyDetailsModal from '@/Components/Front/MyDetailsModal.vue';
 import { useI18n } from '@/i18n';
 import { useAuthModal } from '@/composables/useAuthModal';
 
@@ -45,6 +47,12 @@ function setModal(value) {
     if (['/login', '/register'].includes(window.location.pathname)) {
         router.visit(value ? `/${value}` : '/', { replace: true, preserveState: true, preserveScroll: true });
     }
+}
+const myDetailsOpen = ref(false);
+function openMyDetails() {
+    userMenuOpen.value = false;
+    mobileOpen.value = false;
+    myDetailsOpen.value = true;
 }
 function logout() {
     router.post('/logout');
@@ -124,6 +132,9 @@ function logout() {
                                     <Link v-if="page.props.auth.modules.length" href="/admin" class="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-white/5">
                                         <Fa icon="gauge" class="text-gold-400" /> {{ t('auth.backend') }}
                                     </Link>
+                                    <button class="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-white/5" @click="openMyDetails">
+                                        <Fa icon="user" class="text-gold-400" /> {{ t('auth.myDetails') }}
+                                    </button>
                                     <button class="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-white/5" @click="logout">
                                         <Fa icon="arrow-right-from-bracket" class="text-gold-400" /> {{ t('auth.logout') }}
                                     </button>
@@ -165,6 +176,7 @@ function logout() {
                         </template>
                         <template v-else>
                             <Link v-if="page.props.auth.modules.length" href="/admin" class="rounded-lg border border-white/15 px-4 py-2 text-sm">{{ t('auth.backend') }}</Link>
+                            <button class="rounded-lg border border-white/15 px-4 py-2 text-sm" @click="openMyDetails">{{ t('auth.myDetails') }}</button>
                             <button class="rounded-lg border border-white/15 px-4 py-2 text-sm" @click="logout">{{ t('auth.logout') }}</button>
                         </template>
                     </div>
@@ -188,6 +200,8 @@ function logout() {
 
         <LoginModal :show="modal === 'login'" @close="setModal(null)" @switch="setModal('register')" />
         <RegisterModal :show="modal === 'register'" @close="setModal(null)" @switch="setModal('login')" />
+        <MyDetailsModal :show="myDetailsOpen" @close="myDetailsOpen = false" />
         <FlashToast />
+        <ImpersonationBanner />
     </div>
 </template>

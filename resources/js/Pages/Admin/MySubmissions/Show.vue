@@ -8,16 +8,20 @@ import RevisionNotice from '@/Components/Admin/RevisionNotice.vue';
 import ReviewerFeedback from '@/Components/Admin/ReviewerFeedback.vue';
 import PublicationAuthorPanel from '@/Components/Admin/PublicationAuthorPanel.vue';
 import SubmissionDetail from '@/Components/Admin/SubmissionDetail.vue';
+import FileVersions from '@/Components/Admin/FileVersions.vue';
 import SubmissionHistory from '@/Components/Admin/SubmissionHistory.vue';
 import { useI18n } from '@/i18n';
 
 const props = defineProps({
+    versions: { type: Array, required: true }, // my file versions and my answers to the reviewers
     submission: { type: Object, required: true },
     history: { type: Array, required: true }, // without staff names
     reviewFeedback: { type: Array, required: true }, // "Reviewer 1", "Reviewer 2", ...
     maxMb: { type: Number, required: true },
     deadline: { type: String, default: null },
     isOpen: { type: Boolean, required: true },
+    opensAt: { type: String, default: null },
+    phase: { type: String, required: true }, // upcoming | open | closed (Submission::window())
 });
 
 const { t } = useI18n();
@@ -46,11 +50,12 @@ const latestDecision = computed(() => props.history.find((e) => ['screened', 'de
             </Link>
         </div>
 
-        <DeadlineNotice v-if="submission.status === 'submitted'" :deadline="deadline" :is-open="isOpen" />
+        <DeadlineNotice v-if="submission.status === 'submitted'" :opens-at="opensAt" :deadline="deadline" :phase="phase" />
         <RevisionNotice v-else :status="submission.status" :comment="latestDecision?.comment" :due-date="submission.revisionDueDate" />
         <PublicationAuthorPanel :submission="submission" :max-mb="maxMb" />
 
         <ReviewerFeedback :rounds="reviewFeedback" />
+        <FileVersions v-if="versions.length > 1" :versions="versions" />
         <SubmissionDetail :submission="submission" />
         <SubmissionHistory :history="history" />
     </Card>

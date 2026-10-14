@@ -5,6 +5,8 @@ import Card from '@/Components/Admin/Card.vue';
 import PageHeader from '@/Components/Admin/PageHeader.vue';
 import Modal from '@/Components/Modal.vue';
 import SubmissionDetail from '@/Components/Admin/SubmissionDetail.vue';
+import FileVersions from '@/Components/Admin/FileVersions.vue';
+import InternalNotes from '@/Components/Admin/InternalNotes.vue';
 import SubmissionHistory from '@/Components/Admin/SubmissionHistory.vue';
 import ReviewersPanel from '@/Components/Admin/ReviewersPanel.vue';
 import DecisionPanel from '@/Components/Admin/DecisionPanel.vue';
@@ -12,11 +14,16 @@ import PublicationStaffPanel from '@/Components/Admin/PublicationStaffPanel.vue'
 import { useI18n } from '@/i18n';
 
 const props = defineProps({
+    versions: { type: Array, required: true }, // manuscript versions with the author's answers
+    notes: { type: Array, required: true }, // internal notes (staff only)
     submission: { type: Object, required: true },
     tracks: { type: Array, required: true },
     conflict: { type: Boolean, required: true },
+    contactPhone: { type: String, default: null },
     deadline: { type: String, default: null },
     isOpen: { type: Boolean, required: true },
+    opensAt: { type: String, default: null },
+    phase: { type: String, required: true }, // upcoming | open | closed (Submission::window())
     canScreen: { type: Boolean, required: true },
     history: { type: Array, required: true },
     reviewRound: { type: Number, required: true },
@@ -66,9 +73,12 @@ const box = 'rounded-xl border border-neutral-200 p-4 dark:border-white/10';
     <Card class="space-y-6">
         <PageHeader icon="file-lines" :title="t('admin.menu.submissions')" :subtitle="submission.code" />
 
-        <Link href="/admin/submissions" class="inline-flex items-center gap-2 rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition hover:border-gold-400 dark:border-white/20">
-            <Fa icon="chevron-left" class="text-xs" /> {{ t('submissions.back') }}
-        </Link>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <Link href="/admin/submissions" class="inline-flex items-center gap-2 rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition hover:border-gold-400 dark:border-white/20">
+                <Fa icon="chevron-left" class="text-xs" /> {{ t('submissions.back') }}
+            </Link>
+            <InternalNotes :submission-id="submission.id" :notes="notes" />
+        </div>
 
         <!-- Possible conflict of interest: warn only, the editor decides -->
         <div v-if="conflict" class="flex items-start gap-3 rounded-xl border border-orange-300 bg-orange-50 px-4 py-3 text-sm text-orange-800 dark:border-orange-400/30 dark:bg-orange-400/10 dark:text-orange-200">
@@ -150,15 +160,20 @@ const box = 'rounded-xl border border-neutral-200 p-4 dark:border-white/10';
         <div v-if="submission.revisionDueDate" class="flex items-center gap-2 text-sm text-neutral-500 dark:text-neutral-400">
             <Fa icon="calendar-days" /> {{ t('decision.authorDue', { date: formatDate(submission.revisionDueDate, { day: 'numeric', month: 'long', year: 'numeric' }) }) }}
         </div>
-        <ReviewersPanel
-            v-if="reviewRound > 0"
-            :submission-id="submission.id"
-            :round="reviewRound"
-            :reviews="reviews"
-            :options="reviewerOptions"
-            :can-assign="canAssign"
-        />
-        <SubmissionDetail :submission="submission" />
+        <!-- Reviewers and file versions side by side on wide screens (one alone takes the row) -->
+        <div class="grid items-start gap-6 xl:grid-cols-2">
+            <ReviewersPanel
+                v-if="reviewRound > 0"
+                :class="versions.length ? '' : 'xl:col-span-2'"
+                :submission-id="submission.id"
+                :round="reviewRound"
+                :reviews="reviews"
+                :options="reviewerOptions"
+                :can-assign="canAssign"
+            />
+            <FileVersions :versions="versions" show-names :class="reviewRound > 0 ? '' : 'xl:col-span-2'" />
+        </div>
+        <SubmissionDetail :submission="submission" :contact-phone="contactPhone" />
         <SubmissionHistory :history="history" />
 
         <!-- One editor's decision is final for this round, so confirm first -->

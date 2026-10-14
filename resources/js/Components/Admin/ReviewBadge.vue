@@ -8,6 +8,7 @@ defineProps({
 const styles = {
     pending: 'bg-sky-100 text-sky-700 border-sky-200 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/40',
     overdue: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/40',
+    unavailable: 'bg-neutral-100 text-neutral-600 border-neutral-300 line-through decoration-1 dark:bg-white/5 dark:text-neutral-400 dark:border-white/15',
     closed: 'bg-neutral-200 text-neutral-600 border-neutral-300 dark:bg-white/10 dark:text-neutral-300 dark:border-white/20',
     submitted: 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/40',
     accept: 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/40',

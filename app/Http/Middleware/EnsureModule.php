@@ -9,10 +9,11 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * Allows the request only if the user's role can use the module (config/modules.php).
  * Usage: ->middleware('module:registrants'), or 'module' alone to read the {section} route parameter.
+ * 'module:reviewers,full' also requires the 'full' level (actions that change data).
  */
 class EnsureModule
 {
-    public function handle(Request $request, Closure $next, ?string $module = null): Response
+    public function handle(Request $request, Closure $next, ?string $module = null, ?string $level = null): Response
     {
         $user = $request->user();
         $module ??= $request->route('section');
@@ -23,6 +24,8 @@ class EnsureModule
                 ? redirect('/admin')
                 : redirect()->route('home');
         }
+
+        abort_if($level === 'full' && $user->moduleAccess($module) !== 'full', 403);
 
         return $next($request);
     }

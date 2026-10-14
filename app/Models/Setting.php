@@ -20,6 +20,7 @@ class Setting extends Model
     /** Values used until admin saves a setting. */
     public const DEFAULTS = [
         'upload_max_mb' => 10,
+        'submission_opens' => null, // 'Y-m-d H:i' in the app timezone; null = open right away
         'submission_deadline' => null, // 'Y-m-d H:i' in the app timezone; null = no deadline
     ];
 

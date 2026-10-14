@@ -2,7 +2,7 @@
 import { computed } from 'vue';
 import { Head, usePage } from '@inertiajs/vue3';
 import CheckMark from '@/Components/CheckMark.vue';
-import StatusBadge from '@/Components/StatusBadge.vue';
+import PaymentStatusBadge from '@/Components/PaymentStatusBadge.vue';
 import Pagination from '@/Components/Pagination.vue';
 import { useI18n } from '@/i18n';
 import { useRegistrantTable } from '@/composables/useRegistrantTable';
@@ -108,7 +108,7 @@ const { form, perPage, page, total, lastPage, rows, search, reset } = useRegistr
                             <th class="px-4 py-3 font-semibold">{{ t('registrants.affiliation') }}</th>
                             <th class="px-4 py-3 text-center font-semibold">{{ t('registrants.attend') }}</th>
                             <th class="px-4 py-3 text-center font-semibold">{{ t('registrants.submit') }}</th>
-                            <th class="px-4 py-3 text-center font-semibold">{{ t('registrants.status') }}</th>
+                            <th class="px-4 py-3 text-center font-semibold">{{ t('registrants.paymentStatus') }}</th>
                             <th class="px-4 py-3 font-semibold">{{ t('registrants.registeredAt') }}</th>
                         </tr>
                     </thead>
@@ -120,7 +120,7 @@ const { form, perPage, page, total, lastPage, rows, search, reset } = useRegistr
                                 <td class="px-4 py-2.5 text-neutral-200">{{ tr(affiliationByKey[row.affiliation]) }}</td>
                                 <td class="px-4 py-2.5 text-center"><CheckMark :checked="row.attend" /></td>
                                 <td class="px-4 py-2.5 text-center"><CheckMark :checked="row.submitted" /></td>
-                                <td class="px-4 py-2.5 text-center"><StatusBadge :status="row.status" /></td>
+                                <td class="px-4 py-2.5 text-center"><PaymentStatusBadge :status="row.payment" /></td>
                                 <td class="px-4 py-2.5 whitespace-nowrap text-neutral-300">{{ formatDate(row.registeredAt) }}</td>
                             </tr>
                             <tr v-if="!rows.length">

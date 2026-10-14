@@ -4,13 +4,13 @@ import { useForm } from '@inertiajs/vue3';
 import { useI18n } from '@/i18n';
 
 const props = defineProps({
-    settings: { type: Object, required: true }, // { maxMb, serverMaxMb, deadline: 'Y-m-d H:i' | null }
+    settings: { type: Object, required: true }, // { maxMb, serverMaxMb, opens, deadline: 'Y-m-d H:i' | null }
 });
 
 const { t } = useI18n();
 
 // <input type="datetime-local"> works with 'Y-m-dTH:i'
-const toInput = (s) => ({ max_mb: s.maxMb, deadline: s.deadline ? s.deadline.replace(' ', 'T') : '' });
+const toInput = (s) => ({ max_mb: s.maxMb, opens: s.opens?.replace(' ', 'T') ?? '', deadline: s.deadline?.replace(' ', 'T') ?? '' });
 const form = useForm(toInput(props.settings));
 watch(() => props.settings, (value) => {
     form.defaults(toInput(value));
@@ -18,7 +18,7 @@ watch(() => props.settings, (value) => {
 });
 
 function submit() {
-    form.transform((data) => ({ ...data, deadline: data.deadline || null }))
+    form.transform((data) => ({ ...data, opens: data.opens || null, deadline: data.deadline || null }))
         .put('/admin/settings/submission', { preserveScroll: true, preserveState: true });
 }
 
@@ -31,18 +31,26 @@ const hint = 'mt-2 text-xs text-neutral-500 dark:text-neutral-400';
     <form class="max-w-2xl space-y-8" @submit.prevent="submit">
         <p class="text-sm text-neutral-500 dark:text-neutral-400">{{ t('admin.settings.submission.intro') }}</p>
 
-        <div>
-            <label for="deadline" class="mb-1.5 block text-sm font-medium">{{ t('admin.settings.submission.deadline') }}</label>
-            <div class="flex flex-wrap items-center gap-3">
-                <input id="deadline" v-model="form.deadline" type="datetime-local" :class="[input, border(form.errors.deadline)]">
-                <button v-if="form.deadline" type="button" class="text-sm text-neutral-500 hover:text-red-500 dark:text-neutral-400" @click="form.deadline = ''">
-                    <Fa icon="xmark" /> {{ t('admin.settings.submission.clearDeadline') }}
+        <!-- Submission period: before or after it the author gets an alert instead of the form -->
+        <div class="grid gap-6 sm:grid-cols-2">
+            <div v-for="field in ['opens', 'deadline']" :key="field">
+                <label :for="field" class="mb-1.5 block text-sm font-medium">{{ t(`admin.settings.submission.${field}`) }}</label>
+                <input
+                    :id="field"
+                    v-model="form[field]"
+                    type="datetime-local"
+                    :min="field === 'deadline' ? form.opens || undefined : undefined"
+                    :max="field === 'opens' ? form.deadline || undefined : undefined"
+                    :class="[input, 'w-full', border(form.errors[field])]"
+                >
+                <Transition name="fade">
+                    <p v-if="form.errors[field]" class="mt-1 text-xs text-red-500 dark:text-red-400">{{ t(form.errors[field]) }}</p>
+                </Transition>
+                <button v-if="form[field]" type="button" class="mt-1.5 text-xs text-neutral-500 hover:text-red-500 dark:text-neutral-400" @click="form[field] = ''">
+                    <Fa icon="xmark" /> {{ t(`admin.settings.submission.clear.${field}`) }}
                 </button>
             </div>
-            <Transition name="fade">
-                <p v-if="form.errors.deadline" class="mt-1 text-xs text-red-500 dark:text-red-400">{{ t(form.errors.deadline) }}</p>
-            </Transition>
-            <p :class="hint"><Fa icon="circle-info" class="mr-1 text-gold-500" /> {{ t('admin.settings.submission.deadlineHint') }}</p>
+            <p class="-mt-3 text-xs text-neutral-500 sm:col-span-2 dark:text-neutral-400"><Fa icon="circle-info" class="mr-1 text-gold-500" /> {{ t('admin.settings.submission.periodHint') }}</p>
         </div>
 
         <div>

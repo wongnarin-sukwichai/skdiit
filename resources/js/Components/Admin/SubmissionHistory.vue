@@ -2,6 +2,7 @@
 import { useI18n } from '@/i18n';
 import SubmissionStatusBadge from '@/Components/Admin/SubmissionStatusBadge.vue';
 import ReviewBadge from '@/Components/Admin/ReviewBadge.vue';
+import { eventIcons, eventTitle } from '@/utils/submissionEvents';
 
 defineProps({
     history: { type: Array, required: true }, // SubmissionEvent::toClient(), newest first
@@ -10,29 +11,10 @@ defineProps({
 const { t, tr, formatDate } = useI18n();
 const when = (value) => formatDate(value, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-const icons = {
-    submitted: 'paper-plane',
-    updated: 'pen',
-    resubmitted: 'arrow-rotate-right',
-    screened: 'clipboard-check',
-    track_changed: 'layer-group',
-    reviewer_assigned: 'user-plus',
-    reviewer_removed: 'user-xmark',
-    review_due_changed: 'calendar-days',
-    review_submitted: 'clipboard-check',
-    decided: 'gavel',
-    review_round_started: 'user-check',
-    option_chosen: 'book',
-    camera_ready_uploaded: 'file-circle-check',
-    journal_result: 'newspaper',
-    presentation_scheduled: 'person-chalkboard',
-};
 const day = (value) => formatDate(value, { day: 'numeric', month: 'short', year: 'numeric' });
 
-// Screening and decision entries are labelled by their outcome
-const title = (event) => (['screened', 'decided'].includes(event.action)
-    ? t(`submissions.history.${event.action}.${event.toStatus}`)
-    : t(`submissions.history.${event.action}`, event.meta ?? {}));
+const icons = eventIcons;
+const title = (event) => eventTitle(t, event);
 </script>
 
 <template>

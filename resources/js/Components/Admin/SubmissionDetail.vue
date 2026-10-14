@@ -1,10 +1,12 @@
 <script setup>
 import { useI18n } from '@/i18n';
 import SubmissionStatusBadge from '@/Components/Admin/SubmissionStatusBadge.vue';
+import ImpersonateButton from '@/Components/Admin/ImpersonateButton.vue';
 import { formatFileSize } from '@/utils/format';
 
 defineProps({
     submission: { type: Object, required: true }, // Submission::toClient(full: true)
+    contactPhone: { type: String, default: null }, // staff only
 });
 
 const { t, tr, formatDate } = useI18n();
@@ -67,6 +69,8 @@ const box = 'rounded-xl border border-neutral-200 p-4 dark:border-white/10';
                     <p :class="label">{{ t('submissions.contact') }}</p>
                     <p class="text-sm font-medium">{{ submission.submitter.name }}</p>
                     <p class="text-sm text-neutral-500 dark:text-neutral-400">{{ submission.submitter.email }}</p>
+                    <a v-if="contactPhone" :href="`tel:${contactPhone}`" class="text-sm text-gold-700 hover:underline dark:text-gold-400"><Fa icon="phone" class="mr-1" />{{ contactPhone }}</a>
+                    <ImpersonateButton v-if="submission.submitter.id" :user="submission.submitter" class="mt-2" />
                 </section>
                 <section :class="box">
                     <p :class="label">{{ t('submissions.fields.file') }}</p>
