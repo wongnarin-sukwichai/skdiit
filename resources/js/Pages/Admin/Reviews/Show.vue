@@ -7,6 +7,7 @@ import Modal from '@/Components/Modal.vue';
 import ReviewBadge from '@/Components/Admin/ReviewBadge.vue';
 import SubmissionDetail from '@/Components/Admin/SubmissionDetail.vue';
 import FileVersions from '@/Components/Admin/FileVersions.vue';
+import ReviewScores from '@/Components/Admin/ReviewScores.vue';
 import { useI18n } from '@/i18n';
 import { formatFileSize } from '@/utils/format';
 
@@ -15,10 +16,11 @@ const props = defineProps({
     review: { type: Object, required: true },
     submission: { type: Object, required: true },
     recommendations: { type: Array, required: true },
+    criteria: { type: Array, required: true }, // Settings › Review criteria: score each from 1 to 5
     maxMb: { type: Number, required: true }, // upload limit (Settings)
 });
 
-const { t, formatDate } = useI18n();
+const { t, tr, formatDate } = useI18n();
 const day = (value) => formatDate(value, { day: 'numeric', month: 'long', year: 'numeric' });
 const when = (value) => formatDate(value, { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
@@ -37,7 +39,11 @@ const form = useForm({
     comment_to_editor: props.review.commentToEditor ?? '',
     no_conflict: false,
     attachment: null,
+    // criterion id => 1..5 (from the draft)
+    scores: Object.fromEntries(props.criteria.map((c) => [c.id, props.review.scores?.find((s) => s.criterion === c.id)?.score ?? null])),
 });
+const allScored = () => props.criteria.every((c) => form.scores[c.id]);
+const scoreError = (id) => form.errors[`scores.${id}`];
 
 // Save without sending (the editors do not see a draft)
 const savingDraft = ref(false);
@@ -46,6 +52,7 @@ function saveDraft() {
         recommendation: form.recommendation || null,
         comment: form.comment,
         comment_to_editor: form.comment_to_editor,
+        scores: form.scores,
     }, {
         preserveScroll: true,
         preserveState: true,
@@ -105,12 +112,19 @@ const box = 'rounded-xl border border-neutral-200 p-4 dark:border-white/10';
                     <ReviewBadge kind="recommendation" :value="review.recommendation" />
                     <span class="text-xs text-neutral-500 dark:text-neutral-400">{{ t('reviews.submittedOn') }} {{ when(review.submittedAt) }}</span>
                 </div>
+                <ReviewScores v-if="review.scores.length" :scores="review.scores" :average="review.average" />
                 <p class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">{{ t('reviews.form.comment') }}</p>
                 <blockquote class="rounded-lg bg-neutral-50 px-3 py-2 text-sm whitespace-pre-line text-neutral-700 dark:bg-white/5 dark:text-neutral-200">{{ review.comment }}</blockquote>
                 <template v-if="review.commentToEditor">
                     <p class="text-xs font-semibold text-neutral-500 dark:text-neutral-400"><Fa icon="lock" class="mr-1" />{{ t('reviews.form.toEditor') }}</p>
                     <blockquote class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm whitespace-pre-line text-neutral-700 dark:border-amber-400/20 dark:bg-amber-400/5 dark:text-neutral-200">{{ review.commentToEditor }}</blockquote>
                 </template>
+                <!-- The editor's decision on this round, and the final result once there is one -->
+                <div v-if="review.outcome" class="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800 dark:border-sky-400/30 dark:bg-sky-400/10 dark:text-sky-200">
+                    <p><Fa icon="gavel" class="mr-1.5" />{{ t('reviews.outcome.decision') }}: <b>{{ t(`submissions.history.decided.${review.outcome.decision}`) }}</b> · {{ day(review.outcome.at) }}</p>
+                    <p v-if="review.outcome.final && review.outcome.final !== review.outcome.decision" class="mt-0.5">{{ t('reviews.outcome.final') }}: <b>{{ t(`submissions.status.${review.outcome.final}`) }}</b></p>
+                </div>
+                <p v-else class="text-xs text-neutral-500 dark:text-neutral-400"><Fa icon="hourglass-half" class="mr-1" />{{ t('reviews.outcome.waiting') }}</p>
                 <a v-if="review.attachment" :href="review.attachment.url" class="inline-flex items-center gap-2 text-sm text-gold-700 hover:underline dark:text-gold-400">
                     <Fa icon="paperclip" /> {{ review.attachment.name }} · {{ formatFileSize(review.attachment.size) }}
                 </a>
@@ -146,6 +160,32 @@ const box = 'rounded-xl border border-neutral-200 p-4 dark:border-white/10';
                         </button>
                     </div>
                     <span v-if="form.errors.recommendation" class="mt-1 block text-xs text-red-500 dark:text-red-400">{{ t(form.errors.recommendation) }}</span>
+                </div>
+                <!-- Scores 1-5 per criterion (Settings › Review criteria) -->
+                <div v-if="criteria.length">
+                    <p class="text-sm font-medium">{{ t('reviews.form.scores') }} <span class="text-red-500">*</span></p>
+                    <p class="mb-2 text-xs text-neutral-500 dark:text-neutral-400">{{ t('reviews.form.scoresHint') }}</p>
+                    <ul class="divide-y divide-neutral-200 rounded-lg border border-neutral-200 dark:divide-white/5 dark:border-white/10">
+                        <li v-for="criterion in criteria" :key="criterion.id" class="flex flex-wrap items-center gap-3 px-3 py-2.5">
+                            <div class="min-w-48 flex-1">
+                                <p class="text-sm">{{ tr(criterion.name) }}</p>
+                                <p v-if="criterion.description" class="text-xs text-neutral-500 dark:text-neutral-400">{{ tr(criterion.description) }}</p>
+                                <span v-if="scoreError(criterion.id)" class="block text-xs text-red-500 dark:text-red-400">{{ t(scoreError(criterion.id)) }}</span>
+                            </div>
+                            <div class="flex gap-1" role="radiogroup" :aria-label="tr(criterion.name)">
+                                <button
+                                    v-for="n in 5"
+                                    :key="n"
+                                    type="button"
+                                    role="radio"
+                                    :aria-checked="form.scores[criterion.id] === n"
+                                    :class="form.scores[criterion.id] === n ? 'border-gold-500 bg-gold-400 font-semibold text-black' : 'border-neutral-300 text-neutral-600 hover:border-gold-400 dark:border-white/15 dark:text-neutral-300'"
+                                    class="grid size-9 place-items-center rounded-lg border text-sm transition"
+                                    @click="form.scores[criterion.id] = n"
+                                >{{ n }}</button>
+                            </div>
+                        </li>
+                    </ul>
                 </div>
                 <label class="block">
                     <span class="mb-1.5 block text-sm font-medium">{{ t('reviews.form.comment') }} <span class="text-red-500">*</span></span>
@@ -200,7 +240,7 @@ const box = 'rounded-xl border border-neutral-200 p-4 dark:border-white/10';
                     <button
                         type="submit"
                         class="flex items-center gap-2 rounded-lg bg-gold-400 px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-gold-300 disabled:opacity-40 disabled:hover:bg-gold-400"
-                        :disabled="!form.recommendation || !form.comment.trim() || !form.no_conflict || form.processing"
+                        :disabled="!form.recommendation || !form.comment.trim() || !form.no_conflict || !allScored() || form.processing"
                     >
                         <Fa icon="paper-plane" /> {{ t('reviews.form.submit') }}
                     </button>

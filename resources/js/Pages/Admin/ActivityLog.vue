@@ -12,16 +12,16 @@ import { activityLog as fullLog } from '@/data/mock';
 
 /*
  * Activity log (admin only): who did what, when, from where - across sign-ins, accounts, papers, reviews,
- * payments, settings and "view as this user". Mock until wired to the real event tables.
+ * settings and "view as this user". Mock until wired to the real event tables.
  */
 const { t, tr, formatDate, formatNumber } = useI18n();
 const { toast } = useToast();
 
 const isAdmin = usePage().props.auth.user.accessRole === 'admin';
 const activityLog = isAdmin ? fullLog : fullLog.filter((e) => ['paper', 'review'].includes(e.category) || e.action === 'registered');
-const categories = isAdmin ? ['auth', 'account', 'paper', 'review', 'payment', 'system', 'impersonation'] : ['account', 'paper', 'review'];
-const categoryIcons = { auth: 'right-to-bracket', account: 'user', paper: 'file-lines', review: 'clipboard-check', payment: 'receipt', system: 'gear', impersonation: 'user-secret' };
-const roles = isAdmin ? ['admin', 'editor', 'reviewer', 'finance', 'author', 'system'] : ['editor', 'reviewer', 'author'];
+const categories = isAdmin ? ['auth', 'account', 'paper', 'review', 'system', 'impersonation'] : ['account', 'paper', 'review'];
+const categoryIcons = { auth: 'right-to-bracket', account: 'user', paper: 'file-lines', review: 'clipboard-check', system: 'gear', impersonation: 'user-secret' };
+const roles = isAdmin ? ['admin', 'editor', 'journal', 'reviewer', 'author', 'attendee', 'system'] : ['editor', 'reviewer', 'author'];
 
 const blank = { q: '', category: '', role: '', from: '', to: '', flagged: false };
 const filters = reactive({ ...blank });

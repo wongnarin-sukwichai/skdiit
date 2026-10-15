@@ -49,10 +49,6 @@ const title = (event) => eventTitle(t, event);
                 <p v-else-if="event.action === 'decided' && event.meta?.due" class="mt-1 text-sm text-neutral-600 dark:text-neutral-300">
                     <Fa icon="calendar-days" class="mr-1" /> {{ t('submissions.outcome.due', { date: day(event.meta.due) }) }}
                 </p>
-                <p v-else-if="event.action === 'option_chosen'" class="mt-1 text-sm text-neutral-600 dark:text-neutral-300">{{ t(`publication.option.${event.meta.option}.title`) }}</p>
-                <p v-else-if="event.action === 'journal_result'" class="mt-1 text-sm text-neutral-600 dark:text-neutral-300">
-                    {{ event.meta.journal }} · {{ t(`publication.journal.${event.meta.result}Option`) }}
-                </p>
                 <p v-else-if="event.action === 'presentation_scheduled'" class="mt-1 text-sm text-neutral-600 dark:text-neutral-300">
                     <template v-if="event.meta.at">{{ when(event.meta.at) }} · {{ t('publication.presentation.room') }} {{ event.meta.room }}</template>
                     <template v-else>{{ t('publication.presentation.cleared') }}</template>

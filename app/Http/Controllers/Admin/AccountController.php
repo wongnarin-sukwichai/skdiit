@@ -15,6 +15,7 @@ use Inertia\Response;
  * "My account" (every backend role, own record only): name, academic title, phone, affiliation (registrants)
  * and password. The email is the sign-in name and the papers' contact, so only admin can change it.
  * The password itself changes through AuthController::changePassword (shared with "My details").
+ * update() also serves "My details" on the public site (PUT /my-details), so attendees can fix their own details.
  */
 class AccountController extends Controller
 {

@@ -28,6 +28,7 @@ const form = useForm({
     affiliation_other: '', // typed name when the affiliation is not in the list
     phone: '', // optional
     participation: 'attend',
+    pdpa: false, // consent to the privacy policy (/privacy)
 });
 
 const participationOptions = [
@@ -125,6 +126,16 @@ function goToLogin() {
                             </label>
                         </div>
                     </fieldset>
+
+                    <!-- PDPA consent (required) -->
+                    <label class="flex items-start gap-3 rounded-lg border p-3 text-sm sm:col-span-2" :class="form.errors.pdpa ? 'border-red-500/70' : 'border-white/10'">
+                        <input v-model="form.pdpa" type="checkbox" class="mt-0.5 size-4 shrink-0 accent-gold-400">
+                        <span class="text-neutral-300">
+                            {{ t('auth.pdpaConsent') }}
+                            <a href="/privacy" target="_blank" class="text-gold-400 underline hover:text-gold-300">{{ t('privacy.title') }}</a>
+                            <span v-if="form.errors.pdpa" class="mt-1 block text-xs text-red-400">{{ t(form.errors.pdpa) }}</span>
+                        </span>
+                    </label>
 
                     <Transition name="fade">
                         <p v-if="form.participation === 'attend_submit'" class="rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-xs text-neutral-400 sm:col-span-2">

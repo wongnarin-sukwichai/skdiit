@@ -5,7 +5,7 @@ import PageHeader from '@/Components/Admin/PageHeader.vue';
 import AccountsTable from '@/Components/Admin/Accounts/AccountsTable.vue';
 import { useI18n } from '@/i18n';
 
-// Staff accounts (admin only): admin, editor, finance
+// Staff accounts (admin only): admin, editor, journal
 defineProps({
     accounts: { type: Object, required: true },
     filters: { type: Object, required: true },

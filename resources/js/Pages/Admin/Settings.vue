@@ -6,7 +6,11 @@ import PageHeader from '@/Components/Admin/PageHeader.vue';
 import SubmissionTab from '@/Components/Admin/Settings/SubmissionTab.vue';
 import AcademicTitlesTab from '@/Components/Admin/Settings/AcademicTitlesTab.vue';
 import AffiliationsTab from '@/Components/Admin/Settings/AffiliationsTab.vue';
-import FeesTab from '@/Components/Admin/Settings/FeesTab.vue';
+import ReviewCriteriaTab from '@/Components/Admin/Settings/ReviewCriteriaTab.vue';
+import ConferenceTab from '@/Components/Admin/Settings/ConferenceTab.vue';
+import WebsiteTab from '@/Components/Admin/Settings/WebsiteTab.vue';
+import ScheduleTab from '@/Components/Admin/Settings/ScheduleTab.vue';
+import YearTab from '@/Components/Admin/Settings/YearTab.vue';
 import { useI18n } from '@/i18n';
 
 // System settings: submission rules, academic titles and affiliations (accounts are under Staff / Reviewers, track names under Tracks)
@@ -15,17 +19,24 @@ defineProps({
     academicTitles: { type: Array, required: true },
     affiliationList: { type: Array, required: true }, // not "affiliations": that name is the shared sign-up list
     typedAffiliations: { type: Array, required: true },
+    reviewCriteria: { type: Array, required: true }, // scoring criteria with how many evaluations used each
+    siteDocuments: { type: Array, required: true }, // files on the public Documents page
+    yearSummary: { type: Object, required: true }, // the current conference year (ConferenceYearController::summary)
 });
 
 const { t } = useI18n();
 
 const tabs = [
+    { key: 'conference', icon: 'calendar-days' },
+    { key: 'website', icon: 'globe' },
+    { key: 'schedule', icon: 'clock' },
     { key: 'submission', icon: 'file-arrow-up' },
     { key: 'academicTitles', icon: 'user-tie' },
     { key: 'affiliations', icon: 'building-columns' },
-    { key: 'fees', icon: 'receipt' },
+    { key: 'reviewCriteria', icon: 'list-check' },
+    { key: 'year', icon: 'database' },
 ];
-const tab = ref('submission');
+const tab = ref('conference');
 </script>
 
 <template>
@@ -51,9 +62,13 @@ const tab = ref('submission');
         </nav>
 
         <Transition name="fade" mode="out-in">
-            <SubmissionTab v-if="tab === 'submission'" key="submission" :settings="submission" />
+            <ConferenceTab v-if="tab === 'conference'" key="conference" />
+            <ScheduleTab v-else-if="tab === 'schedule'" key="schedule" />
+            <YearTab v-else-if="tab === 'year'" key="year" :summary="yearSummary" />
+            <WebsiteTab v-else-if="tab === 'website'" key="website" :documents="siteDocuments" :max-mb="submission.maxMb" />
+            <SubmissionTab v-else-if="tab === 'submission'" key="submission" :settings="submission" />
             <AcademicTitlesTab v-else-if="tab === 'academicTitles'" key="academicTitles" :titles="academicTitles" />
-            <FeesTab v-else-if="tab === 'fees'" key="fees" />
+            <ReviewCriteriaTab v-else-if="tab === 'reviewCriteria'" key="reviewCriteria" :criteria="reviewCriteria" />
             <AffiliationsTab v-else key="affiliations" :affiliations="affiliationList" :typed="typedAffiliations" />
         </Transition>
     </Card>

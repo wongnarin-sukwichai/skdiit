@@ -14,7 +14,6 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -32,6 +31,16 @@ class MySubmissionController extends Controller
         'file.mimes' => 'validation.file_type',
         'file.max' => 'validation.file_size',
         'file.uploaded' => 'validation.file_size',
+        'word_file.mimes' => 'validation.file_type',
+        'word_file.max' => 'validation.file_size',
+        'word_file.uploaded' => 'validation.file_size',
+        'turnitin_file.mimes' => 'validation.file_type',
+        'turnitin_file.max' => 'validation.file_size',
+        'turnitin_file.uploaded' => 'validation.file_size',
+        'supplementary_files.max' => 'validation.too_many_files',
+        'supplementary_files.*.mimes' => 'validation.file_type',
+        'supplementary_files.*.max' => 'validation.file_size',
+        'supplementary_files.*.uploaded' => 'validation.file_size',
         'response_file.mimes' => 'validation.file_type',
         'response_file.max' => 'validation.file_size',
         'response_file.uploaded' => 'validation.file_size',
@@ -67,12 +76,14 @@ class MySubmissionController extends Controller
             return $this->outsideWindow();
         }
 
-        $data = $this->validated($request, fileRequired: true);
+        // A new paper brings all three files: PDF, Word and the Turnitin report
+        $data = $this->validated($request, fileRequired: true, turnitinRequired: true);
 
         $submission = DB::transaction(function () use ($request, $data) {
             $stored = $this->storeFile($request);
             $submission = $request->user()->submissions()->create([...$data['fields'], ...$stored]);
-            $submission->addManuscript($stored, 'initial', $request->user());
+            $version = $submission->addManuscript($stored, 'initial', $request->user());
+            $submission->addExtraFiles($this->extraFiles($request), $version, 'initial', $request->user());
             $submission->authors()->createMany($data['authors']);
             $submission->log(SubmissionAction::Submitted, $request->user());
 
@@ -91,11 +102,17 @@ class MySubmissionController extends Controller
                 ...$submission->load('track', 'authors', 'user')->toClient(full: true),
                 'canEdit' => $submission->canBeEditedByAuthor(),
             ],
-            // Authors see decisions and comments, but not which editor made them
+            'files' => $submission->currentFiles(),
+            // Authors see decisions and comments, but not which editor made them, nor the journal's reasons
             'history' => $submission->events()->get()
                 ->filter(fn (SubmissionEvent $event) => $event->action->visibleToAuthor())
-                ->map->toClient(withActor: false)
+                ->map(fn (SubmissionEvent $event) => [
+                    ...$event->toClient(withActor: false),
+                    ...($event->action->hidesCommentFromAuthor() ? ['comment' => null] : []),
+                ])
                 ->values(),
+            // Selected by the journal: where to submit
+            'journalUrl' => Setting::get('journal_url'),
             // Reviewer comments of decided rounds, as "Reviewer 1", "Reviewer 2", ...
             'reviewFeedback' => $submission->reviewsForAuthor(),
             'versions' => $submission->versionsFor('author'),
@@ -129,6 +146,7 @@ class MySubmissionController extends Controller
                 ...$submission->only('track_id', 'title_th', 'title_en', 'abstract_th', 'abstract_en', 'keywords_th', 'keywords_en'),
                 'authors' => $submission->authors->map->only('name', 'affiliation', 'email')->values(),
                 'file' => ['name' => $submission->file_name, 'size' => $submission->file_size, 'url' => "/admin/submissions/{$submission->id}/file"],
+                'files' => $submission->currentFiles(),
             ],
         ]);
     }
@@ -138,8 +156,9 @@ class MySubmissionController extends Controller
         $this->authorizeOwner($request, $submission);
         abort_unless($submission->canBeEditedByAuthor(), 403);
 
-        // A revision must bring the revised file; after peer review it also answers the reviewers
-        $data = $this->validated($request, fileRequired: $submission->status->awaitsAuthorRevision());
+        // A revision must bring the revised PDF and Word files (Turnitin is optional: the last report stays);
+        // after peer review it also answers the reviewers
+        $data = $this->validated($request, fileRequired: $submission->status->awaitsAuthorRevision(), turnitinRequired: false);
         $answers = $this->validatedAnswers($request, $submission);
 
         DB::transaction(function () use ($request, $submission, $data, $answers) {
@@ -156,15 +175,19 @@ class MySubmissionController extends Controller
 
             $submission->fill([...$fields, ...$file]);
             if ($resubmit) {
-                $submission->status = $from === SubmissionStatus::Revision ? SubmissionStatus::Submitted : SubmissionStatus::Revised;
+                // Back to editor screening (the journal already passed on it), or to the post-review decision
+                $submission->status = $from === SubmissionStatus::Revision ? SubmissionStatus::Screening : SubmissionStatus::Revised;
             }
             $submission->save();
             $submission->authors()->delete();
             $submission->authors()->createMany($data['authors']);
 
-            // Keep every version: the new file is added, the old one stays for comparing
+            // Keep every version: a new PDF starts a new version, the old one stays for comparing;
+            // Word, Turnitin and supplementary files join the (new or current) version
+            $stage = $resubmit ? 'revision' : 'edit';
+            $version = $file ? $submission->addManuscript($file, $stage, $request->user()) : $submission->currentVersion();
+            $submission->addExtraFiles($this->extraFiles($request), $version, $stage, $request->user());
             if ($file) {
-                $version = $submission->addManuscript($file, $resubmit ? 'revision' : 'edit', $request->user());
                 if ($answers['letter']) {
                     $letter = $answers['letter'];
                     $submission->files()->create([
@@ -188,28 +211,11 @@ class MySubmissionController extends Controller
             ->with('success', $submission->wasChanged('status') ? 'submissions.resubmitted' : 'admin.settings.saved');
     }
 
-    /** After acceptance the author picks A (Proceeding) or B (journal, coordinated by the editors). Final. */
-    public function chooseOption(Request $request, Submission $submission): RedirectResponse
-    {
-        $this->authorizeOwner($request, $submission);
-        abort_unless($submission->status === SubmissionStatus::Accepted, 403);
-
-        $data = $request->validate(['option' => ['required', Rule::in(['a', 'b'])]], self::MESSAGES);
-
-        $from = $submission->status;
-        $submission->publish_option = $data['option'];
-        $submission->status = $data['option'] === 'a' ? SubmissionStatus::OptionA : SubmissionStatus::OptionB;
-        $submission->save();
-        $submission->log(SubmissionAction::OptionChosen, $request->user(), $from, meta: ['option' => $data['option']]);
-
-        return back()->with('success', 'publication.optionSaved');
-    }
-
-    /** Option A: upload the camera-ready file; it can be replaced until the paper moves on. */
+    /** Accepted in the conference track: upload the camera-ready file; it can be replaced later. */
     public function uploadCameraReady(Request $request, Submission $submission): RedirectResponse
     {
         $this->authorizeOwner($request, $submission);
-        abort_unless(in_array($submission->status, [SubmissionStatus::OptionA, SubmissionStatus::CameraReady], true), 403);
+        abort_unless(in_array($submission->status, [SubmissionStatus::Accepted, SubmissionStatus::CameraReady], true), 403);
 
         $request->validate([
             'file' => ['required', 'file', 'mimes:pdf,doc,docx', 'max:'.((int) Setting::get('upload_max_mb') * 1024)],
@@ -234,6 +240,34 @@ class MySubmissionController extends Controller
         }
 
         return back()->with('success', 'publication.cameraReadySaved');
+    }
+
+    /** Presentation slides: once the paper has a slot, replaceable until the talk (or the cut-off in Settings). */
+    public function uploadSlides(Request $request, Submission $submission): RedirectResponse
+    {
+        $this->authorizeOwner($request, $submission);
+        abort_unless($submission->canUploadSlides(), 403);
+
+        $request->validate([
+            'file' => ['required', 'file', 'mimes:pdf,ppt,pptx', 'max:'.((int) Setting::get('upload_max_mb') * 1024)],
+        ], self::MESSAGES);
+
+        $file = $request->file('file');
+        $old = $submission->slides_path;
+
+        $submission->forceFill([
+            'slides_path' => $file->store('slides'),
+            'slides_name' => $file->getClientOriginalName(),
+            'slides_size' => $file->getSize(),
+            'slides_at' => now(),
+        ])->save();
+        $submission->log(SubmissionAction::SlidesUploaded, $request->user());
+
+        if ($old) {
+            Storage::delete($old);
+        }
+
+        return back()->with('success', 'publication.slides.saved');
     }
 
     private function authorizeOwner(Request $request, Submission $submission): void
@@ -291,8 +325,24 @@ class MySubmissionController extends Controller
         return ['texts' => $texts, 'letter' => $request->file('response_file')];
     }
 
-    private function validated(Request $request, bool $fileRequired): array
+    /** Word, Turnitin and supplementary uploads of this request, for Submission::addExtraFiles(). */
+    private function extraFiles(Request $request): array
     {
+        return [
+            'word' => $request->file('word_file'),
+            'turnitin' => $request->file('turnitin_file'),
+            'supplementary' => $request->file('supplementary_files', []),
+        ];
+    }
+
+    /**
+     * Paper details and files. The PDF ('file') and the Word file come together when required (new paper, revision);
+     * the Turnitin report is required for a new paper only; supplementary files are always optional.
+     */
+    private function validated(Request $request, bool $fileRequired, bool $turnitinRequired): array
+    {
+        $max = 'max:'.((int) Setting::get('upload_max_mb') * 1024);
+
         $data = $request->validate([
             'track_id' => ['required', 'integer', 'exists:tracks,id'],
             'title_th' => ['required', 'string', 'max:500'],
@@ -305,7 +355,11 @@ class MySubmissionController extends Controller
             'authors.*.name' => ['required', 'string', 'max:255'],
             'authors.*.affiliation' => ['required', 'string', 'max:255'],
             'authors.*.email' => ['nullable', 'email', 'max:255'],
-            'file' => [$fileRequired ? 'required' : 'nullable', 'file', 'mimes:pdf,doc,docx', 'max:'.((int) Setting::get('upload_max_mb') * 1024)],
+            'file' => [$fileRequired ? 'required' : 'nullable', 'file', 'mimes:pdf', $max],
+            'word_file' => [$fileRequired ? 'required' : 'nullable', 'file', 'mimes:doc,docx', $max],
+            'turnitin_file' => [$turnitinRequired ? 'required' : 'nullable', 'file', 'mimes:pdf', $max],
+            'supplementary_files' => ['nullable', 'array', 'max:10'],
+            'supplementary_files.*' => ['file', 'mimes:pdf,doc,docx,xls,xlsx,ppt,pptx,jpg,jpeg,png,zip', $max],
         ], self::MESSAGES);
 
         return [
@@ -319,7 +373,7 @@ class MySubmissionController extends Controller
         ];
     }
 
-    /** Stores the uploaded paper on the private disk. */
+    /** Stores the uploaded paper (PDF) on the private disk. */
     private function storeFile(Request $request): array
     {
         $file = $request->file('file');

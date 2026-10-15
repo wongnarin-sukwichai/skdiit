@@ -10,7 +10,7 @@ use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * Staff accounts (admin only): admin, editor and finance. Reviewers have their own page; registrants sign up themselves.
+ * Staff accounts (admin only): admin, editor and journal. Reviewers have their own page; registrants sign up themselves.
  */
 class StaffController extends Controller
 {
@@ -18,7 +18,7 @@ class StaffController extends Controller
 
     protected function roles(): array
     {
-        return ['admin', 'editor', 'finance'];
+        return ['admin', 'editor', 'journal'];
     }
 
     public function index(Request $request): Response

@@ -4,13 +4,21 @@ import { useForm } from '@inertiajs/vue3';
 import { useI18n } from '@/i18n';
 
 const props = defineProps({
-    settings: { type: Object, required: true }, // { maxMb, serverMaxMb, opens, deadline: 'Y-m-d H:i' | null }
+    // { maxMb, serverMaxMb, opens, deadline: 'Y-m-d H:i' | null, journalDeadline: 'Y-m-d' | null, journalUrl, slidesCutoffDays }
+    settings: { type: Object, required: true },
 });
 
 const { t } = useI18n();
 
 // <input type="datetime-local"> works with 'Y-m-dTH:i'
-const toInput = (s) => ({ max_mb: s.maxMb, opens: s.opens?.replace(' ', 'T') ?? '', deadline: s.deadline?.replace(' ', 'T') ?? '' });
+const toInput = (s) => ({
+    max_mb: s.maxMb,
+    opens: s.opens?.replace(' ', 'T') ?? '',
+    deadline: s.deadline?.replace(' ', 'T') ?? '',
+    journal_deadline: s.journalDeadline ?? '',
+    journal_url: s.journalUrl ?? '',
+    slides_cutoff_days: s.slidesCutoffDays ?? '',
+});
 const form = useForm(toInput(props.settings));
 watch(() => props.settings, (value) => {
     form.defaults(toInput(value));
@@ -18,7 +26,14 @@ watch(() => props.settings, (value) => {
 });
 
 function submit() {
-    form.transform((data) => ({ ...data, opens: data.opens || null, deadline: data.deadline || null }))
+    form.transform((data) => ({
+        ...data,
+        opens: data.opens || null,
+        deadline: data.deadline || null,
+        journal_deadline: data.journal_deadline || null,
+        journal_url: data.journal_url.trim() || null,
+        slides_cutoff_days: data.slides_cutoff_days === '' ? null : data.slides_cutoff_days,
+    }))
         .put('/admin/settings/submission', { preserveScroll: true, preserveState: true });
 }
 
@@ -51,6 +66,35 @@ const hint = 'mt-2 text-xs text-neutral-500 dark:text-neutral-400';
                 </button>
             </div>
             <p class="-mt-3 text-xs text-neutral-500 sm:col-span-2 dark:text-neutral-400"><Fa icon="circle-info" class="mr-1 text-gold-500" /> {{ t('admin.settings.submission.periodHint') }}</p>
+        </div>
+
+        <!-- The journal's first gate: a warning date for its selection, and its site for selected authors -->
+        <fieldset class="space-y-4 rounded-xl border border-neutral-200 p-4 dark:border-white/10">
+            <legend class="px-2 text-sm font-semibold"><Fa icon="newspaper" class="mr-1 text-gold-500" /> {{ t('admin.settings.submission.journal') }}</legend>
+            <div class="grid gap-6 sm:grid-cols-2">
+                <div>
+                    <label for="journal-deadline" class="mb-1.5 block text-sm font-medium">{{ t('admin.settings.submission.journalDeadline') }}</label>
+                    <input id="journal-deadline" v-model="form.journal_deadline" type="date" :min="form.deadline?.slice(0, 10) || undefined" :class="[input, 'w-full', border(form.errors.journal_deadline)]">
+                    <p v-if="form.errors.journal_deadline" class="mt-1 text-xs text-red-500 dark:text-red-400">{{ t(form.errors.journal_deadline) }}</p>
+                    <p :class="hint">{{ t('admin.settings.submission.journalDeadlineHint') }}</p>
+                </div>
+                <div>
+                    <label for="journal-url" class="mb-1.5 block text-sm font-medium">{{ t('admin.settings.submission.journalUrl') }}</label>
+                    <input id="journal-url" v-model="form.journal_url" type="url" maxlength="500" placeholder="https://" :class="[input, 'w-full', border(form.errors.journal_url)]">
+                    <p v-if="form.errors.journal_url" class="mt-1 text-xs text-red-500 dark:text-red-400">{{ t(form.errors.journal_url) }}</p>
+                    <p :class="hint">{{ t('admin.settings.submission.journalUrlHint') }}</p>
+                </div>
+            </div>
+        </fieldset>
+
+        <div>
+            <label for="slides-cutoff" class="mb-1.5 block text-sm font-medium">{{ t('admin.settings.submission.slidesCutoff') }}</label>
+            <div class="flex items-center gap-3">
+                <input id="slides-cutoff" v-model="form.slides_cutoff_days" type="number" min="0" max="60" :class="[input, 'w-32', border(form.errors.slides_cutoff_days)]">
+                <span class="text-sm text-neutral-500 dark:text-neutral-400">{{ t('admin.settings.submission.daysBefore') }}</span>
+            </div>
+            <p v-if="form.errors.slides_cutoff_days" class="mt-1 text-xs text-red-500 dark:text-red-400">{{ t(form.errors.slides_cutoff_days) }}</p>
+            <p :class="hint"><Fa icon="circle-info" class="mr-1 text-gold-500" /> {{ t('admin.settings.submission.slidesCutoffHint') }}</p>
         </div>
 
         <div>

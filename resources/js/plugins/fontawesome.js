@@ -94,6 +94,10 @@ import {
     faFileExcel,
     faNewspaper,
     faPersonChalkboard,
+    faInbox,
+    faFilePowerpoint,
+    faStar,
+    faBullhorn,
 } from '@fortawesome/free-solid-svg-icons';
 import { faFileLines as farFileLines, faUser as farUser } from '@fortawesome/free-regular-svg-icons';
 
@@ -114,6 +118,7 @@ library.add(
     faEyeSlash, faBan, faCopy, faKey, faLockOpen, faIdCard,
     faGavel,
     faBook, faFileExcel, faNewspaper, faPersonChalkboard,
+    faInbox, faFilePowerpoint, faStar, faBullhorn,
     farFileLines, farUser,
 );
 

@@ -28,6 +28,11 @@ const navItems = [
     { href: '/contact', key: 'contact' },
 ];
 
+// A registrant whose last conference year is earlier than the current one
+const joinYear = computed(() => {
+    const user = page.props.auth.user;
+    return user?.role === 'user' && !page.props.impersonation && (user.registered_year ?? 0) < page.props.site.year;
+});
 const isActive = (href) => (href === '/' ? page.url.split('?')[0] === '/' : page.url.startsWith(href));
 
 // Close menus whenever the page changes
@@ -184,6 +189,15 @@ function logout() {
             </Transition>
         </header>
 
+        <!-- Signed up in an earlier conference year: join this one -->
+        <div v-if="joinYear" class="border-b border-gold-400/30 bg-gold-400/10">
+            <div class="mx-auto flex max-w-[1600px] flex-wrap items-center gap-3 px-4 py-3 text-sm sm:px-6 lg:px-8">
+                <Fa icon="calendar-days" class="text-gold-400" />
+                <span class="flex-1 text-neutral-100">{{ t('auth.joinYear', { name: page.props.site.conference.shortName }) }}</span>
+                <button class="rounded-lg bg-gold-400 px-4 py-2 font-semibold text-black transition hover:bg-gold-300" @click="router.post('/join-year', {}, { preserveScroll: true })">{{ t('auth.joinYearButton') }}</button>
+            </div>
+        </div>
+
         <main class="flex-1">
             <Transition name="fade" mode="out-in">
                 <div :key="page.component">
@@ -194,7 +208,10 @@ function logout() {
 
         <footer class="mx-auto flex w-full max-w-[1600px] items-center gap-4 px-4 py-6 text-sm text-neutral-400 sm:px-6 lg:px-8">
             <span class="glow-line flex-1" />
-            <span class="text-center">{{ t('brand.credit') }}</span>
+            <span class="text-center">
+                {{ t('brand.credit') }}
+                <Link href="/privacy" class="ml-2 whitespace-nowrap text-neutral-400 underline hover:text-gold-400">{{ t('privacy.title') }}</Link>
+            </span>
             <span class="glow-line flex-1" />
         </footer>
 

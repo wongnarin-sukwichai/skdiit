@@ -10,7 +10,7 @@
 | each run of modules (admin.menuGroup.* in the i18n files).
 |
 | Roles (User::accessRole()):
-|   admin, editor, reviewer, finance  - staff accounts created by admin
+|   admin, editor, reviewer, journal  - staff accounts created by admin
 |   author    - registrant who chose "attend + submit"
 |   attendee  - registrant who chose "attend" only (no backend access,
 |               so never list it here; they use "My details" on the public site)
@@ -30,7 +30,7 @@ return [
         'group' => 'overview',
         'href' => '/admin',
         'icon' => 'house',
-        'access' => ['admin' => 'full', 'author' => 'own', 'editor' => 'full', 'reviewer' => 'own', 'finance' => 'own'],
+        'access' => ['admin' => 'full', 'author' => 'own', 'editor' => 'full', 'reviewer' => 'own', 'journal' => 'own'],
     ],
     'notifications' => [
         'group' => 'overview',
@@ -39,11 +39,18 @@ return [
         // Admin and editors keep the menu (it has the email log); everyone else reads theirs on the home page
         'access' => ['admin' => 'own', 'editor' => 'own'],
     ],
+    // Email a group of people, and the texts of the workflow emails
+    'announcements' => [
+        'group' => 'overview',
+        'href' => '/admin/announcements',
+        'icon' => 'bullhorn',
+        'access' => ['admin' => 'full', 'editor' => 'full'],
+    ],
     'reports' => [
         'group' => 'overview',
         'href' => '/admin/reports',
         'icon' => 'chart-column',
-        'access' => ['admin' => 'full', 'editor' => 'full', 'finance' => 'own'],
+        'access' => ['admin' => 'full', 'editor' => 'full'],
     ],
 
     // Papers
@@ -58,6 +65,13 @@ return [
         'href' => '/admin/submissions',
         'icon' => 'file-lines',
         'access' => ['admin' => 'full', 'editor' => 'full'],
+    ],
+    // The journal's first gate (admin may do every journal action; editors see it on each paper page)
+    'journal' => [
+        'group' => 'papers',
+        'href' => '/admin/journal',
+        'icon' => 'newspaper',
+        'access' => ['admin' => 'full', 'journal' => 'full'],
     ],
     'reviews' => [
         'group' => 'papers',
@@ -78,20 +92,6 @@ return [
         'href' => '/admin/presentations',
         'icon' => 'person-chalkboard',
         'access' => ['admin' => 'full', 'editor' => 'view'],
-    ],
-    'schedule' => [
-        'group' => 'event',
-        'href' => '/admin/schedule',
-        'icon' => 'calendar-days',
-        'access' => ['admin' => 'full', 'editor' => 'view'],
-    ],
-
-    // Finance (on hold until the client confirms fees)
-    'payments' => [
-        'group' => 'finance',
-        'href' => '/admin/payments',
-        'icon' => 'receipt',
-        'access' => ['admin' => 'full', 'author' => 'own', 'finance' => 'full'],
     ],
 
     // People (registrants, reviewers and the tracks reviewers cover)
@@ -146,6 +146,6 @@ return [
         'group' => 'system',
         'href' => '/admin/account',
         'icon' => 'user-pen',
-        'access' => ['admin' => 'own', 'author' => 'own', 'editor' => 'own', 'reviewer' => 'own', 'finance' => 'own'],
+        'access' => ['admin' => 'own', 'author' => 'own', 'editor' => 'own', 'reviewer' => 'own', 'journal' => 'own'],
     ],
 ];

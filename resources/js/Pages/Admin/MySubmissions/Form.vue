@@ -6,9 +6,9 @@ import PageHeader from '@/Components/Admin/PageHeader.vue';
 import DeadlineNotice from '@/Components/Admin/DeadlineNotice.vue';
 import RevisionNotice from '@/Components/Admin/RevisionNotice.vue';
 import ReviewerFeedback from '@/Components/Admin/ReviewerFeedback.vue';
+import FilePick from '@/Components/Admin/FilePick.vue';
 import { useI18n } from '@/i18n';
 import { useAffiliations } from '@/composables/useAffiliations';
-import { formatFileSize } from '@/utils/format';
 
 const props = defineProps({
     submission: { type: Object, default: null }, // null = new paper
@@ -42,7 +42,11 @@ const form = useForm({
     keywords_en: props.submission?.keywords_en ?? '',
     authors: props.submission?.authors.map((a) => withUid({ ...a, email: a.email ?? '' }))
         ?? [withUid({ name: me.name, affiliation: affiliationOf(me), email: me.email })],
+    // Files: the PDF ('file') and Word versions, the Turnitin report, and optional supplementary files
     file: null,
+    word_file: null,
+    turnitin_file: null,
+    supplementary_files: [],
     // Revision answers (MySubmissionController::validatedAnswers): review id => text, a note to the editor, a letter
     responses: Object.fromEntries((props.submission?.reviewsToAnswer ?? []).map((r) => [r.id, ''])),
     response_editor: '',
@@ -74,26 +78,15 @@ function onDrop(i) {
     dragFrom.value = dragOver.value = null;
 }
 
-// File: checked here for a quick message, and again on the server
-const fileError = ref(null);
-const dragging = ref(false);
-function pickFile(file) {
-    fileError.value = null;
-    if (!file) return;
-    if (!/\.(pdf|docx?)$/i.test(file.name)) {
-        fileError.value = 'validation.file_type';
-        return;
-    }
-    if (file.size > props.maxMb * 1024 * 1024) {
-        fileError.value = 'validation.file_size';
-        return;
-    }
-    form.file = file;
-}
-const fileMessage = computed(() => {
-    const key = fileError.value ?? form.errors.file;
-    return key ? t(key, { max: props.maxMb }) : null;
-});
+// Required files: all three for a new paper; PDF and Word for a revision (the last Turnitin report stays); none when editing
+const needs = computed(() => ({
+    main: !isEdit.value || isRevision.value,
+    turnitin: !isEdit.value,
+}));
+const current = computed(() => props.submission?.files ?? {});
+// The first error among the supplementary files (supplementary_files.0, .1, ...)
+const supplementaryError = computed(() => form.errors.supplementary_files
+    ?? Object.entries(form.errors).find(([key]) => key.startsWith('supplementary_files.'))?.[1]);
 
 function submit() {
     const options = { preserveScroll: true, forceFormData: true };
@@ -270,36 +263,21 @@ const sectionTitle = 'mb-4 flex items-center gap-2 text-lg font-semibold';
                 </button>
             </section>
 
-            <!-- File -->
+            <!-- Files -->
             <section>
-                <h2 :class="sectionTitle"><Fa icon="file-arrow-up" class="text-gold-400" /> {{ t('submissions.fields.file') }}</h2>
-                <label
-                    :class="[
-                        dragging ? 'border-gold-400 bg-gold-50 dark:bg-gold-400/10' : 'border-neutral-300 dark:border-white/15',
-                        fileMessage ? 'border-red-500/70' : '',
-                    ]"
-                    class="flex flex-col items-center rounded-xl border-2 border-dashed px-6 py-10 text-center transition hover:border-gold-400"
-                    @dragover.prevent="dragging = true"
-                    @dragleave="dragging = false"
-                    @drop.prevent="dragging = false; pickFile($event.dataTransfer.files[0])"
-                >
-                    <input type="file" accept=".pdf,.doc,.docx" class="sr-only" @change="pickFile($event.target.files[0])">
-                    <Fa icon="file-arrow-up" class="mb-3 text-3xl text-gold-400" />
-                    <template v-if="form.file">
-                        <span class="font-medium">{{ form.file.name }}</span>
-                        <span class="text-xs text-neutral-500 dark:text-neutral-400">{{ formatFileSize(form.file.size) }} · {{ t('submissions.form.changeFile') }}</span>
-                    </template>
-                    <template v-else>
-                        <span class="font-medium">{{ t(isEdit ? 'submissions.form.replaceFile' : 'submissions.form.dropFile') }}</span>
-                        <span class="text-xs text-neutral-500 dark:text-neutral-400">{{ t('submissions.form.fileRules', { max: maxMb }) }}</span>
-                    </template>
-                </label>
-                <span v-if="fileMessage" :class="errorText">{{ fileMessage }}</span>
-                <p v-if="isEdit && !form.file" class="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
-                    {{ t('submissions.form.currentFile') }}
-                    <a :href="submission.file.url" class="text-gold-600 hover:underline dark:text-gold-400">{{ submission.file.name }}</a>
-                    ({{ formatFileSize(submission.file.size) }})
-                </p>
+                <h2 :class="sectionTitle"><Fa icon="file-arrow-up" class="text-gold-400" /> {{ t('submissions.files.title') }}</h2>
+                <p class="-mt-2 mb-4 text-xs text-neutral-500 dark:text-neutral-400">{{ t(isRevision ? 'submissions.files.introRevision' : isEdit ? 'submissions.files.introEdit' : 'submissions.files.intro') }}</p>
+                <div class="grid gap-6 md:grid-cols-2">
+                    <FilePick v-model="form.file" :types="['pdf']" :max-mb="maxMb" icon="file-pdf" :label="t('submissions.files.pdf')" :hint="t('submissions.files.pdfHint')" :required="needs.main" :current="current.pdf" :error="err('file')" />
+                    <FilePick v-model="form.word_file" :types="['doc', 'docx']" :max-mb="maxMb" icon="file-word" :label="t('submissions.files.word')" :hint="t('submissions.files.wordHint')" :required="needs.main" :current="current.word" :error="err('word_file')" />
+                    <FilePick v-model="form.turnitin_file" :types="['pdf']" :max-mb="maxMb" icon="file-circle-check" :label="t('submissions.files.turnitin')" :hint="t(isRevision ? 'submissions.files.turnitinKeep' : 'submissions.files.turnitinHint')" :required="needs.turnitin" :current="current.turnitin" :error="err('turnitin_file')" />
+                    <div>
+                        <FilePick v-model="form.supplementary_files" multiple :types="['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'jpg', 'jpeg', 'png', 'zip']" :max-mb="maxMb" icon="paperclip" :label="t('submissions.files.supplementary')" :hint="t('submissions.files.supplementaryHint')" :error="supplementaryError" />
+                        <ul v-if="current.supplementary?.length" class="mt-2 space-y-1 text-xs text-neutral-500 dark:text-neutral-400">
+                            <li v-for="file in current.supplementary" :key="file.id"><Fa icon="paperclip" class="mr-1" /><a :href="file.url" class="text-gold-600 hover:underline dark:text-gold-400">{{ file.name }}</a></li>
+                        </ul>
+                    </div>
+                </div>
                 <div v-if="form.progress" class="mt-3 h-1.5 overflow-hidden rounded-full bg-neutral-200 dark:bg-white/10">
                     <div class="h-full bg-gold-400 transition-all" :style="{ width: `${form.progress.percentage}%` }" />
                 </div>

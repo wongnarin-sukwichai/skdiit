@@ -28,7 +28,25 @@ class DashboardController extends Controller
             'papers' => in_array($role, ['admin', 'editor'], true) ? $this->papers() : null,
             'mine' => $role === 'reviewer' ? $this->reviewerWork($request->user()) : null,
             'myPapers' => $role === 'author' ? $this->authorPapers($request->user()) : null,
+            'journal' => $role === 'journal' ? $this->journalWork() : null,
         ]);
+    }
+
+    /** The journal's work: papers to select, selected papers waiting for the final answer, and those past the deadline. */
+    private function journalWork(): array
+    {
+        $waiting = Submission::currentYear()->where('status', SubmissionStatus::Submitted)->get();
+
+        return [
+            'kpis' => [
+                'journalWaiting' => $waiting->count(),
+                'journalSelected' => Submission::currentYear()->where('status', SubmissionStatus::JournalSelected)->count(),
+                'journalAccepted' => Submission::currentYear()->where('status', SubmissionStatus::JournalAccepted)->count(),
+                'journalPastDeadline' => $waiting->filter->isPastJournalDeadline()->count(),
+            ],
+            'deadline' => Submission::journalDeadline()?->toIso8601String(),
+            'isClosed' => Submission::isClosed(),
+        ];
     }
 
     /** An author's papers, their turn first, with the next step in the author's terms. */
@@ -78,7 +96,7 @@ class DashboardController extends Controller
             ->with('reviewer', 'submission', 'remindedBy')
             ->whereNull('submitted_at')
             ->whereDate('due_date', '<', today())
-            ->whereHas('submission', fn ($paper) => $paper->where('status', SubmissionStatus::InReview)->whereColumn('submissions.review_round', 'reviews.round'))
+            ->whereHas('submission', fn ($paper) => $paper->currentYear()->where('status', SubmissionStatus::InReview)->whereColumn('submissions.review_round', 'reviews.round'))
             ->orderBy('due_date')
             ->limit(8)
             ->get();
@@ -87,7 +105,9 @@ class DashboardController extends Controller
 
         return [
             'queues' => Submission::queueCounts(),
-            'journalWaiting' => Submission::where('status', SubmissionStatus::OptionB)->count(),
+            // With the journal (its first selection or final answer), and how many are past the journal deadline
+            'journalWaiting' => Submission::currentYear()->whereIn('status', [SubmissionStatus::Submitted, SubmissionStatus::JournalSelected])->count(),
+            'journalPastDeadline' => Submission::currentYear()->where('status', SubmissionStatus::Submitted)->get()->filter->isPastJournalDeadline()->count(),
             'overdueReviews' => $overdue->count(),
             'overdue' => $overdue->map(fn (Review $review) => [
                 'reviewer' => $review->reviewer?->name,

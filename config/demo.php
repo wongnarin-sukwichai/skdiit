@@ -20,7 +20,7 @@ return [
     'accounts' => [
         'editor@skdiit.test' => ['Demo Editor', 'editor', 'attend'],
         'reviewer@skdiit.test' => ['Demo Reviewer', 'reviewer', 'attend'],
-        'finance@skdiit.test' => ['Demo Finance', 'finance', 'attend'],
+        'journal@skdiit.test' => ['Demo Journal', 'journal', 'attend'],
         'author@skdiit.test' => ['Demo Author', 'user', 'attend_submit'],
         'attendee@skdiit.test' => ['Demo Attendee', 'user', 'attend'],
     ],

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Mail\LoginPassword;
 use App\Models\Affiliation;
+use App\Models\Submission;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -29,6 +30,7 @@ class AuthController extends Controller
         'password.min' => 'validation.password_min',
         'password.confirmed' => 'validation.password_confirmed',
         'participation.in' => 'validation.required',
+        'pdpa.accepted' => 'auth.pdpaRequired',
         'current_password.current_password' => 'validation.current_password',
     ];
 
@@ -87,7 +89,10 @@ class AuthController extends Controller
             // Optional: lets the editors (who coordinate) call when email does not get through
             'phone' => ['nullable', 'string', 'max:30'],
             'participation' => ['required', Rule::in(['attend', 'attend_submit'])],
+            // PDPA: consent to the privacy policy (/privacy) is required to register
+            'pdpa' => ['accepted'],
         ], self::MESSAGES);
+        unset($data['pdpa']);
 
         // The password goes to the email address; the registrant signs in with it
         $password = User::generatePassword();
@@ -97,6 +102,7 @@ class AuthController extends Controller
             'password' => $password,
             'role' => 'user',
         ]);
+        $user->forceFill(['pdpa_accepted_at' => now(), 'registered_year' => Submission::conferenceYear()])->save();
         $this->mailPassword($user, $password, 'registered');
 
         return back()->with('passwordSent', $this->sentFlash($user->email, $password));
@@ -139,6 +145,16 @@ class AuthController extends Controller
         $request->user()->update(['password' => $data['password']]);
 
         return back()->with('success', 'auth.passwordChanged');
+    }
+
+    /** A registrant of an earlier year joins the current one (banner on the public site). */
+    public function joinYear(Request $request): RedirectResponse
+    {
+        $user = $request->user();
+        abort_unless($user->role === 'user', 403);
+        $user->forceFill(['registered_year' => Submission::conferenceYear()])->save();
+
+        return back();
     }
 
     public function logout(Request $request): RedirectResponse

@@ -11,10 +11,12 @@ import SubmissionHistory from '@/Components/Admin/SubmissionHistory.vue';
 import ReviewersPanel from '@/Components/Admin/ReviewersPanel.vue';
 import DecisionPanel from '@/Components/Admin/DecisionPanel.vue';
 import PublicationStaffPanel from '@/Components/Admin/PublicationStaffPanel.vue';
+import JournalPanel from '@/Components/Admin/JournalPanel.vue';
 import { useI18n } from '@/i18n';
 
 const props = defineProps({
     versions: { type: Array, required: true }, // manuscript versions with the author's answers
+    files: { type: Object, required: true }, // current PDF, Word, Turnitin and supplementary files
     notes: { type: Array, required: true }, // internal notes (staff only)
     submission: { type: Object, required: true },
     tracks: { type: Array, required: true },
@@ -33,10 +35,10 @@ const props = defineProps({
     canDecide: { type: Boolean, required: true },
     canStartRound: { type: Boolean, required: true },
     canSchedule: { type: Boolean, required: true },
+    journal: { type: Object, required: true }, // JournalController::panel(): only admin may act here
 });
 
 const { t, tr, formatDate } = useI18n();
-const when = (value) => formatDate(value, { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 // Editors decide which track the paper belongs to
 const trackForm = useForm({ track_id: props.submission.track.id });
@@ -144,9 +146,8 @@ const box = 'rounded-xl border border-neutral-200 p-4 dark:border-white/10';
                     </button>
                 </form>
 
-                <p v-else-if="submission.status === 'submitted'" class="text-sm text-neutral-500 dark:text-neutral-400">
-                    <Fa icon="lock" class="mr-1" />
-                    {{ deadline ? t('submissions.manage.screeningWaits', { date: when(deadline) }) : t('submissions.manage.screeningNoDeadline') }}
+                <p v-else-if="['submitted', 'journal_selected', 'journal_accepted'].includes(submission.status)" class="text-sm text-neutral-500 dark:text-neutral-400">
+                    <Fa icon="newspaper" class="mr-1" /> {{ t(submission.status === 'journal_accepted' ? 'submissions.manage.screeningJournalAccepted' : 'submissions.manage.screeningJournal') }}
                 </p>
                 <p v-else class="text-sm text-neutral-500 dark:text-neutral-400">
                     <Fa icon="circle-check" class="mr-1 text-gold-500" /> {{ t(`submissions.screening.done.${['screening_revision', 'screening_rejected'].includes(submission.status) ? submission.status : 'passed'}`) }}
@@ -154,6 +155,7 @@ const box = 'rounded-xl border border-neutral-200 p-4 dark:border-white/10';
             </section>
         </div>
 
+        <JournalPanel :submission="submission" :journal="journal" :deadline-passed="phase === 'closed'" />
         <DecisionPanel :submission="submission" :can-decide="canDecide" :can-start-round="canStartRound" />
         <PublicationStaffPanel :submission="submission" :can-schedule="canSchedule" />
         <!-- Outcome so far, for staff -->
@@ -173,7 +175,7 @@ const box = 'rounded-xl border border-neutral-200 p-4 dark:border-white/10';
             />
             <FileVersions :versions="versions" show-names :class="reviewRound > 0 ? '' : 'xl:col-span-2'" />
         </div>
-        <SubmissionDetail :submission="submission" :contact-phone="contactPhone" />
+        <SubmissionDetail :submission="submission" :contact-phone="contactPhone" :files="files" />
         <SubmissionHistory :history="history" />
 
         <!-- One editor's decision is final for this round, so confirm first -->

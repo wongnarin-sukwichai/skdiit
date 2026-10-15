@@ -1,0 +1,179 @@
+{
+    "_about": "Shared sample data: database/seeders/DemoSubmissionSeeder.php seeds it into the real database and resources/js/data/mock.js builds the sample pages from it, so names, codes and statuses match everywhere. 20 registrants (5 attend only, 15 attend + submit) and one paper each for the 15 authors. Days are days before today. Paper steps replay the workflow in order (see DemoSubmissionSeeder::apply()). Every account is key@skdiit.test, password 1234.",
+    "people": [
+        { "key": "author", "th": "Demo Author", "en": "Demo Author", "title": null, "affiliation": "msu", "participation": "attend_submit", "phone": "081-234-5678", "registered": 40, "verified": true },
+        { "key": "anan", "th": "อนันต์ วงศ์ไทย", "en": "Anan Wongthai", "title": "ดร.", "affiliation": "cmu", "participation": "attend_submit", "phone": "089-111-2233", "registered": 38, "verified": true },
+        { "key": "kanya", "th": "กันยา พรหมมา", "en": "Kanya Phromma", "title": null, "affiliation": "nu", "participation": "attend_submit", "phone": null, "registered": 12, "verified": true },
+        { "key": "pranee", "th": "ปราณี ศรีสุข", "en": "Pranee Srisuk", "title": "ผศ.", "affiliation": "msu", "participation": "attend_submit", "phone": "086-555-0101", "registered": 45, "verified": true },
+        { "key": "malee", "th": "มาลี บุญมา", "en": "Malee Boonma", "title": "อ.", "affiliation": "rmu", "participation": "attend_submit", "phone": "093-222-4455", "registered": 50, "verified": true },
+        { "key": "somchai", "th": "สมชาย ใจดี", "en": "Somchai Jaidee", "title": null, "affiliation": "kku", "participation": "attend_submit", "phone": "081-777-8899", "registered": 44, "verified": true },
+        { "key": "wichai", "th": "วิชัย แสงทอง", "en": "Wichai Saengthong", "title": "ดร.", "affiliation": "ubu", "participation": "attend_submit", "phone": null, "registered": 43, "verified": true },
+        { "key": "tanakorn", "th": "ธนากร ศักดิ์ดี", "en": "Thanakorn Sakdee", "title": null, "affiliation": "kmitl", "participation": "attend_submit", "phone": "062-303-1122", "registered": 42, "verified": true },
+        { "key": "jiraporn", "th": "จิราภรณ์ เจริญผล", "en": "Jiraporn Charoenphon", "title": "ผศ.ดร.", "affiliation": "msu", "participation": "attend_submit", "phone": "089-404-5566", "registered": 41, "verified": true },
+        { "key": "ekachai", "th": "เอกชัย มากมี", "en": "Ekachai Makmee", "title": null, "affiliation": "kku", "participation": "attend_submit", "phone": "084-909-1010", "registered": 41, "verified": true },
+        { "key": "piyanuch", "th": "ปิยะนุช แสงเดือน", "en": "Piyanuch Saengduean", "title": "อ.", "affiliation": "ksu", "participation": "attend_submit", "phone": null, "registered": 47, "verified": true },
+        { "key": "suradech", "th": "สุรเดช อินทร์ทอง", "en": "Suradech Inthong", "title": "ดร.", "affiliation": "tu", "participation": "attend_submit", "phone": "080-121-3434", "registered": 48, "verified": true },
+        { "key": "kanlayarat", "th": "กัลยรัตน์ พัฒนวงศ์", "en": "Kanlayarat Phatthanawong", "title": null, "affiliation": "msu", "participation": "attend_submit", "phone": "091-565-7878", "registered": 49, "verified": true },
+        { "key": "nattapong", "th": "ณัฐพงศ์ รัตนกุล", "en": "Nattapong Rattanakul", "title": "ผศ.", "affiliation": "nu", "participation": "attend_submit", "phone": "087-323-6767", "registered": 52, "verified": true },
+        { "key": "pimchanok", "th": "พิมพ์ชนก วงศ์ษา", "en": "Pimchanok Wongsa", "title": null, "affiliation": "rmu", "participation": "attend_submit", "phone": null, "registered": 46, "verified": true },
+        { "key": "attendee", "th": "Demo Attendee", "en": "Demo Attendee", "title": null, "affiliation": "msu", "participation": "attend", "phone": null, "registered": 30, "verified": true },
+        { "key": "worawut", "th": "วรวุฒิ กันหา", "en": "Worawut Kanha", "title": null, "affiliation": "obec", "participation": "attend", "phone": "085-747-2020", "registered": 9, "verified": true },
+        { "key": "sudarat", "th": "สุดารัตน์ มะลิลา", "en": "Sudarat Malila", "title": "อ.", "affiliation": "rmu", "participation": "attend", "phone": "092-888-3131", "registered": 3, "verified": true },
+        { "key": "chaiwat", "th": "ชัยวัฒน์ บุญมี", "en": "Chaiwat Boonmee", "title": null, "affiliation": "kku", "participation": "attend", "phone": null, "registered": 1, "verified": false },
+        { "key": "siriporn", "th": "ศิริพร พิมพ์ไทย", "en": "Siriporn Phimthai", "title": null, "affiliation": "ubu", "participation": "attend", "phone": "064-414-5252", "registered": 0, "verified": false }
+    ],
+    "criteria": [
+        ["ความสำคัญและความใหม่ของงานวิจัย", "Significance and originality"],
+        ["ระเบียบวิธีวิจัย", "Research methodology"],
+        ["ผลการวิจัยและการอภิปรายผล", "Results and discussion"],
+        ["การเขียนและการนำเสนอ", "Writing and presentation"]
+    ],
+    "reviewers": [
+        { "key": "reviewer", "th": "Demo Reviewer", "en": "Demo Reviewer", "title": "รศ.", "tracks": [1, 2], "verified": true },
+        { "key": "rv.suda", "th": "สุดา มีสุข", "en": "Suda Meesuk", "title": "ผศ.", "tracks": [1, 3], "verified": true },
+        { "key": "rv.preecha", "th": "ปรีชา คำแก้ว", "en": "Preecha Khamkaew", "title": "รศ.", "tracks": [2, 4], "verified": true },
+        { "key": "rv.nattaya", "th": "ณัฐยา ทองดี", "en": "Nattaya Thongdee", "title": "อ.", "tracks": [3, 5], "verified": true },
+        { "key": "rv.kittisak", "th": "กิตติศักดิ์ พันธ์ดี", "en": "Kittisak Phandee", "title": "ผศ.", "tracks": [4, 5], "verified": true },
+        { "key": "rv.orawan", "th": "อรวรรณ ศรีวงศ์", "en": "Orawan Sriwong", "title": "ศ.", "tracks": [1, 5], "verified": true },
+        { "key": "rv.somsak", "th": "สมศักดิ์ ทองคำ", "en": "Somsak Thongkham", "title": "ผศ.", "tracks": [2], "verified": false }
+    ],
+    "papers": [
+        {
+            "author": "anan", "track": 1, "submitted": 30, "status": "submitted",
+            "title": ["ระบบแนะนำหนังสือห้องสมุดด้วยการเรียนรู้ของเครื่อง", "A Machine-Learning Book Recommender for University Libraries"],
+            "keywords": ["ระบบแนะนำ, ห้องสมุด, การเรียนรู้ของเครื่อง", "recommender system, library, machine learning"],
+            "coauthors": [["ดร.สมศรี รักเรียน", "มหาวิทยาลัยเชียงใหม่", null]],
+            "steps": [["updated", 25]]
+        },
+        {
+            "author": "kanya", "track": 3, "submitted": 6, "status": "submitted",
+            "title": ["พฤติกรรมการรับข่าวสารผ่าน TikTok ของนักศึกษาปริญญาตรี", "News Consumption on TikTok among Undergraduate Students"],
+            "keywords": ["สื่อสังคมออนไลน์, พฤติกรรมผู้รับสาร, นักศึกษา", "social media, audience behaviour, students"],
+            "steps": []
+        },
+        {
+            "author": "pranee", "track": 1, "submitted": 40, "status": "journal_selected",
+            "title": ["การพัฒนาบริการสารสนเทศเชิงรุกสำหรับนักวิจัย", "Proactive Information Services for Researchers"],
+            "keywords": ["บริการสารสนเทศ, นักวิจัย", "information services, researchers"],
+            "steps": [["journalSelect", 2, "select", "เนื้อหาตรงขอบเขตวารสาร ให้ผู้เขียนส่งเข้าระบบ ThaiJO"]]
+        },
+        {
+            "author": "malee", "track": 4, "submitted": 48, "status": "journal_accepted",
+            "title": ["การเปลี่ยนผ่านสู่ดิจิทัลของงานสารบรรณในองค์การบริหารส่วนตำบล", "Digital Transformation of Records Management in Local Government"],
+            "keywords": ["การเปลี่ยนผ่านสู่ดิจิทัล, งานสารบรรณ", "digital transformation, records management"],
+            "steps": [
+                ["journalSelect", 2, "select", null], ["journalResult", 1, "accepted", "วารสารตอบรับ ตีพิมพ์ฉบับที่ 1/2570"],
+                ["present", 1, "2027-01-28 13:00", "ห้อง 302 อาคาร IT"], ["slides", 0]
+            ]
+        },
+        {
+            "author": "somchai", "track": 5, "submitted": 28, "status": "screening", "initialTrack": 3,
+            "title": ["การจำแนกโรคใบข้าวด้วยโครงข่ายประสาทเทียมแบบคอนโวลูชัน", "Rice Leaf Disease Classification with Convolutional Neural Networks"],
+            "keywords": ["ปัญญาประดิษฐ์, ภาพถ่าย, การเกษตร", "deep learning, image classification, agriculture"],
+            "coauthors": [["สุดา มีสุข", "มหาวิทยาลัยมหาสารคาม", "rv.suda@skdiit.test"]],
+            "steps": [["journalSelect", 2, "decline", "ไม่ตรงขอบเขตวารสารด้านสารสนเทศ"], ["track", 1, 5]]
+        },
+        {
+            "author": "wichai", "track": 2, "submitted": 42, "status": "screening_revision",
+            "title": ["ห้องเรียนอัจฉริยะด้วยเซนเซอร์ IoT เพื่อประหยัดพลังงาน", "An IoT Smart Classroom for Energy Saving"],
+            "keywords": ["อินเทอร์เน็ตของสรรพสิ่ง, ห้องเรียนอัจฉริยะ, พลังงาน", "IoT, smart classroom, energy"],
+            "steps": [["journalSelect", 2, "decline", null], ["screen", 1, "revise", "กรุณาจัดรูปแบบตามแม่แบบของงานประชุม และเพิ่มบทคัดย่อภาษาอังกฤษให้ครบ 250 คำ"]]
+        },
+        {
+            "author": "tanakorn", "track": 4, "submitted": 41, "status": "screening_rejected",
+            "title": ["แนวทางการตลาดดิจิทัลสำหรับร้านกาแฟท้องถิ่น", "Digital Marketing Guidelines for Local Coffee Shops"],
+            "keywords": ["การตลาดดิจิทัล, ธุรกิจขนาดเล็ก", "digital marketing, small business"],
+            "steps": [["journalSelect", 2, "decline", null], ["screen", 1, "reject", "เนื้อหาไม่ตรงกับขอบเขตของงานประชุม และค่าความซ้ำซ้อนจาก Turnitin สูงเกินเกณฑ์"]]
+        },
+        {
+            "author": "jiraporn", "track": 1, "submitted": 40, "status": "in_review",
+            "title": ["การประเมินคุณภาพเมทาดาทาในคลังสถาบัน", "Assessing Metadata Quality in Institutional Repositories"],
+            "keywords": ["เมทาดาทา, คลังสถาบัน, คุณภาพข้อมูล", "metadata, institutional repository, data quality"],
+            "steps": [
+                ["journalSelect", 2, "decline", null], ["screen", 2, "pass"],
+                ["assign", 1, "reviewer", 14], ["assign", 1, "rv.suda", 14],
+                ["draft", 0, "reviewer", "minor", "ภาพรวมดี ควรอธิบายเกณฑ์การให้คะแนนคุณภาพเมทาดาทาให้ชัดเจนขึ้น (ยังเขียนไม่เสร็จ)"]
+            ]
+        },
+        {
+            "author": "ekachai", "track": 2, "submitted": 39, "status": "in_review",
+            "title": ["ระบบติดตามที่นั่งว่างในห้องสมุดแบบเรียลไทม์", "Real-Time Seat Availability Tracking in Libraries"],
+            "keywords": ["ระบบติดตาม, พื้นที่อัจฉริยะ, ห้องสมุด", "occupancy tracking, smart space, library"],
+            "steps": [
+                ["journalSelect", 22, "decline", null], ["screen", 21, "pass"],
+                ["assign", 20, "reviewer", 14], ["assign", 20, "rv.preecha", 14],
+                ["review", 9, "reviewer", "minor", "งานวิจัยมีประโยชน์ ควรอธิบายวิธีเก็บข้อมูลและขนาดตัวอย่างให้ชัดเจนขึ้น"],
+                ["review", 7, "rv.preecha", "accept", "บทความเขียนชัดเจน ผลการทดลองน่าเชื่อถือ"]
+            ]
+        },
+        {
+            "author": "piyanuch", "track": 5, "submitted": 47, "status": "in_review",
+            "title": ["การตรวจจับข่าวปลอมภาษาไทยด้วยโมเดล Transformer", "Thai Fake News Detection with Transformer Models"],
+            "keywords": ["ข่าวปลอม, ประมวลผลภาษาธรรมชาติ", "fake news, natural language processing"],
+            "steps": [
+                ["journalSelect", 40, "decline", null], ["screen", 39, "pass"], ["assign", 38, "rv.nattaya", 14],
+                ["review", 27, "rv.nattaya", "major", "ควรเพิ่มชุดข้อมูลทดสอบจากหลายแหล่ง", "ข้อมูลทดสอบบางส่วนดูซ้ำกับบทความที่เคยตีพิมพ์ปีที่แล้ว ควรตรวจสอบกับผล Turnitin"],
+                ["decide", 25, "major", null, -10], ["resubmit", 18], ["round", 16],
+                ["assign", 16, "rv.nattaya", 12], ["assign", 16, "rv.kittisak", 12],
+                ["unavailable", 2, "rv.kittisak", "ไม่ตรงกับความเชี่ยวชาญ (งานด้าน NLP) แนะนำ อ.ณัฐยา หรือ ศ.อรวรรณ แทน"],
+                ["note", 1, "editor", "โทรหา อ.ณัฐยา แล้ว ขอเลื่อนส่งผลประเมินไป 3 วัน เพราะติดสอบปลายภาค", true]
+            ]
+        },
+        {
+            "author": "author", "track": 2, "submitted": 36, "status": "revision_minor",
+            "title": ["ต้นแบบระบบควบคุมแสงสว่างอัตโนมัติในอาคารเรียน", "An Automatic Lighting Control Prototype for Classroom Buildings"],
+            "keywords": ["ระบบอัตโนมัติ, อาคารอัจฉริยะ", "automation, smart building"],
+            "coauthors": [["ผศ.ปราณี ศรีสุข", "มหาวิทยาลัยมหาสารคาม", null]],
+            "steps": [
+                ["journalSelect", 30, "decline", null], ["screen", 29, "pass"], ["assign", 28, "reviewer", 14], ["assign", 28, "rv.preecha", 14],
+                ["review", 18, "reviewer", "minor", "ควรเพิ่มภาพประกอบผังวงจรและผลการวัดพลังงานก่อนและหลังติดตั้ง"],
+                ["review", 16, "rv.preecha", "accept", "บทความสมบูรณ์ มีข้อเสนอแนะเล็กน้อยเรื่องการอ้างอิง"],
+                ["decide", 3, "minor", "กรุณาแก้ไขตามข้อเสนอแนะของผู้ประเมิน", 7]
+            ]
+        },
+        {
+            "author": "suradech", "track": 3, "submitted": 46, "status": "revised",
+            "title": ["การเล่าเรื่องดิจิทัลเพื่อส่งเสริมการท่องเที่ยวชุมชน", "Digital Storytelling for Community Tourism"],
+            "keywords": ["การเล่าเรื่องดิจิทัล, การท่องเที่ยวชุมชน", "digital storytelling, community tourism"],
+            "steps": [
+                ["journalSelect", 40, "select", null], ["journalResult", 33, "rejected", "วารสารแจ้งว่ามีบทความในประเด็นเดียวกันรอตีพิมพ์แล้ว"],
+                ["screen", 32, "pass"], ["assign", 31, "rv.suda", 14], ["assign", 31, "rv.nattaya", 14],
+                ["review", 22, "rv.suda", "minor", "ควรปรับตารางผลการวิจัยให้อ่านง่ายขึ้น"],
+                ["review", 20, "rv.nattaya", "minor", "ควรเพิ่มตัวอย่างเนื้อหาที่ผลิตจริงในภาคผนวก"],
+                ["decide", 18, "minor", null, 10], ["resubmit", 5],
+                ["note", 4, "editor", "ผู้เขียนแจ้งทางโทรศัพท์ว่าแก้ครบแล้ว รอบรรณาธิการตัดสินผล"]
+            ]
+        },
+        {
+            "author": "kanlayarat", "track": 1, "submitted": 47, "status": "accepted",
+            "title": ["การใช้ฐานข้อมูลออนไลน์ของนักศึกษาบัณฑิตศึกษา", "Online Database Use by Graduate Students"],
+            "keywords": ["ฐานข้อมูลออนไลน์, บัณฑิตศึกษา", "online databases, graduate students"],
+            "steps": [
+                ["journalSelect", 40, "decline", null], ["screen", 39, "pass"], ["assign", 38, "rv.orawan", 14],
+                ["review", 28, "rv.orawan", "accept", "บทความเขียนได้ดี เห็นควรรับตีพิมพ์"],
+                ["decide", 6, "accept", "ยินดีด้วย บทความของท่านผ่านการพิจารณา กรุณาส่งไฟล์ฉบับสมบูรณ์"]
+            ]
+        },
+        {
+            "author": "nattapong", "track": 5, "submitted": 50, "status": "camera_ready",
+            "title": ["การพยากรณ์จำนวนผู้ใช้บริการห้องสมุดด้วยอนุกรมเวลา", "Forecasting Library Visits with Time-Series Models"],
+            "keywords": ["อนุกรมเวลา, การพยากรณ์", "time series, forecasting"],
+            "steps": [
+                ["journalSelect", 41, "decline", null], ["screen", 40, "pass"], ["assign", 39, "rv.orawan", 14],
+                ["review", 30, "rv.orawan", "accept", "บทความมีคุณภาพ เห็นควรรับตีพิมพ์"],
+                ["decide", 20, "accept", "ยินดีด้วย บทความของท่านผ่านการพิจารณา"], ["cameraReady", 12],
+                ["present", 5, "2027-01-28 10:45", "ห้อง 301 อาคาร IT"]
+            ]
+        },
+        {
+            "author": "pimchanok", "track": 3, "submitted": 45, "status": "rejected",
+            "title": ["อิทธิพลของอินฟลูเอนเซอร์ต่อการตัดสินใจเลือกมหาวิทยาลัย", "Influencer Impact on University Choice"],
+            "keywords": ["อินฟลูเอนเซอร์, การตัดสินใจ", "influencer, decision making"],
+            "steps": [
+                ["journalSelect", 40, "decline", null], ["screen", 39, "pass"], ["assign", 38, "rv.suda", 14],
+                ["review", 29, "rv.suda", "reject", "วิธีวิจัยไม่เหมาะสมกับคำถามการวิจัย และขาดการทบทวนวรรณกรรม"],
+                ["decide", 26, "reject", "ขอบคุณที่ส่งบทความ บทความยังไม่ผ่านเกณฑ์การพิจารณาในครั้งนี้"]
+            ]
+        }
+    ]
+}

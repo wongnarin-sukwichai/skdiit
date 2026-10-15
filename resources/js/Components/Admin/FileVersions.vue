@@ -61,6 +61,9 @@ const btn = 'inline-flex items-center gap-1.5 rounded-lg border border-neutral-3
                         <a :href="v.file.url" :class="btn" :title="v.file.name">
                             <Fa :icon="v.file.isPdf ? 'file-pdf' : 'file-word'" /> {{ t('versions.manuscript') }} · {{ formatFileSize(v.file.size) }}
                         </a>
+                        <a v-for="file in v.word ?? []" :key="file.id" :href="file.url" :class="btn" :title="file.name"><Fa icon="file-word" /> {{ t('versions.word') }}</a>
+                        <a v-for="file in v.turnitin ?? []" :key="file.id" :href="file.url" :class="btn" :title="file.name"><Fa icon="file-circle-check" /> {{ t('versions.turnitin') }}</a>
+                        <a v-for="file in v.supplementary ?? []" :key="file.id" :href="file.url" :class="btn" :title="file.name"><Fa icon="paperclip" /> {{ file.name }}</a>
                         <a v-if="v.letter" :href="v.letter.url" :class="btn" :title="v.letter.name">
                             <Fa icon="paperclip" /> {{ t('versions.letter') }}
                         </a>

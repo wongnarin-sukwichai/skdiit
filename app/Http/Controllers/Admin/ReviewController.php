@@ -9,6 +9,7 @@ use App\Enums\ReviewRecommendation;
 use App\Enums\SubmissionAction;
 use App\Http\Controllers\Controller;
 use App\Models\Review;
+use App\Models\ReviewCriterion;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -30,6 +31,7 @@ class ReviewController extends Controller
             ->get()
             ->map(fn (Review $review) => [
                 ...$review->toClient(withReviewer: false),
+                'outcome' => $review->outcomeForReviewer(),
                 'paper' => [
                     'code' => $review->submission->code,
                     'title' => ['en' => $review->submission->title_en, 'th' => $review->submission->title_th],
@@ -47,9 +49,11 @@ class ReviewController extends Controller
         $submission = $review->submission->load('track', 'authors', 'user');
 
         return Inertia::render('Admin/Reviews/Show', [
-            'review' => $review->toClient(withReviewer: false),
+            'review' => [...$review->toClient(withReviewer: false), 'outcome' => $review->outcomeForReviewer()],
             'submission' => $submission->toClient(full: true),
             'recommendations' => array_column(ReviewRecommendation::cases(), 'value'),
+            // What to score from 1 to 5 (Settings › Review criteria)
+            'criteria' => ReviewCriterion::ordered()->get()->map->toClient(),
             'maxMb' => (int) Setting::get('upload_max_mb'),
             // Earlier versions and the author's answers (a later round compares with the previous version)
             'versions' => $submission->versionsFor('reviewer'),
@@ -63,7 +67,9 @@ class ReviewController extends Controller
         abort_if($review->isSubmitted() || $review->isClosed() || $review->isUnavailable(), 403);
 
         $maxMb = (int) Setting::get('upload_max_mb');
+        $scoreRules = $this->scoreRules(required: true);
         $data = $request->validate([
+            ...$scoreRules,
             'recommendation' => ['required', Rule::enum(ReviewRecommendation::class)],
             'comment' => ['required', 'string', 'max:20000'],
             'comment_to_editor' => ['nullable', 'string', 'max:20000'],
@@ -78,10 +84,13 @@ class ReviewController extends Controller
             'no_conflict.accepted' => 'reviews.form.conflictRequired',
             'attachment.mimes' => 'validation.file_type',
             'attachment.max' => 'validation.file_size',
+            'scores.*.required' => 'reviews.form.scoreRequired',
+            'scores.*.between' => 'reviews.form.scoreRequired',
         ]);
 
         $file = $request->file('attachment');
-        unset($data['attachment'], $data['no_conflict']);
+        $review->saveScores($data['scores'] ?? []);
+        unset($data['attachment'], $data['no_conflict'], $data['scores']);
         $review->forceFill([
             ...$data,
             ...($file ? ['attachment_path' => $file->store('reviews'), 'attachment_name' => $file->getClientOriginalName(), 'attachment_size' => $file->getSize()] : []),
@@ -102,11 +111,14 @@ class ReviewController extends Controller
         abort_if($review->isSubmitted() || $review->isClosed() || $review->isUnavailable(), 403);
 
         $data = $request->validate([
+            ...$this->scoreRules(required: false),
             'recommendation' => ['nullable', Rule::enum(ReviewRecommendation::class)],
             'comment' => ['nullable', 'string', 'max:20000'],
             'comment_to_editor' => ['nullable', 'string', 'max:20000'],
         ], ['max' => 'validation.too_long']);
 
+        $review->saveScores($data['scores'] ?? []);
+        unset($data['scores']);
         $review->forceFill([...$data, 'draft_saved_at' => now()])->save();
 
         return back()->with('success', 'reviews.form.draftSaved');
@@ -133,6 +145,17 @@ class ReviewController extends Controller
         abort_unless($review->attachment_path && ($review->reviewer_id === $user->id || $user->moduleAccess('submissions')), 404);
 
         return Storage::download($review->attachment_path, $review->attachment_name);
+    }
+
+    /** One score (1-5) per criterion: all required to send, any subset for a draft. */
+    private function scoreRules(bool $required): array
+    {
+        $rules = ['scores' => ['nullable', 'array']];
+        foreach (ReviewCriterion::pluck('id') as $id) {
+            $rules["scores.{$id}"] = [$required ? 'required' : 'nullable', 'integer', 'between:'.ReviewCriterion::MIN.','.ReviewCriterion::MAX];
+        }
+
+        return $rules;
     }
 
     private function authorizeReviewer(Request $request, Review $review): void

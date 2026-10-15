@@ -10,14 +10,13 @@ import OneTimePasswordModal from '@/Components/Admin/OneTimePasswordModal.vue';
 import Pagination from '@/Components/Pagination.vue';
 import CheckMark from '@/Components/CheckMark.vue';
 import RegistrantStatus from '@/Components/Admin/Registrants/RegistrantStatus.vue';
-import PaymentStatusBadge from '@/Components/PaymentStatusBadge.vue';
 import RegistrantDetailModal from '@/Components/Admin/Registrants/RegistrantDetailModal.vue';
 import RegistrantFormModal from '@/Components/Admin/Registrants/RegistrantFormModal.vue';
 import { useI18n } from '@/i18n';
 import { useRegistrantTable } from '@/composables/useRegistrantTable';
 import { useModules } from '@/composables/useModules';
 import { useToast } from '@/composables/useToast';
-import { adminRegistrants, affiliationByKey, paymentStatuses } from '@/data/mock';
+import { adminRegistrants, affiliationByKey } from '@/data/mock';
 
 const { t, tr, formatDate, formatNumber } = useI18n();
 const { toast } = useToast();
@@ -31,21 +30,18 @@ const accountState = (row) => (!row.active ? 'suspended' : row.verified ? 'activ
 // YYYY-MM-DD in the app timezone, for the "registered from/to" filters
 const day = (iso) => new Date(iso).toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
 
-// Only roles that work with papers see the paper status; finance sees the payment status instead
 const { accessTo } = useModules();
 const canEdit = computed(() => accessTo('registrants') === 'full');
-const seesPapers = computed(() => !!accessTo('submissions'));
-// Editors may look but not take the list away (personal data); admin and finance can export
-const canExport = computed(() => canEdit.value || !seesPapers.value);
+// Editors may look but not take the list away (personal data); only admin can export
+const canExport = canEdit;
 
 const { form, perPage, page, total, lastPage, rows, filtered, search, reset } = useRegistrantTable(list, {
     withEmail: true,
-    filters: { participation: '', status: '', payment: '', account: '', from: '', to: '' },
+    filters: { participation: '', status: '', account: '', from: '', to: '' },
     match: (row, f) => (!f.participation || row.participation === f.participation)
         && (!f.status || (f.status === 'registered' && row.participation === 'attend')
             || (f.status === 'none' && row.participation === 'attend_submit' && !row.paperStatus)
             || row.paperStatus === f.status)
-        && (!f.payment || row.payment === f.payment)
         && (!f.account || accountState(row) === f.account)
         && (!f.from || day(row.registeredAt) >= f.from)
         && (!f.to || day(row.registeredAt) <= f.to),
@@ -60,8 +56,9 @@ if (['active', 'unverified', 'suspended'].includes(initialAccount)) {
 
 // Status filter: attend-only, author without a paper, then each paper status (App\Enums\SubmissionStatus)
 const paperStatuses = [
-    'submitted', 'screening_revision', 'screening_rejected', 'in_review', 'revision_minor', 'revision_major', 'revised',
-    'accepted', 'rejected', 'option_a', 'camera_ready', 'option_b', 'journal_accepted',
+    'submitted', 'journal_selected', 'journal_accepted',
+    'screening', 'screening_revision', 'screening_rejected', 'in_review', 'revision_minor', 'revision_major', 'revised',
+    'accepted', 'rejected', 'camera_ready',
 ];
 
 const stats = computed(() => ({
@@ -69,13 +66,12 @@ const stats = computed(() => ({
     attendOnly: list.filter((r) => r.participation === 'attend').length,
     authors: list.filter((r) => r.participation === 'attend_submit').length,
     papers: list.filter((r) => r.paperStatus).length,
-    paid: list.filter((r) => r.payment === 'paid').length,
 }));
 const statCards = computed(() => [
     { key: 'total', icon: 'user' },
     { key: 'attendOnly', icon: 'users' },
     { key: 'authors', icon: 'file-arrow-up' },
-    seesPapers.value ? { key: 'papers', icon: 'file-lines' } : { key: 'paid', icon: 'receipt' },
+    { key: 'papers', icon: 'file-lines' },
 ]);
 
 // Row selection (export the selected rows)
@@ -192,18 +188,16 @@ function confirmAction() {
 const exporting = ref(false);
 
 function statusText(row) {
-    if (!seesPapers.value) return t(`payment.status.${row.payment}`);
     if (row.paperStatus) return t(`submissions.status.${row.paperStatus}`);
     return t(row.participation === 'attend' ? 'admin.registrants.registered' : 'admin.registrants.notSubmitted');
 }
 
 async function exportExcel() {
     const source = checked.value.size ? filtered.value.filter((r) => checked.value.has(r.id)) : filtered.value;
-    const papers = seesPapers.value;
     const headers = [
         t('registrants.no'), t('registrants.name'), t('registrants.email'), t('registrants.affiliation'),
-        t('registrants.participation'), ...(papers ? [t('registrants.paper')] : []),
-        t(papers ? 'registrants.status' : 'registrants.paymentStatus'), t('admin.registrants.account'),
+        t('registrants.participation'), t('registrants.paper'),
+        t('registrants.status'), t('admin.registrants.account'),
         t('registrants.registeredAt'),
     ];
     const body = source.map((r, i) => [
@@ -212,7 +206,7 @@ async function exportExcel() {
         r.email,
         tr(affiliationByKey[r.affiliation]),
         t(`admin.registrants.participationType.${r.participation}`),
-        ...(papers ? [r.paper ? tr(r.paper) : ''] : []),
+        r.paper ? tr(r.paper) : '',
         statusText(r),
         t(`admin.registrants.${accountState(r)}`),
         formatDate(r.registeredAt, { dateStyle: 'medium', timeStyle: 'short' }),
@@ -292,11 +286,7 @@ const plainBadge = 'inline-flex items-center rounded-full border px-3 py-0.5 tex
                         <option value="attend">{{ t('admin.registrants.participationType.attend') }}</option>
                         <option value="attend_submit">{{ t('admin.registrants.participationType.attend_submit') }}</option>
                     </select>
-                    <select v-if="!seesPapers" v-model="form.payment" :class="[input, 'pl-3']" :aria-label="t('registrants.paymentStatus')">
-                        <option value="">{{ t('admin.registrants.allPayments') }}</option>
-                        <option v-for="s in paymentStatuses" :key="s" :value="s">{{ t(`payment.status.${s}`) }}</option>
-                    </select>
-                    <select v-else v-model="form.status" :class="[input, 'pl-3']" :aria-label="t('registrants.status')">
+                    <select v-model="form.status" :class="[input, 'pl-3']" :aria-label="t('registrants.status')">
                         <option value="">{{ t('admin.registrants.allStatuses') }}</option>
                         <option value="registered">{{ t('admin.registrants.registered') }}</option>
                         <option value="none">{{ t('admin.registrants.notSubmitted') }}</option>
@@ -339,7 +329,7 @@ const plainBadge = 'inline-flex items-center rounded-full border px-3 py-0.5 tex
                             <th class="px-3 py-3 font-semibold">{{ t('registrants.affiliation') }}</th>
                             <th class="px-3 py-3 text-center font-semibold">{{ t('registrants.attend') }}</th>
                             <th class="px-3 py-3 text-center font-semibold">{{ t('registrants.submit') }}</th>
-                            <th class="px-3 py-3 text-center font-semibold">{{ t(seesPapers ? 'registrants.status' : 'registrants.paymentStatus') }}</th>
+                            <th class="px-3 py-3 text-center font-semibold">{{ t('registrants.status') }}</th>
                             <th class="px-3 py-3 font-semibold">{{ t('registrants.registeredAt') }}</th>
                             <th class="px-3 py-3 text-center font-semibold">{{ t('registrants.actions') }}</th>
                         </tr>
@@ -373,8 +363,7 @@ const plainBadge = 'inline-flex items-center rounded-full border px-3 py-0.5 tex
                                 <td class="px-3 py-2.5 text-center"><CheckMark checked /></td>
                                 <td class="px-3 py-2.5 text-center"><CheckMark :checked="row.participation === 'attend_submit'" /></td>
                                 <td class="px-3 py-2.5 text-center">
-                                    <RegistrantStatus v-if="seesPapers" :registrant="row" />
-                                    <PaymentStatusBadge v-else :status="row.payment" />
+                                    <RegistrantStatus :registrant="row" />
                                 </td>
                                 <td class="px-3 py-2.5 whitespace-nowrap text-neutral-600 dark:text-neutral-300">{{ formatDate(row.registeredAt) }}</td>
                                 <td class="px-3 py-2.5">
@@ -422,7 +411,7 @@ const plainBadge = 'inline-flex items-center rounded-full border px-3 py-0.5 tex
         </Card>
     </div>
 
-    <RegistrantDetailModal :registrant="viewing" :sees-papers="seesPapers" @close="viewing = null" />
+    <RegistrantDetailModal :registrant="viewing" @close="viewing = null" />
     <RegistrantFormModal :show="editor.show" :registrant="editor.registrant" :email-taken="emailTaken" @close="editor.show = false" @save="save" />
     <OneTimePasswordModal :result="generated" @close="generated = null" />
     <ConfirmModal

@@ -12,7 +12,7 @@ import { timeAgo, useNotifications } from '@/composables/useNotifications';
 import { emailLog } from '@/data/mock';
 
 /*
- * Notifications (every role): what happened to my papers, reviews and payments.
+ * Notifications (every role): what happened to my papers and reviews.
  * Admin also sees the email log (every email the system sent). Mock until SMTP is decided.
  */
 const { t, tr, formatDate, formatNumber } = useI18n();
@@ -20,9 +20,9 @@ const { toast } = useToast();
 const { items, unread, markRead, markAllRead } = useNotifications();
 const me = usePage().props.auth.user;
 const isAdmin = computed(() => me.accessRole === 'admin');
-// Editors coordinate with authors and reviewers: they see paper emails (not passwords or payments)
+// Editors coordinate with authors and reviewers: they see paper emails (not passwords)
 const seesEmails = computed(() => ['admin', 'editor'].includes(me.accessRole));
-const PAPER_ONLY_HIDDEN = ['LoginPassword', 'PaymentResult'];
+const PAPER_ONLY_HIDDEN = ['LoginPassword'];
 
 const tab = ref(seesEmails.value && new URLSearchParams(usePage().url.split('?')[1]).get('tab') === 'emails' ? 'emails' : 'notifications');
 

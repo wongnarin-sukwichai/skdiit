@@ -37,13 +37,13 @@ const stats = computed(() => ({
     sessions: sessions.length,
     scheduled: sessions.reduce((n, s) => n + s.papers.length, 0),
     unscheduled: waiting.length,
-    online: sessions.reduce((n, s) => n + s.papers.filter((p) => p.mode === 'online').length, 0),
+    noSlides: sessions.reduce((n, s) => n + s.papers.filter((p) => !p.slides).length, 0),
 }));
 const statCards = [
     { key: 'sessions', icon: 'person-chalkboard' },
     { key: 'scheduled', icon: 'calendar-days' },
     { key: 'unscheduled', icon: 'hourglass-half' },
-    { key: 'online', icon: 'video' },
+    { key: 'noSlides', icon: 'file-powerpoint' },
 ];
 
 // ---- Running order ----
@@ -153,7 +153,7 @@ const field = 'w-full rounded-lg border border-white/10 bg-ink-800 px-3 py-2.5 t
                                 <p class="line-clamp-2">{{ tr(paper.title) }}</p>
                                 <p class="text-xs text-neutral-500 dark:text-neutral-400">
                                     <span class="font-mono">{{ paper.code }}</span> · {{ tr(paper.author) }}
-                                    <span v-if="paper.mode === 'online'" class="ml-1 rounded-full bg-sky-100 px-2 py-0.5 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300"><Fa icon="video" class="mr-1" />{{ t('admin.presentations.online') }}</span>
+                                    <span v-if="!paper.slides" class="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300"><Fa icon="file-powerpoint" class="mr-1" />{{ t('admin.stats.noSlides') }}</span>
                                 </p>
                             </div>
                             <div v-if="canEdit" class="flex shrink-0 flex-col">

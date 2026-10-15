@@ -17,7 +17,7 @@ return new class extends Migration
             $table->string('email')->unique();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
-            $table->string('role')->default('user'); // admin | editor | reviewer | finance | user (registrant; see User::accessRole())
+            $table->string('role')->default('user'); // admin | editor | reviewer | journal | user (registrant; see User::accessRole())
             $table->string('affiliation')->nullable();
             $table->string('participation')->default('attend'); // attend | attend_submit
             $table->rememberToken();

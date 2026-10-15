@@ -24,15 +24,40 @@ class Submission extends Model
             'status' => SubmissionStatus::class,
             'revision_due_date' => 'date',
             'camera_ready_at' => 'datetime',
+            'slides_at' => 'datetime',
             'presentation_at' => 'datetime',
         ];
     }
 
     protected static function booted(): void
     {
-        static::created(function (Submission $submission) {
-            $submission->forceFill(['code' => sprintf('SKDIIT27-%04d', $submission->id)])->saveQuietly();
+        // A new paper belongs to the current conference year and is numbered within it: SKDIIT27-0001, SKDIIT28-0001, ...
+        static::creating(function (Submission $submission) {
+            $submission->year ??= static::conferenceYear();
         });
+        static::created(function (Submission $submission) {
+            $number = static::where('year', $submission->year)->where('id', '<=', $submission->id)->count();
+            $submission->forceFill(['code' => sprintf('SKDIIT%02d-%04d', $submission->year % 100, $number)])->saveQuietly();
+        });
+    }
+
+    /** The conference year in use (Settings). */
+    public static function conferenceYear(): int
+    {
+        return (int) Setting::get('conference_year');
+    }
+
+    /** Papers of the current conference year (work lists); earlier years stay for their authors and the archive. */
+    public function scopeCurrentYear(Builder $query): void
+    {
+        $query->where('submissions.year', static::conferenceYear());
+    }
+
+    /** Finished papers of earlier conference years: the article archive. */
+    public function scopeArchived(Builder $query): void
+    {
+        $query->where('submissions.year', '<', static::conferenceYear())
+            ->whereIn('status', [SubmissionStatus::CameraReady, SubmissionStatus::JournalAccepted]);
     }
 
     public function user(): BelongsTo
@@ -66,7 +91,7 @@ class Submission extends Model
         return $value ? Carbon::parse($value) : null;
     }
 
-    /** The deadline has passed: every paper is locked and screening can start. */
+    /** The deadline has passed: every paper is locked and the journal can start selecting. */
     public static function isClosed(): bool
     {
         return (bool) static::deadline()?->isPast();
@@ -115,13 +140,54 @@ class Submission extends Model
     /** Record a new manuscript version (the paper's current file); returns its version number. */
     public function addManuscript(array $stored, string $stage, ?User $by): int
     {
+        // review_round is null on a paper just created (the column default is not loaded), hence the (int) below
         $version = (int) $this->files()->where('kind', 'manuscript')->max('version') + 1;
         $this->files()->create([
-            'version' => $version, 'kind' => 'manuscript', 'stage' => $stage, 'round' => $this->review_round,
+            'version' => $version, 'kind' => 'manuscript', 'stage' => $stage, 'round' => (int) $this->review_round,
             'path' => $stored['file_path'], 'name' => $stored['file_name'], 'size' => $stored['file_size'], 'user_id' => $by?->id,
         ]);
 
         return $version;
+    }
+
+    /** Version number of the current manuscript (the latest PDF). */
+    public function currentVersion(): int
+    {
+        return max(1, (int) $this->files()->where('kind', 'manuscript')->max('version'));
+    }
+
+    /**
+     * Files that come with a manuscript version: ['word' => file, 'turnitin' => file, 'supplementary' => [files]].
+     * A Turnitin report left out of a revision keeps the earlier one as the current report.
+     */
+    public function addExtraFiles(array $files, int $version, string $stage, ?User $by): void
+    {
+        foreach ($files as $kind => $list) {
+            foreach (array_filter(is_array($list) ? $list : [$list]) as $file) {
+                $this->files()->create([
+                    'version' => $version, 'kind' => $kind, 'stage' => $stage, 'round' => (int) $this->review_round,
+                    'path' => $file->store("submissions/{$kind}"), 'name' => $file->getClientOriginalName(), 'size' => $file->getSize(),
+                    'user_id' => $by?->id,
+                ]);
+            }
+        }
+    }
+
+    /**
+     * The paper's current files: the latest PDF, Word file and Turnitin report, and every supplementary file.
+     * For the author, editors, admin and the journal (reviewers only get the PDF, through toClient()).
+     */
+    public function currentFiles(): array
+    {
+        $files = $this->files()->whereIn('kind', ['manuscript', 'word', 'turnitin', 'supplementary'])->orderBy('id')->get();
+        $latest = fn (string $kind) => $files->where('kind', $kind)->last()?->toClient();
+
+        return [
+            'pdf' => $latest('manuscript'),
+            'word' => $latest('word'),
+            'turnitin' => $latest('turnitin'),
+            'supplementary' => $files->where('kind', 'supplementary')->map->toClient()->values()->all(),
+        ];
     }
 
     /** Reviews the author must answer when revising after peer review (the decided round), numbered like the author sees them. */
@@ -159,6 +225,8 @@ class Submission extends Model
         return $files->map(function ($group, $version) use ($responses, $numbers, $viewer) {
             $manuscript = $group->firstWhere('kind', 'manuscript');
             $letter = $group->firstWhere('kind', 'response');
+            // Word, Turnitin and supplementary files: not for reviewers (they work from the PDF)
+            $extra = fn (string $kind) => $viewer === 'reviewer' ? [] : $group->where('kind', $kind)->map->toClient()->values()->all();
 
             return [
                 'version' => $version,
@@ -167,6 +235,9 @@ class Submission extends Model
                 'at' => $manuscript?->created_at->toIso8601String(),
                 'file' => $manuscript?->toClient(),
                 'letter' => $letter?->toClient(),
+                'word' => $extra('word'),
+                'turnitin' => $extra('turnitin'),
+                'supplementary' => $extra('supplementary'),
                 'responses' => ($responses[$version] ?? collect())->map(fn (RevisionResponse $response) => [
                     'to' => $response->review_id ? 'reviewer' : 'editor',
                     'number' => $response->review_id ? ($numbers[$response->review_id] ?? null) : null,
@@ -196,7 +267,7 @@ class Submission extends Model
         $open = fn ($review) => $round($review)->whereNull('submitted_at');
 
         match ($queue) {
-            'screening' => $query->where('status', SubmissionStatus::Submitted),
+            'screening' => $query->where('status', SubmissionStatus::Screening),
             'needReviewers' => $query->where('status', SubmissionStatus::InReview)->whereDoesntHave('reviews', $round),
             'readyToDecide' => $query->where('status', SubmissionStatus::InReview)->whereHas('reviews', $round)->whereDoesntHave('reviews', $open),
             'revised' => $query->where('status', SubmissionStatus::Revised),
@@ -217,7 +288,9 @@ class Submission extends Model
         $scheduled = (bool) $this->presentation_at;
 
         return match ($this->status) {
-            SubmissionStatus::Submitted => ['who' => 'editor', 'task' => static::isClosed() ? 'screen' : 'screenAfterDeadline'],
+            SubmissionStatus::Submitted => ['who' => 'journal', 'task' => static::isClosed() ? 'journalSelect' : 'journalAfterDeadline'],
+            SubmissionStatus::JournalSelected => ['who' => 'journal', 'task' => 'journalResult'],
+            SubmissionStatus::Screening => ['who' => 'editor', 'task' => 'screen'],
             SubmissionStatus::InReview => match (true) {
                 ! $this->reviews_total => ['who' => 'editor', 'task' => 'assignReviewers'],
                 $this->reviews_unavailable > 0 => ['who' => 'editor', 'task' => 'replaceReviewer'],
@@ -226,10 +299,12 @@ class Submission extends Model
             },
             SubmissionStatus::Revision, SubmissionStatus::RevisionMinor, SubmissionStatus::RevisionMajor => ['who' => 'author', 'task' => 'revise'],
             SubmissionStatus::Revised => ['who' => 'editor', 'task' => 'decideRevision'],
-            SubmissionStatus::Accepted => ['who' => 'author', 'task' => 'chooseOption'],
-            SubmissionStatus::OptionA => ['who' => 'author', 'task' => 'cameraReady'],
-            SubmissionStatus::OptionB => ['who' => 'editor', 'task' => 'journal'],
-            SubmissionStatus::CameraReady, SubmissionStatus::JournalAccepted => $scheduled ? ['who' => 'none', 'task' => 'done'] : ['who' => 'editor', 'task' => 'schedule'],
+            SubmissionStatus::Accepted => ['who' => 'author', 'task' => 'cameraReady'],
+            SubmissionStatus::CameraReady, SubmissionStatus::JournalAccepted => match (true) {
+                ! $scheduled => ['who' => 'editor', 'task' => 'schedule'],
+                ! $this->slides_path => ['who' => 'author', 'task' => 'slides'],
+                default => ['who' => 'none', 'task' => 'done'],
+            },
             SubmissionStatus::Rejected, SubmissionStatus::ReviewRejected => ['who' => 'none', 'task' => 'closed'],
         };
     }
@@ -256,14 +331,24 @@ class Submission extends Model
         $waiting = $this->waitingOn();
 
         if ($waiting['who'] === 'author') {
-            $due = $waiting['task'] === 'revise' ? $this->revision_due_date : null;
+            $due = match ($waiting['task']) {
+                'revise' => $this->revision_due_date,
+                'slides' => $this->slidesUntil(),
+                default => null,
+            };
 
             return ['mine' => true, 'task' => $waiting['task'], 'due' => $due?->toDateString(), 'daysLate' => $due?->isPast() ? (int) $due->diffInDays(today()) : 0];
         }
 
+        // Selected by the journal: the author submits on the journal's site (the system cannot tell when that is done)
+        if ($this->status === SubmissionStatus::JournalSelected) {
+            return ['mine' => true, 'task' => 'submitToJournal', 'due' => null, 'daysLate' => 0];
+        }
+
         return ['mine' => false, 'task' => match (true) {
             $waiting['who'] === 'none' => $waiting['task'], // done | closed
-            $waiting['task'] === 'screenAfterDeadline' => 'editableUntilDeadline',
+            $waiting['task'] === 'journalAfterDeadline' => 'editableUntilDeadline',
+            $waiting['who'] === 'journal' => 'withJournal',
             $waiting['who'] === 'reviewer' || in_array($waiting['task'], ['assignReviewers', 'replaceReviewer'], true) => 'inReview',
             default => 'withEditor',
         }];
@@ -272,7 +357,7 @@ class Submission extends Model
     /** Number of papers in each queue: { screening: 3, ... } */
     public static function queueCounts(): array
     {
-        return collect(self::QUEUES)->mapWithKeys(fn ($queue) => [$queue => static::query()->queue($queue)->count()])->all();
+        return collect(self::QUEUES)->mapWithKeys(fn ($queue) => [$queue => static::query()->currentYear()->queue($queue)->count()])->all();
     }
 
     /** Reviews of the current peer-review round, oldest assignment first. */
@@ -368,10 +453,58 @@ class Submission extends Model
             && ! $this->events()->where('action', SubmissionAction::TrackChanged)->exists();
     }
 
-    /** Screening happens once the deadline has passed (files are final), one decision per round. */
+    /** Editor screening: papers the journal did not take (always after the deadline), one decision per round. */
     public function canBeScreened(): bool
     {
+        return $this->status === SubmissionStatus::Screening;
+    }
+
+    /** The journal's decision deadline set by admin (a warning only; nothing moves by itself). */
+    public static function journalDeadline(): ?Carbon
+    {
+        $value = Setting::get('journal_deadline');
+
+        return $value ? Carbon::parse($value)->endOfDay() : null;
+    }
+
+    /** The journal can see this paper (papers in the conference track are hidden from it). */
+    public function isJournalStage(): bool
+    {
+        return in_array($this->status, SubmissionStatus::journalStage(), true);
+    }
+
+    public function scopeJournalStage(Builder $query): void
+    {
+        $query->whereIn('status', SubmissionStatus::journalStage());
+    }
+
+    /** The journal's first selection: after the submission deadline, when the files are final. */
+    public function canBeSelectedByJournal(): bool
+    {
         return static::isClosed() && $this->status === SubmissionStatus::Submitted;
+    }
+
+    /** Still waiting for the journal's first selection although its deadline has passed (admin moves these by hand). */
+    public function isPastJournalDeadline(): bool
+    {
+        return $this->status === SubmissionStatus::Submitted && (bool) static::journalDeadline()?->isPast();
+    }
+
+    /** Last moment the presenter may upload or replace slides: the talk, or a few days before it (Settings). */
+    public function slidesUntil(): ?Carbon
+    {
+        if (! $this->presentation_at) {
+            return null;
+        }
+        $days = Setting::get('slides_cutoff_days');
+
+        return $days ? $this->presentation_at->copy()->subDays((int) $days)->endOfDay() : $this->presentation_at->copy();
+    }
+
+    /** Slides open once the paper presents and has a slot, until slidesUntil(). */
+    public function canUploadSlides(): bool
+    {
+        return $this->status->presents() && $this->presentation_at && $this->slidesUntil()->isFuture();
     }
 
     /**
@@ -412,8 +545,6 @@ class Submission extends Model
                 'file' => ['name' => $this->file_name, 'size' => $this->file_size, 'url' => "/admin/submissions/{$this->id}/file"],
                 'submitter' => $this->user?->only('id', 'name', 'email'),
                 'publication' => [
-                    'option' => $this->publish_option,
-                    'journal' => $this->journal_name,
                     'cameraReady' => $this->camera_ready_path ? [
                         'name' => $this->camera_ready_name,
                         'size' => $this->camera_ready_size,
@@ -424,6 +555,14 @@ class Submission extends Model
                         'at' => $this->presentation_at->toIso8601String(),
                         'room' => $this->presentation_room,
                     ] : null,
+                    'slides' => $this->slides_path ? [
+                        'name' => $this->slides_name,
+                        'size' => $this->slides_size,
+                        'at' => $this->slides_at->toIso8601String(),
+                        'url' => "/admin/submissions/{$this->id}/slides",
+                    ] : null,
+                    'slidesUntil' => $this->slidesUntil()?->toIso8601String(),
+                    'canUploadSlides' => $this->canUploadSlides(),
                 ],
             ];
         }

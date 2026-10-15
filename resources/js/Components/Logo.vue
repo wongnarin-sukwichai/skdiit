@@ -1,4 +1,7 @@
 <script setup>
+import { useSite } from '@/composables/useSite';
+
+const site = useSite();
 defineProps({
     tagline: { type: Boolean, default: false },
 });
@@ -25,7 +28,7 @@ defineProps({
         <span class="flex flex-col leading-none">
             <span class="gold-text text-[2rem] font-bold tracking-wider">SKDIIT</span>
             <span v-if="tagline" class="mt-1 text-[0.6rem] font-medium tracking-[0.2em] text-neutral-300 uppercase">
-                SKDIIT 2027 Academic Conference
+                {{ site?.conference.shortName }} Academic Conference
             </span>
         </span>
     </span>

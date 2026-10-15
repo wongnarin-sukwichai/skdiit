@@ -15,15 +15,19 @@ export const eventIcons = {
     review_unavailable: 'user-xmark',
     decided: 'gavel',
     review_round_started: 'user-check',
-    option_chosen: 'book',
-    camera_ready_uploaded: 'file-circle-check',
+    journal_screened: 'newspaper',
     journal_result: 'newspaper',
+    camera_ready_uploaded: 'file-circle-check',
     presentation_scheduled: 'person-chalkboard',
+    slides_uploaded: 'file-powerpoint',
 };
 
-/** Screening and decision entries are labelled by their outcome; the rest fill their meta into the text. */
+// Labelled by their outcome (to_status)
+const BY_OUTCOME = ['screened', 'decided', 'journal_screened', 'journal_result'];
+
+/** Screening, decision and journal entries are labelled by their outcome; the rest fill their meta into the text. */
 export function eventTitle(t, event) {
-    return ['screened', 'decided'].includes(event.action)
+    return BY_OUTCOME.includes(event.action) && event.toStatus
         ? t(`submissions.history.${event.action}.${event.toStatus}`)
         : t(`submissions.history.${event.action}`, event.meta ?? {});
 }

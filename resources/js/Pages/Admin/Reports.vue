@@ -1,40 +1,31 @@
 <script setup>
 import { computed, ref } from 'vue';
-import { Head, usePage } from '@inertiajs/vue3';
+import { Head } from '@inertiajs/vue3';
 import Card from '@/Components/Admin/Card.vue';
 import PageHeader from '@/Components/Admin/PageHeader.vue';
 import StatCards from '@/Components/Admin/StatCards.vue';
 import BarList from '@/Components/Admin/Charts/BarList.vue';
 import TrendChart from '@/Components/Admin/Charts/TrendChart.vue';
 import { useI18n } from '@/i18n';
-import { useModules } from '@/composables/useModules';
 import { useToast } from '@/composables/useToast';
-import { adminPayments, affiliationByKey, mockTracks, reportData } from '@/data/mock';
+import { affiliationByKey, mockTracks, reportData } from '@/data/mock';
 
 /*
- * Reports (admin, editor; finance sees the finance tab only): totals and breakdowns of the whole conference,
+ * Reports (admin, editor): totals and breakdowns of the whole conference,
  * each tab exportable to Excel. Mock numbers for the client demo.
  */
-const { t, tr, formatNumber } = useI18n();
+const { t, tr } = useI18n();
 const { toast } = useToast();
-const { accessTo } = useModules();
 
-const financeOnly = computed(() => accessTo('reports') === 'own');
-// Money is not the editors' business: they see registrants, papers and reviews only
-const seesFinance = computed(() => usePage().props.auth.user.accessRole === 'admin');
-const tabs = computed(() => (financeOnly.value
-    ? [{ key: 'finance', icon: 'receipt' }]
-    : [
-        { key: 'registrants', icon: 'users' },
-        { key: 'papers', icon: 'file-lines' },
-        { key: 'reviews', icon: 'clipboard-check' },
-        ...(seesFinance.value ? [{ key: 'finance', icon: 'receipt' }] : []),
-    ]));
-const tab = ref(financeOnly.value ? 'finance' : 'registrants');
+const tabs = [
+    { key: 'registrants', icon: 'users' },
+    { key: 'papers', icon: 'file-lines' },
+    { key: 'reviews', icon: 'clipboard-check' },
+];
+const tab = ref('registrants');
 
 const r = reportData;
 const trackName = (id) => tr(mockTracks.find((x) => x.id === id).name);
-const baht = t('admin.payments.baht');
 
 // ---- Registrants ----
 const affiliationRows = computed(() => r.registrants.byAffiliation.map(([key, value]) => ({ key, label: tr(affiliationByKey[key]), value })));
@@ -43,7 +34,7 @@ const participationRows = computed(() => r.registrants.byParticipation.map(([key
 // ---- Papers ----
 const trackRows = computed(() => r.papers.byTrack.map(([id, value]) => ({ key: id, label: trackName(id), value })));
 const statusRows = computed(() => r.papers.byStatus.map(([key, value]) => ({ key, label: t(`submissions.status.${key}`), value })));
-const optionRows = computed(() => r.papers.options.map(([key, value]) => ({ key, label: t(`admin.payments.optionName.${key}`), value })));
+const routeRows = computed(() => r.papers.routes.map(([key, value]) => ({ key, label: t(`publication.route.${key}`), value })));
 const decided = r.papers.kpis.accepted + r.papers.kpis.rejected;
 const acceptance = Math.round((r.papers.kpis.accepted / decided) * 100);
 
@@ -51,28 +42,10 @@ const acceptance = Math.round((r.papers.kpis.accepted / decided) * 100);
 const recommendationRows = computed(() => r.reviews.recommendations.map(([key, value]) => ({ key, label: t(`reviews.recommendation.${key}`), value })));
 const reviewers = computed(() => [...r.reviews.reviewers].sort((a, b) => b.late - a.late || b.avgDays - a.avgDays));
 
-// ---- Finance (from the Payments sample) ----
-const sum = (list) => list.reduce((n, p) => n + p.amount, 0);
-const finance = computed(() => ({
-    expected: sum(adminPayments),
-    received: sum(adminPayments.filter((p) => p.status === 'paid')),
-    outstandingBaht: sum(adminPayments.filter((p) => p.status !== 'paid')),
-    slipsToCheck: adminPayments.filter((p) => p.status === 'pending_review').length,
-}));
-const paymentStatusRows = computed(() => ['paid', 'pending_review', 'awaiting_payment', 'slip_rejected']
-    .map((key) => ({ key, label: t(`payment.status.${key}`), value: adminPayments.filter((p) => p.status === key).length })));
-const receivedByOption = computed(() => ['a', 'b'].map((key) => ({
-    key,
-    label: t(`admin.payments.optionName.${key}`),
-    value: sum(adminPayments.filter((p) => p.option === key && p.status === 'paid')),
-    note: t('admin.reports.ofExpected', { amount: formatNumber(sum(adminPayments.filter((p) => p.option === key))) }),
-})));
-
 const kpis = computed(() => ({
     registrants: { stats: r.registrants.kpis, cards: [['total', 'users'], ['attendOnly', 'user'], ['authors', 'file-arrow-up'], ['notSignedIn', 'user-clock']] },
     papers: { stats: { ...r.papers.kpis, acceptance }, cards: [['submitted', 'file-lines'], ['inReview', 'clipboard-check'], ['accepted', 'circle-check'], ['acceptance', 'percent']] },
     reviews: { stats: r.reviews.kpis, cards: [['assigned', 'user-check'], ['done', 'circle-check'], ['avgDays', 'clock'], ['overdue', 'triangle-exclamation']] },
-    finance: { stats: finance.value, cards: [['expected', 'receipt'], ['received', 'circle-check'], ['outstandingBaht', 'clock'], ['slipsToCheck', 'magnifying-glass']] },
 }[tab.value]));
 
 // ---- Excel: the current tab's tables, in the viewer's language ----
@@ -85,15 +58,12 @@ function sheet() {
         return { headers: [label, count], rows: [...rowsOf(t('admin.reports.byAffiliation'), affiliationRows.value), ...rowsOf(t('admin.reports.byParticipation'), participationRows.value), [t('admin.reports.daily'), ''], ...r.registrants.trend.map((p) => [p.date, String(p.value)])] };
     }
     if (tab.value === 'papers') {
-        return { headers: [label, count], rows: [...rowsOf(t('admin.reports.byTrack'), trackRows.value), ...rowsOf(t('admin.reports.byStatus'), statusRows.value), ...rowsOf(t('admin.reports.byOption'), optionRows.value)] };
+        return { headers: [label, count], rows: [...rowsOf(t('admin.reports.byTrack'), trackRows.value), ...rowsOf(t('admin.reports.byStatus'), statusRows.value), ...rowsOf(t('admin.reports.byRoute'), routeRows.value)] };
     }
-    if (tab.value === 'reviews') {
-        return {
-            headers: [t('admin.reports.reviewer'), t('submissions.fields.track'), t('admin.reports.assigned'), t('admin.reports.done'), t('admin.reports.avgDays'), t('admin.reports.late')],
-            rows: reviewers.value.map((x) => [tr(x.name), x.tracks.map(trackName).join(', '), String(x.assigned), String(x.done), String(x.avgDays), String(x.late)]),
-        };
-    }
-    return { headers: [label, count], rows: [...rowsOf(t('admin.reports.byPaymentStatus'), paymentStatusRows.value), ...rowsOf(t('admin.reports.receivedByOption'), receivedByOption.value, ` ${baht}`), [t('admin.reports.daily'), ''], ...r.finance.receiptsTrend.map((p) => [p.date, `${p.value} ${baht}`])] };
+    return {
+        headers: [t('admin.reports.reviewer'), t('submissions.fields.track'), t('admin.reports.assigned'), t('admin.reports.done'), t('admin.reports.avgDays'), t('admin.reports.late')],
+        rows: reviewers.value.map((x) => [tr(x.name), x.tracks.map(trackName).join(', '), String(x.assigned), String(x.done), String(x.avgDays), String(x.late)]),
+    };
 }
 
 async function exportExcel() {
@@ -137,7 +107,7 @@ const h2 = 'mb-4 text-base font-semibold';
                 </button>
             </div>
 
-            <nav v-if="tabs.length > 1" class="flex gap-1 overflow-x-auto border-b border-neutral-200 dark:border-white/10" role="tablist">
+            <nav class="flex gap-1 overflow-x-auto border-b border-neutral-200 dark:border-white/10" role="tablist">
                 <button
                     v-for="item in tabs"
                     :key="item.key"
@@ -183,8 +153,8 @@ const h2 = 'mb-4 text-base font-semibold';
                     <BarList :rows="trackRows" />
                 </Card>
                 <Card>
-                    <h2 :class="h2">{{ t('admin.reports.byOption') }}</h2>
-                    <BarList :rows="optionRows" />
+                    <h2 :class="h2">{{ t('admin.reports.byRoute') }}</h2>
+                    <BarList :rows="routeRows" />
                     <p class="mt-6 text-sm text-neutral-500 dark:text-neutral-400">
                         <Fa icon="circle-info" class="mr-1 text-gold-500" /> {{ t('admin.reports.acceptanceHint', { accepted: r.papers.kpis.accepted, decided, rate: acceptance }) }}
                     </p>
@@ -199,7 +169,7 @@ const h2 = 'mb-4 text-base font-semibold';
             </div>
 
             <!-- Reviews -->
-            <div v-else-if="tab === 'reviews'" key="reviews" class="grid gap-6 xl:grid-cols-[1fr_2fr]">
+            <div v-else key="reviews" class="grid gap-6 xl:grid-cols-[1fr_2fr]">
                 <Card>
                     <h2 :class="h2">{{ t('admin.reports.recommendations') }}</h2>
                     <BarList :rows="recommendationRows" />
@@ -244,21 +214,6 @@ const h2 = 'mb-4 text-base font-semibold';
                 </Card>
             </div>
 
-            <!-- Finance -->
-            <div v-else key="finance" class="grid gap-6 xl:grid-cols-2">
-                <Card class="xl:col-span-2">
-                    <h2 :class="h2">{{ t('admin.reports.dailyReceipts') }}</h2>
-                    <TrendChart :points="r.finance.receiptsTrend" :unit="baht" />
-                </Card>
-                <Card>
-                    <h2 :class="h2">{{ t('admin.reports.receivedByOption') }}</h2>
-                    <BarList :rows="receivedByOption" :unit="baht" />
-                </Card>
-                <Card>
-                    <h2 :class="h2">{{ t('admin.reports.byPaymentStatus') }}</h2>
-                    <BarList :rows="paymentStatusRows" />
-                </Card>
-            </div>
         </Transition>
 
         <p class="text-xs text-neutral-500 dark:text-neutral-400"><Fa icon="circle-info" class="mr-1 text-gold-500" /> {{ t('admin.reports.mockNote') }}</p>

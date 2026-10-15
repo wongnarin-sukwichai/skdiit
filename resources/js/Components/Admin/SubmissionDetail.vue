@@ -7,6 +7,7 @@ import { formatFileSize } from '@/utils/format';
 defineProps({
     submission: { type: Object, required: true }, // Submission::toClient(full: true)
     contactPhone: { type: String, default: null }, // staff only
+    files: { type: Object, default: null }, // Submission::currentFiles(): pdf, word, turnitin, supplementary (not for reviewers)
 });
 
 const { t, tr, formatDate } = useI18n();
@@ -72,7 +73,29 @@ const box = 'rounded-xl border border-neutral-200 p-4 dark:border-white/10';
                     <a v-if="contactPhone" :href="`tel:${contactPhone}`" class="text-sm text-gold-700 hover:underline dark:text-gold-400"><Fa icon="phone" class="mr-1" />{{ contactPhone }}</a>
                     <ImpersonateButton v-if="submission.submitter.id" :user="submission.submitter" class="mt-2" />
                 </section>
-                <section :class="box">
+                <section v-if="files" :class="box" class="space-y-2">
+                    <p :class="label">{{ t('submissions.files.title') }}</p>
+                    <template v-for="kind in ['pdf', 'word', 'turnitin']" :key="kind">
+                        <a v-if="files[kind]" :href="files[kind].url" class="flex items-center gap-3 rounded-lg border border-neutral-200 p-3 text-sm transition hover:border-gold-400 dark:border-white/10">
+                            <Fa :icon="{ pdf: 'file-pdf', word: 'file-word', turnitin: 'file-circle-check' }[kind]" class="text-2xl text-gold-500" />
+                            <span class="min-w-0 flex-1">
+                                <span class="block text-xs text-neutral-500 dark:text-neutral-400">{{ t(`submissions.files.${kind}`) }}</span>
+                                <span class="block truncate font-medium">{{ files[kind].name }}</span>
+                            </span>
+                            <span class="text-xs text-neutral-500 dark:text-neutral-400">{{ formatFileSize(files[kind].size) }}</span>
+                            <Fa icon="download" class="text-neutral-400" />
+                        </a>
+                        <p v-else class="text-sm text-neutral-400"><Fa icon="circle-exclamation" class="mr-1" />{{ t(`submissions.files.${kind}`) }}: {{ t('submissions.files.missing') }}</p>
+                    </template>
+                    <div v-if="files.supplementary.length">
+                        <p class="mt-3 mb-1 text-xs text-neutral-500 dark:text-neutral-400">{{ t('submissions.files.supplementary') }}</p>
+                        <a v-for="file in files.supplementary" :key="file.id" :href="file.url" class="flex items-center gap-2 py-1 text-sm hover:text-gold-600 dark:hover:text-gold-400">
+                            <Fa icon="paperclip" class="text-neutral-400" /> <span class="min-w-0 flex-1 truncate">{{ file.name }}</span>
+                            <span class="text-xs text-neutral-500 dark:text-neutral-400">{{ formatFileSize(file.size) }}</span>
+                        </a>
+                    </div>
+                </section>
+                <section v-else :class="box">
                     <p :class="label">{{ t('submissions.fields.file') }}</p>
                     <a :href="submission.file.url" class="mt-1 flex items-center gap-3 rounded-lg border border-neutral-200 p-3 text-sm transition hover:border-gold-400 dark:border-white/10">
                         <Fa :icon="submission.file.name.toLowerCase().endsWith('.pdf') ? 'file-pdf' : 'file-word'" class="text-2xl text-gold-500" />

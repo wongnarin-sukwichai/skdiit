@@ -11,7 +11,7 @@
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#161616;border:1px solid #5c4a14;border-radius:16px;padding:32px;">
                     <tr>
                         <td>
-                            <p style="margin:0 0 4px;color:#f5b800;font-size:13px;letter-spacing:2px;">SKDIIT 2027</p>
+                            <p style="margin:0 0 4px;color:#f5b800;font-size:13px;letter-spacing:2px;">{{ $shortName }}</p>
 
                             {{-- Thai --}}
                             <h1 style="margin:0 0 16px;font-size:20px;color:#fff;">

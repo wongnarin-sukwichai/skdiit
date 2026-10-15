@@ -4,10 +4,12 @@ namespace App\Http\Middleware;
 
 use App\Models\AcademicTitle;
 use App\Models\Affiliation;
+use App\Models\Submission;
 use App\Models\User;
 use App\Support\Impersonation;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
+use App\Support\SiteContent;
 
 class HandleInertiaRequests extends Middleware
 {
@@ -39,7 +41,7 @@ class HandleInertiaRequests extends Middleware
             ...parent::share($request),
             'auth' => [
                 'user' => $user ? [
-                    ...$user->only('id', 'name', 'email', 'role', 'affiliation', 'affiliation_other', 'phone', 'participation', 'created_at'),
+                    ...$user->only('id', 'name', 'email', 'role', 'affiliation', 'affiliation_other', 'phone', 'participation', 'registered_year', 'created_at'),
                     'accessRole' => $user->accessRole(),
                 ] : null,
                 // Backend modules the user can open (empty for attendees and guests)
@@ -47,6 +49,8 @@ class HandleInertiaRequests extends Middleware
             ],
             // Admin viewing as this user (banner, read only): { name, email, role, by, endsAt } | null
             'impersonation' => fn () => Impersonation::forClient($user),
+            // Conference information and public-site texts admin edits in Settings (useSite())
+            'site' => fn () => [...SiteContent::all(), 'year' => Submission::conferenceYear()],
             // Affiliation list for the sign-up form and labels (useAffiliations); 'other' is added on the client
             'affiliations' => fn () => Affiliation::ordered()->get()->map->toClient(),
             // Backend: academic titles for pickers and name prefixes (useAcademicTitles)

@@ -9,12 +9,18 @@ import Modal from '@/Components/Modal.vue';
 import { useI18n } from '@/i18n';
 import { useToast } from '@/composables/useToast';
 import { formatFileSize } from '@/utils/format';
-import { articleArchive, mockTracks } from '@/data/mock';
 
 /*
- * Article archive (admin only, Archive group): finished papers of every conference year,
- * published in the Proceeding (Option A) or a journal (Option B). Mock until wired to real data.
+ * Article archive (admin only, Archive group): finished papers of earlier conference years (ArticleController),
+ * published in the Proceeding (conference track) or accepted by the journal. Papers join it when a new year starts.
  */
+const props = defineProps({
+    articles: { type: Array, required: true },
+    tracks: { type: Array, required: true },
+    currentYear: { type: Number, required: true },
+});
+const articleArchive = props.articles;
+const mockTracks = props.tracks;
 const { t, tr, formatNumber } = useI18n();
 const { toast } = useToast();
 
@@ -61,8 +67,8 @@ const statCards = [
 
 const authorList = (article) => article.authors.map((a) => tr(a.name)).join(', ');
 const where = (article) => (article.type === 'journal'
-    ? `${article.journal.name}, ${article.journal.issue}`
-    : t('admin.articles.inProceeding', { year: article.year, pages: article.pages }));
+    ? t('admin.articles.inJournal')
+    : t('admin.articles.inProceeding', { year: article.year }));
 
 // APA-like reference, copied for reports and CVs
 function citation(article) {
@@ -142,9 +148,8 @@ const typeBadge = {
                             <p class="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">{{ where(article) }} · {{ tr(article.track.name) }}</p>
                         </div>
                         <div class="flex shrink-0 flex-wrap items-center gap-2 sm:flex-col sm:items-end">
-                            <button :class="smallBtn" @click="toast('admin.publication.toast.download')"><Fa icon="download" /> PDF · {{ formatFileSize(article.file.size) }}</button>
+                            <a :href="article.file.url" :class="smallBtn"><Fa icon="download" /> {{ article.file.name.split('.').pop().toUpperCase() }} · {{ formatFileSize(article.file.size) }}</a>
                             <button :class="smallBtn" @click="copyCitation(article)"><Fa icon="copy" /> {{ t('admin.articles.cite') }}</button>
-                            <span class="text-xs text-neutral-500 dark:text-neutral-400"><Fa icon="download" class="mr-1" />{{ t('admin.articles.downloads', { count: formatNumber(article.downloads) }) }}</span>
                         </div>
                     </li>
                     <li v-if="!rows.length" class="px-4 py-12 text-center text-neutral-500">{{ t('admin.articles.empty') }}</li>
@@ -156,7 +161,7 @@ const typeBadge = {
             </div>
 
             <p class="mt-4 text-xs text-neutral-500 dark:text-neutral-400">
-                <Fa icon="circle-info" class="mr-1 text-gold-500" /> {{ t('admin.articles.mockNote') }}
+                <Fa icon="circle-info" class="mr-1 text-gold-500" /> {{ t('admin.articles.note', { year: currentYear }) }}
             </p>
         </Card>
     </div>
@@ -190,9 +195,9 @@ const typeBadge = {
                 <button type="button" class="flex items-center gap-2 rounded-lg border border-white/20 px-4 py-2.5 text-sm transition hover:border-gold-400" @click="copyCitation(shown)">
                     <Fa icon="copy" /> {{ t('admin.articles.cite') }}
                 </button>
-                <button type="button" class="flex items-center gap-2 rounded-lg bg-gold-400 px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-gold-300" @click="toast('admin.publication.toast.download')">
+                <a :href="shown.file.url" class="flex items-center gap-2 rounded-lg bg-gold-400 px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-gold-300">
                     <Fa icon="download" /> {{ t('admin.publication.download') }}
-                </button>
+                </a>
             </div>
         </div>
     </Modal>

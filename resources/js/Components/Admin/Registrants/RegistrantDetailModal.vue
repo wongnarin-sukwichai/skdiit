@@ -2,14 +2,12 @@
 import { ref, watch } from 'vue';
 import Modal from '@/Components/Modal.vue';
 import RegistrantStatus from '@/Components/Admin/Registrants/RegistrantStatus.vue';
-import PaymentStatusBadge from '@/Components/PaymentStatusBadge.vue';
 import { useI18n } from '@/i18n';
 import { affiliationByKey } from '@/data/mock';
 
 // Backend registrant record (mock: adminRegistrants)
 const props = defineProps({
     registrant: { type: Object, default: null },
-    seesPapers: { type: Boolean, default: true }, // false for finance: payment status only, no paper
 });
 const emit = defineEmits(['close']);
 
@@ -58,10 +56,9 @@ watch(() => props.registrant, (value) => value && (shown.value = value), { immed
                     <dd class="mt-0.5">{{ formatDate(shown.registeredAt, { dateStyle: 'medium', timeStyle: 'short' }) }}</dd>
                 </div>
                 <div>
-                    <dt class="text-neutral-400">{{ t(seesPapers ? 'registrants.status' : 'registrants.paymentStatus') }}</dt>
+                    <dt class="text-neutral-400">{{ t('registrants.status') }}</dt>
                     <dd class="mt-1">
-                        <RegistrantStatus v-if="seesPapers" :registrant="shown" />
-                        <PaymentStatusBadge v-else :status="shown.payment" />
+                        <RegistrantStatus :registrant="shown" />
                     </dd>
                 </div>
                 <div>
@@ -73,7 +70,7 @@ watch(() => props.registrant, (value) => value && (shown.value = value), { immed
                     </dd>
                     <dd v-else class="mt-0.5 text-emerald-400">{{ t('admin.registrants.active') }}</dd>
                 </div>
-                <div v-if="seesPapers && shown.participation === 'attend_submit'" class="sm:col-span-2">
+                <div v-if="shown.participation === 'attend_submit'" class="sm:col-span-2">
                     <dt class="text-neutral-400">{{ t('registrants.paper') }}</dt>
                     <dd class="mt-0.5" :class="{ 'text-neutral-500 italic': !shown.paper }">
                         {{ shown.paper ? tr(shown.paper) : t('registrants.noPaper') }}

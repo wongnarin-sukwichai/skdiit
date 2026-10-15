@@ -87,7 +87,6 @@ const sessions = computed(() => presentationSessions
                                     <p class="text-neutral-100">{{ tr(paper.title) }}</p>
                                     <p class="mt-0.5 text-xs text-neutral-400">
                                         {{ tr(paper.author) }} · <span class="font-mono">{{ paper.code }}</span>
-                                        <span v-if="paper.mode === 'online'" class="ml-1 rounded-full bg-sky-500/15 px-2 py-0.5 text-sky-300"><Fa icon="video" class="mr-1" />{{ t('admin.presentations.online') }}</span>
                                     </p>
                                 </div>
                             </li>

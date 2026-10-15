@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\SubmissionAction;
+use App\Support\WorkflowMail;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -11,6 +12,12 @@ class SubmissionEvent extends Model
     public const UPDATED_AT = null;
 
     protected $fillable = ['user_id', 'action', 'from_status', 'to_status', 'comment', 'meta'];
+
+    protected static function booted(): void
+    {
+        // The email that goes with this step (to the author, or to the reviewer for assignments and reminders)
+        static::created(fn (SubmissionEvent $event) => WorkflowMail::forEvent($event));
+    }
 
     protected function casts(): array
     {

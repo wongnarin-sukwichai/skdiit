@@ -3,9 +3,11 @@
 namespace App\Models;
 
 use App\Enums\ReviewRecommendation;
+use App\Enums\SubmissionAction;
 use App\Enums\SubmissionStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Review extends Model
 {
@@ -37,6 +39,47 @@ class Review extends Model
     public function reviewer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'reviewer_id');
+    }
+
+    /** Scores 1-5 per criterion (Settings › Review criteria). */
+    public function scores(): HasMany
+    {
+        return $this->hasMany(ReviewScore::class);
+    }
+
+    /** Replace the scores with the given ones: [criterion id => 1..5]; empty values are dropped (a draft may be partial). */
+    public function saveScores(array $scores): void
+    {
+        $this->scores()->delete();
+        foreach (array_filter($scores, fn ($score) => $score !== null && $score !== '') as $criterion => $score) {
+            $this->scores()->create(['review_criterion_id' => (int) $criterion, 'score' => (int) $score]);
+        }
+        $this->unsetRelation('scores');
+    }
+
+    /**
+     * What the editor decided on the round this reviewer evaluated (the first decision after the evaluation),
+     * and the paper's final result once there is one. For the reviewer's own pages; null while undecided.
+     */
+    public function outcomeForReviewer(): ?array
+    {
+        if (! $this->isSubmitted()) {
+            return null;
+        }
+        $decision = $this->submission->events()->reorder('id')
+            ->where('action', SubmissionAction::Decided)
+            ->where('created_at', '>=', $this->submitted_at)
+            ->first();
+        if (! $decision) {
+            return null;
+        }
+        $final = in_array($this->submission->status, [SubmissionStatus::Accepted, SubmissionStatus::CameraReady, SubmissionStatus::ReviewRejected], true);
+
+        return [
+            'decision' => $decision->to_status,
+            'at' => $decision->created_at->toIso8601String(),
+            'final' => $final ? $this->submission->status->value : null,
+        ];
     }
 
     public function isSubmitted(): bool
@@ -94,6 +137,10 @@ class Review extends Model
             'comment' => $visible ? $this->comment : null,
             // Confidential: for the editors only (never shown to authors)
             'commentToEditor' => $visible ? $this->comment_to_editor : null,
+            // Scores per criterion and their average (staff and the reviewer; not shown to authors)
+            'scores' => $visible ? $this->scores->load('criterion')->sortBy(fn (ReviewScore $s) => [$s->criterion->sort_order, $s->criterion->id])->values()
+                ->map(fn (ReviewScore $s) => ['criterion' => $s->review_criterion_id, 'name' => $s->criterion->toClient()['name'], 'score' => $s->score])->all() : [],
+            'average' => $visible && $this->scores->isNotEmpty() ? round($this->scores->avg('score'), 2) : null,
             'submittedAt' => $this->submitted_at?->toIso8601String(),
             'draftSavedAt' => $withReviewer ? null : $this->draft_saved_at?->toIso8601String(),
             'conflictDeclaredAt' => $this->conflict_declared_at?->toIso8601String(),

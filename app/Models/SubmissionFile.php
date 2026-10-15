@@ -5,7 +5,10 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-/** One uploaded file of a paper: a manuscript version, or the response letter sent with it. */
+/**
+ * One uploaded file of a paper, by kind: manuscript (the PDF of a version), word (the same version as Word),
+ * turnitin (similarity report, PDF), supplementary (any other file, optional), response (letter sent with a revision).
+ */
 class SubmissionFile extends Model
 {
     public const UPDATED_AT = null;
@@ -29,6 +32,8 @@ class SubmissionFile extends Model
             'name' => $this->name,
             'size' => $this->size,
             'isPdf' => $this->isPdf(),
+            'kind' => $this->kind,
+            'at' => $this->created_at?->toIso8601String(),
             'url' => "/admin/submission-files/{$this->id}",
         ];
     }

@@ -2,16 +2,19 @@
 import { computed } from 'vue';
 import { Head, usePage } from '@inertiajs/vue3';
 import CheckMark from '@/Components/CheckMark.vue';
-import PaymentStatusBadge from '@/Components/PaymentStatusBadge.vue';
 import Pagination from '@/Components/Pagination.vue';
 import { useI18n } from '@/i18n';
 import { useRegistrantTable } from '@/composables/useRegistrantTable';
 import { useAuthModal } from '@/composables/useAuthModal';
-import { affiliationByKey, conference } from '@/data/mock';
+import { affiliationByKey } from '@/data/mock';
+import { useSite } from '@/composables/useSite';
 
 const { t, tr, formatDate, formatNumber } = useI18n();
 const { openLogin, openRegister } = useAuthModal();
 const user = computed(() => usePage().props.auth.user);
+// Conference information and the headline (Settings)
+const site = useSite();
+const conference = computed(() => site.value.conference);
 const { form, perPage, page, total, lastPage, rows, search, reset } = useRegistrantTable();
 </script>
 
@@ -23,9 +26,9 @@ const { form, perPage, page, total, lastPage, rows, search, reset } = useRegistr
     <section class="relative">
         <div class="mx-auto max-w-[1600px] px-4 pt-10 pb-14 sm:px-6 lg:px-8 lg:pt-14">
             <div class="lg:max-w-[60%]">
-                <p class="mb-3 text-xs font-semibold tracking-[0.35em] text-gold-400 uppercase sm:text-sm">{{ t('hero.kicker') }}</p>
-                <h1 class="text-3xl leading-tight font-bold text-white [text-shadow:0_2px_12px_rgba(0,0,0,.8)] sm:text-5xl">{{ t('hero.title') }}</h1>
-                <p class="mt-3 text-lg text-neutral-200 [text-shadow:0_1px_8px_rgba(0,0,0,.9)] sm:text-xl">{{ t('hero.subtitle') }}</p>
+                <p class="mb-3 text-xs font-semibold tracking-[0.35em] text-gold-400 uppercase sm:text-sm">{{ t('hero.kicker', { name: conference.shortName }) }}</p>
+                <h1 class="text-3xl leading-tight font-bold text-white [text-shadow:0_2px_12px_rgba(0,0,0,.8)] sm:text-5xl">{{ tr(site.home.title) }}</h1>
+                <p class="mt-3 text-lg text-neutral-200 [text-shadow:0_1px_8px_rgba(0,0,0,.9)] sm:text-xl">{{ tr(conference.fullName) }}</p>
 
                 <!-- Auth shortcuts for mobile/tablet; on desktop they live in the header -->
                 <div v-if="!user" class="mt-5 grid grid-cols-2 gap-3 sm:flex lg:hidden">
@@ -100,7 +103,7 @@ const { form, perPage, page, total, lastPage, rows, search, reset } = useRegistr
             </div>
 
             <div class="overflow-x-auto rounded-xl border border-white/10">
-                <table class="w-full min-w-[900px] text-sm">
+                <table class="w-full min-w-[760px] text-sm">
                     <thead class="bg-gold-400 text-left text-black">
                         <tr>
                             <th class="px-4 py-3 font-semibold">{{ t('registrants.no') }}</th>
@@ -108,7 +111,6 @@ const { form, perPage, page, total, lastPage, rows, search, reset } = useRegistr
                             <th class="px-4 py-3 font-semibold">{{ t('registrants.affiliation') }}</th>
                             <th class="px-4 py-3 text-center font-semibold">{{ t('registrants.attend') }}</th>
                             <th class="px-4 py-3 text-center font-semibold">{{ t('registrants.submit') }}</th>
-                            <th class="px-4 py-3 text-center font-semibold">{{ t('registrants.paymentStatus') }}</th>
                             <th class="px-4 py-3 font-semibold">{{ t('registrants.registeredAt') }}</th>
                         </tr>
                     </thead>
@@ -120,11 +122,10 @@ const { form, perPage, page, total, lastPage, rows, search, reset } = useRegistr
                                 <td class="px-4 py-2.5 text-neutral-200">{{ tr(affiliationByKey[row.affiliation]) }}</td>
                                 <td class="px-4 py-2.5 text-center"><CheckMark :checked="row.attend" /></td>
                                 <td class="px-4 py-2.5 text-center"><CheckMark :checked="row.submitted" /></td>
-                                <td class="px-4 py-2.5 text-center"><PaymentStatusBadge :status="row.payment" /></td>
                                 <td class="px-4 py-2.5 whitespace-nowrap text-neutral-300">{{ formatDate(row.registeredAt) }}</td>
                             </tr>
                             <tr v-if="!rows.length">
-                                <td colspan="7" class="px-4 py-12 text-center text-neutral-400">{{ t('registrants.empty') }}</td>
+                                <td colspan="6" class="px-4 py-12 text-center text-neutral-400">{{ t('registrants.empty') }}</td>
                             </tr>
                         </tbody>
                     </Transition>

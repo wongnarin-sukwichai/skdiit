@@ -19,10 +19,17 @@ enum SubmissionAction: string
     case ReviewUnavailable = 'review_unavailable'; // a reviewer told the editors they cannot review; meta: reviewer, reason
     case Decided = 'decided';                     // editor's decision after review (see to_status); meta: revision due
     case ReviewRoundStarted = 'review_round_started'; // editor sent a revised paper to reviewers again; meta: round
-    case OptionChosen = 'option_chosen';              // author chose A or B; meta: option
     case CameraReadyUploaded = 'camera_ready_uploaded'; // author uploaded (or replaced) the final file
-    case JournalResult = 'journal_result';            // editor recorded the journal's answer; meta: journal, result
+    case JournalScreened = 'journal_screened';        // the journal's selection (see to_status: journal_selected or screening)
+    case JournalResult = 'journal_result';            // the journal's final answer (see to_status: journal_accepted or screening)
     case PresentationScheduled = 'presentation_scheduled'; // meta: at, room (null = cleared)
+    case SlidesUploaded = 'slides_uploaded';          // author uploaded (or replaced) the presentation slides
+
+    /** Journal decisions: the author sees the outcome but never the journal's reason. */
+    public function hidesCommentFromAuthor(): bool
+    {
+        return in_array($this, [self::JournalScreened, self::JournalResult], true);
+    }
 
     /** Entries the author may see (without staff names). Reviewer activity stays hidden. */
     public function visibleToAuthor(): bool

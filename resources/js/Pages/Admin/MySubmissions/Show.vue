@@ -14,10 +14,12 @@ import { useI18n } from '@/i18n';
 
 const props = defineProps({
     versions: { type: Array, required: true }, // my file versions and my answers to the reviewers
+    files: { type: Object, required: true }, // current PDF, Word, Turnitin and supplementary files
     submission: { type: Object, required: true },
     history: { type: Array, required: true }, // without staff names
     reviewFeedback: { type: Array, required: true }, // "Reviewer 1", "Reviewer 2", ...
     maxMb: { type: Number, required: true },
+    journalUrl: { type: String, default: null }, // the journal's submission site (Settings)
     deadline: { type: String, default: null },
     isOpen: { type: Boolean, required: true },
     opensAt: { type: String, default: null },
@@ -52,11 +54,11 @@ const latestDecision = computed(() => props.history.find((e) => ['screened', 'de
 
         <DeadlineNotice v-if="submission.status === 'submitted'" :opens-at="opensAt" :deadline="deadline" :phase="phase" />
         <RevisionNotice v-else :status="submission.status" :comment="latestDecision?.comment" :due-date="submission.revisionDueDate" />
-        <PublicationAuthorPanel :submission="submission" :max-mb="maxMb" />
+        <PublicationAuthorPanel :submission="submission" :max-mb="maxMb" :journal-url="journalUrl" />
 
         <ReviewerFeedback :rounds="reviewFeedback" />
         <FileVersions v-if="versions.length > 1" :versions="versions" />
-        <SubmissionDetail :submission="submission" />
+        <SubmissionDetail :submission="submission" :files="files" />
         <SubmissionHistory :history="history" />
     </Card>
 </template>

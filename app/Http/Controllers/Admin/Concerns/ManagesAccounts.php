@@ -10,7 +10,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Account list and actions shared by the Staff (admin, editor, finance) and Reviewers pages.
+ * Account list and actions shared by the Staff (admin, editor, journal) and Reviewers pages.
  * Each controller manages only the roles returned by roles(); other accounts give 404.
  */
 trait ManagesAccounts

@@ -20,8 +20,12 @@ class Setting extends Model
     /** Values used until admin saves a setting. */
     public const DEFAULTS = [
         'upload_max_mb' => 10,
+        'conference_year' => 2027, // the year in use; Settings › Conference year moves it on (papers and registrants of earlier years are kept)
         'submission_opens' => null, // 'Y-m-d H:i' in the app timezone; null = open right away
         'submission_deadline' => null, // 'Y-m-d H:i' in the app timezone; null = no deadline
+        'journal_deadline' => null, // 'Y-m-d': the journal should have made its first selection by then (a warning only)
+        'journal_url' => null, // the journal's submission site, shown to authors whose paper it selected
+        'slides_cutoff_days' => null, // slides can be replaced until this many days before the talk; null = until the talk
     ];
 
     public static function get(string $key): mixed

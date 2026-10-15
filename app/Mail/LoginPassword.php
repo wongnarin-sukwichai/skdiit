@@ -3,6 +3,7 @@
 namespace App\Mail;
 
 use App\Models\User;
+use App\Support\SiteContent;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
@@ -26,10 +27,12 @@ class LoginPassword extends Mailable
 
     public function envelope(): Envelope
     {
+        $name = SiteContent::all()['conference']['shortName'];
+
         return new Envelope(
             subject: $this->kind === 'registered'
-                ? 'SKDIIT 2027 – รหัสผ่านเข้าสู่ระบบ / Your sign-in password'
-                : 'SKDIIT 2027 – รหัสผ่านใหม่ / Your new password',
+                ? "{$name} – รหัสผ่านเข้าสู่ระบบ / Your sign-in password"
+                : "{$name} – รหัสผ่านใหม่ / Your new password",
         );
     }
 
@@ -37,7 +40,10 @@ class LoginPassword extends Mailable
     {
         return new Content(
             view: 'mail.login-password',
-            with: ['loginUrl' => url('/login').'?'.http_build_query(['email' => $this->user->email])],
+            with: [
+                'loginUrl' => url('/login').'?'.http_build_query(['email' => $this->user->email]),
+                'shortName' => SiteContent::all()['conference']['shortName'],
+            ],
         );
     }
 }

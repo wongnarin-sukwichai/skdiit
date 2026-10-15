@@ -43,6 +43,7 @@ class ReviewerAssignmentController extends Controller
 
         $submission->log(SubmissionAction::ReviewerAssigned, $request->user(), meta: [
             'reviewer' => $review->reviewer->name,
+            'reviewer_id' => $review->reviewer_id,
             'due' => $data['due_date'],
         ]);
 
@@ -81,7 +82,7 @@ class ReviewerAssignmentController extends Controller
         abort_if($review->isSubmitted() || $review->isClosed(), 403);
 
         $review->forceFill(['reminded_at' => now(), 'reminded_by' => $request->user()->id, 'reminders' => $review->reminders + 1])->save();
-        $submission->log(SubmissionAction::ReviewReminded, $request->user(), meta: ['reviewer' => $review->reviewer->name, 'count' => $review->reminders]);
+        $submission->log(SubmissionAction::ReviewReminded, $request->user(), meta: ['reviewer' => $review->reviewer->name, 'reviewer_id' => $review->reviewer_id, 'due' => $review->due_date->toDateString(), 'count' => $review->reminders]);
 
         return back()->with('success', 'reviews.panel.reminded');
     }

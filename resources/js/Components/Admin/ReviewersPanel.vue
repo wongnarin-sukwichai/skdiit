@@ -3,6 +3,7 @@ import { computed, ref } from 'vue';
 import { router, useForm } from '@inertiajs/vue3';
 import Modal from '@/Components/Modal.vue';
 import ReviewBadge from '@/Components/Admin/ReviewBadge.vue';
+import ReviewScores from '@/Components/Admin/ReviewScores.vue';
 import { useI18n } from '@/i18n';
 
 const props = defineProps({
@@ -119,6 +120,9 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
                         <Fa icon="bell" class="mr-1" />{{ t('reviews.panel.lastReminder', { name: review.reminder.by ?? '—', date: formatDate(review.reminder.at, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) }) }}
                     </span>
                     <ReviewBadge v-if="review.recommendation" kind="recommendation" :value="review.recommendation" />
+                    <span v-if="review.average !== null" class="rounded-full bg-gold-100 px-2.5 py-0.5 text-xs font-semibold text-gold-700 dark:bg-gold-400/15 dark:text-gold-300" :title="t('reviews.scores.average')">
+                        <Fa icon="star" class="mr-1" />{{ review.average }}/5
+                    </span>
 
                     <div class="flex gap-1.5">
                         <a v-if="review.attachment" :href="review.attachment.url" :class="iconBtn" :title="`${t('reviews.form.attachment')}: ${review.attachment.name}`"><Fa icon="paperclip" class="text-xs" /></a>
@@ -143,6 +147,7 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
                 </div>
                 <Transition name="fade">
                     <blockquote v-if="expanded.has(review.id)" class="mt-3 rounded-lg bg-neutral-50 px-3 py-2 text-sm whitespace-pre-line text-neutral-700 dark:bg-white/5 dark:text-neutral-200">
+                        <ReviewScores v-if="review.scores.length" :scores="review.scores" :average="review.average" class="mb-3 whitespace-normal" />
                         {{ review.comment }}
                         <span v-if="review.commentToEditor" class="mt-2 block rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 dark:border-amber-400/20 dark:bg-amber-400/5">
                             <b class="text-xs text-amber-700 dark:text-amber-300"><Fa icon="lock" class="mr-1" />{{ t('reviews.form.toEditor') }}</b>

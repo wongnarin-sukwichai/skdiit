@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue';
 import Modal from '@/Components/Modal.vue';
 import { useI18n } from '@/i18n';
+import { useSite } from '@/composables/useSite';
 
 // One sent email as the recipient saw it (same look as resources/views/mail), from the email log
 const props = defineProps({
@@ -10,6 +11,7 @@ const props = defineProps({
 const emit = defineEmits(['close', 'resend']);
 
 const { t, tr, formatDate } = useI18n();
+const site = useSite();
 
 // Keep the last email so the content stays visible while the modal fades out
 const shown = ref(null);
@@ -22,7 +24,7 @@ watch(() => props.email, (value) => value && (shown.value = value), { immediate:
             <!-- Envelope -->
             <dl class="grid grid-cols-[5rem_1fr] gap-x-3 gap-y-1 border-b border-white/10 pb-4 text-sm">
                 <dt class="text-neutral-400">{{ t('admin.notificationsPage.from') }}</dt>
-                <dd>SKDIIT 2027 &lt;skdiit@msu.ac.th&gt;</dd>
+                <dd>{{ site.conference.shortName }} &lt;{{ site.conference.email }}&gt;</dd>
                 <dt class="text-neutral-400">{{ t('admin.notificationsPage.to') }}</dt>
                 <dd class="break-all">{{ tr(shown.name) }} &lt;{{ shown.to }}&gt;</dd>
                 <dt class="text-neutral-400">{{ t('admin.notificationsPage.subject') }}</dt>
@@ -33,7 +35,7 @@ watch(() => props.email, (value) => value && (shown.value = value), { immediate:
 
             <!-- Message (Thai first, then English, like the real template) -->
             <div class="max-h-[55vh] overflow-y-auto rounded-2xl border border-gold-400/30 bg-[#161616] p-6 text-sm leading-relaxed text-neutral-200">
-                <p class="mb-1 text-xs tracking-[0.2em] text-gold-400">SKDIIT 2027</p>
+                <p class="mb-1 text-xs tracking-[0.2em] text-gold-400">{{ site.conference.shortName }}</p>
                 <h3 class="mb-3 text-lg font-semibold text-white">{{ shown.subject.th }}</h3>
                 <p class="mb-2">เรียน {{ shown.name.th }}</p>
                 <p v-for="(line, i) in shown.body.th" :key="`th-${i}`" class="mb-2">{{ line }}</p>

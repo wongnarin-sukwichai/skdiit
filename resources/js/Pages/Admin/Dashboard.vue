@@ -10,12 +10,12 @@ import TrendChart from '@/Components/Admin/Charts/TrendChart.vue';
 import { useI18n } from '@/i18n';
 import { timeAgo, useNotifications } from '@/composables/useNotifications';
 import { eventIcons, eventTitle } from '@/utils/submissionEvents';
-import { duplicateSlips, overdueDays } from '@/utils/payments';
-import { adminPayments, dashboardData, emailLog, importantDates, paymentFees, reportData } from '@/data/mock';
+import { dashboardData, emailLog, reportData } from '@/data/mock';
+import { useSite } from '@/composables/useSite';
 
 // Editors are the coordinators (no secretariat role): they also follow registrants and paper emails.
-// Sample counts until those modules are real; paper emails = everything except passwords and payments.
-const paperEmailsFailed = emailLog.filter((e) => e.status === 'failed' && !['LoginPassword', 'PaymentResult'].includes(e.template)).length;
+// Sample counts until those modules are real; paper emails = everything except passwords.
+const paperEmailsFailed = emailLog.filter((e) => e.status === 'failed' && e.template !== 'LoginPassword').length;
 
 /*
  * Home: "what do I have to do now", per role (mock). Totals and breakdowns live in Reports.
@@ -27,6 +27,8 @@ const props = defineProps({
     mine: { type: Object, default: null },
     // An author's own papers with the next step (DashboardController::authorPapers), their turn first
     myPapers: { type: Array, default: null },
+    // The journal's work (DashboardController::journalWork): { kpis, deadline, isClosed }
+    journal: { type: Object, default: null },
 });
 
 const { t, tr, formatDate, formatNumber } = useI18n();
@@ -38,22 +40,20 @@ const queueLink = (queue) => `/admin/submissions?queue=${queue}`;
 const data = computed(() => {
     const mock = dashboardData[role.value] ?? {};
     if (props.mine) return props.mine;
-    // Finance: what needs handling, counted the same way as the Payments page (sample data)
-    if (role.value === 'finance') {
-        const payLink = (filter) => `/admin/payments?filter=${filter}`;
-        const toCheck = adminPayments.filter((p) => p.status === 'pending_review').length;
+    // Journal: what to select and what waits for its final answer (real)
+    if (props.journal) {
+        const k = props.journal.kpis;
+        const link = (tab) => `/admin/journal?tab=${tab}`;
         return {
-            ...mock,
-            kpis: { ...mock.kpis, slipsToCheck: toCheck },
+            kpis: k,
             tasks: [
-                { key: 'slipsToCheck', icon: 'magnifying-glass', count: toCheck, href: payLink('pending_review') },
-                { key: 'duplicateSlips', icon: 'copy', count: Object.keys(duplicateSlips(adminPayments)).length, href: payLink('duplicate') },
-                { key: 'overduePayments', icon: 'clock', count: adminPayments.filter((p) => overdueDays(p, paymentFees.dueDays) > 0).length, href: payLink('overdue') },
-                { key: 'slipsRejected', icon: 'circle-exclamation', count: adminPayments.filter((p) => p.status === 'slip_rejected').length, href: payLink('slip_rejected') },
+                { key: 'journalSelect', icon: 'inbox', count: props.journal.isClosed ? k.journalWaiting : 0, href: link('waiting') },
+                { key: 'journalResult', icon: 'paper-plane', count: k.journalSelected, href: link('selected') },
+                { key: 'journalPastDeadline', icon: 'triangle-exclamation', count: k.journalPastDeadline, href: link('waiting') },
             ],
         };
     }
-    // Author: real papers; payments are still sample data
+    // Author: real papers
     if (props.myPapers) return { ...mock, papers: props.myPapers };
     const p = props.papers;
     if (!p) return mock;
@@ -67,7 +67,7 @@ const data = computed(() => {
                 { key: 'revisionsBack', icon: 'rotate', count: p.queues.revised, href: queueLink('revised') },
                 { key: 'overdueReviews', icon: 'triangle-exclamation', count: p.queues.overdue, href: queueLink('overdue') },
                 { key: 'reviewerUnavailable', icon: 'user-xmark', count: p.queues.unavailable, href: queueLink('unavailable') },
-                { key: 'journalWaiting', icon: 'paper-plane', count: p.journalWaiting, href: '/admin/publication' },
+                { key: 'journalWaiting', icon: 'newspaper', count: p.journalWaiting, href: '/admin/submissions?status=submitted' },
                 // Coordination
                 { key: 'paperEmailsFailed', icon: 'envelope', count: paperEmailsFailed, href: '/admin/notifications?tab=emails' },
                 { key: 'reviewersNotSignedIn', icon: 'user-clock', count: p.reviewersNotSignedIn, href: '/admin/reviewers' },
@@ -83,27 +83,30 @@ const data = computed(() => {
     return {
         ...mock,
         kpis: { ...mock.kpis, waitingScreening: p.queues.screening, overdueReviews: p.overdueReviews },
-        tasks: mock.tasks.map((task) => (real[task.key] ? { ...task, count: real[task.key][0], href: real[task.key][1] } : task)),
+        tasks: [
+            // The journal deadline has passed: admin moves the papers it did not select to the conference track
+            { key: 'journalPastDeadline', icon: 'triangle-exclamation', count: p.journalPastDeadline, href: '/admin/journal?tab=waiting' },
+            ...mock.tasks.map((task) => (real[task.key] ? { ...task, count: real[task.key][0], href: real[task.key][1] } : task)),
+        ],
     };
 });
 
 const kpiIcons = {
-    registrantsToday: 'user-plus', waitingScreening: 'file-lines', overdueReviews: 'triangle-exclamation', slipsToCheck: 'receipt',
+    registrantsToday: 'user-plus', waitingScreening: 'file-lines', overdueReviews: 'triangle-exclamation',
     readyToDecide: 'gavel', revisionsBack: 'rotate',
     pendingReviews: 'clipboard-check', dueSoon: 'clock', overdueMine: 'triangle-exclamation', doneReviews: 'circle-check',
-    receivedToday: 'circle-check', outstandingBaht: 'clock', paidCount: 'receipt',
+    journalWaiting: 'inbox', journalSelected: 'paper-plane', journalAccepted: 'circle-check', journalPastDeadline: 'triangle-exclamation',
 };
 const statCards = computed(() => Object.keys(data.value.kpis ?? {}).map((key) => ({ key, icon: kpiIcons[key] ?? 'gauge' })));
 
-// Roles without the Notifications menu (reviewers, authors, finance) read their notifications here
+// Roles without the Notifications menu (reviewers, authors) read their notifications here
 const { items: notifications, unread, markRead, markAllRead } = useNotifications();
 const hasNotificationsMenu = computed(() => usePage().props.auth.modules.some((m) => m.key === 'notifications'));
 
 const today = formatDate(new Date().toISOString(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 const recentDays = reportData.registrants.trend.slice(-14);
-const recentReceipts = reportData.finance.receiptsTrend.slice(-14);
-const slipsWaiting = adminPayments.filter((p) => p.status === 'pending_review').slice(0, 5);
-const upcomingDates = computed(() => importantDates
+const site = useSite();
+const upcomingDates = computed(() => site.value.dates
     .filter((d) => d.date >= new Date().toISOString().slice(0, 10))
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(0, 4));
@@ -129,7 +132,7 @@ const row = 'flex items-center gap-3 rounded-lg px-3 py-2.5 transition hover:bg-
         </Card>
 
         <!-- Admin and editor: work queues -->
-        <div v-if="data.tasks" :class="role === 'finance' ? '' : 'xl:grid-cols-[1.2fr_1fr]'" class="grid gap-6">
+        <div v-if="data.tasks" class="grid gap-6 xl:grid-cols-[1.2fr_1fr]">
             <Card>
                 <h2 :class="h2"><Fa icon="list-check" class="text-gold-500" /> {{ t('admin.dash.todo') }}</h2>
                 <ul class="space-y-1">
@@ -235,16 +238,6 @@ const row = 'flex items-center gap-3 rounded-lg px-3 py-2.5 transition hover:bg-
                 </ul>
             </Card>
             <div class="space-y-6">
-                <Card v-if="data.paymentsDue">
-                    <Link href="/admin/payments" class="flex items-center gap-3">
-                        <span class="grid size-11 place-items-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300"><Fa icon="receipt" /></span>
-                        <span class="flex-1">
-                            <span class="block font-semibold">{{ t('admin.dash.paymentsDue', { n: data.paymentsDue }) }}</span>
-                            <span class="text-sm text-neutral-500 dark:text-neutral-400">{{ t('admin.dash.paymentsHint') }}</span>
-                        </span>
-                        <Fa icon="chevron-right" class="text-xs text-neutral-400" />
-                    </Link>
-                </Card>
                 <Card>
                     <h2 :class="h2"><Fa icon="calendar-days" class="text-gold-500" /> {{ t('admin.dash.upcoming') }}</h2>
                     <ul class="space-y-3">
@@ -258,31 +251,7 @@ const row = 'flex items-center gap-3 rounded-lg px-3 py-2.5 transition hover:bg-
             </div>
         </div>
 
-        <!-- Finance: slips waiting and money coming in -->
-        <div v-if="role === 'finance'" class="grid gap-6 xl:grid-cols-2">
-            <Card>
-                <h2 :class="h2"><Fa icon="receipt" class="text-gold-500" /> {{ t('admin.dash.slipsWaiting') }}</h2>
-                <ul class="space-y-1">
-                    <li v-for="payment in slipsWaiting" :key="payment.id">
-                        <Link href="/admin/payments" :class="row">
-                            <span class="min-w-0 flex-1">
-                                <span class="block truncate font-medium">{{ tr(payment.name) }}</span>
-                                <span class="font-mono text-xs text-neutral-500 dark:text-neutral-400">{{ payment.ref }} · {{ timeAgo(payment.slip.uploadedAt) }}</span>
-                            </span>
-                            <span class="text-sm font-semibold tabular-nums">{{ formatNumber(payment.slip.amount) }} {{ t('admin.payments.baht') }}</span>
-                            <Fa v-if="payment.slip.amount !== payment.amount" icon="triangle-exclamation" class="text-red-500" :title="t('admin.payments.mismatchShort')" />
-                            <Fa icon="chevron-right" class="text-xs text-neutral-400" />
-                        </Link>
-                    </li>
-                </ul>
-            </Card>
-            <Card>
-                <h2 :class="h2"><Fa icon="chart-line" class="text-gold-500" /> {{ t('admin.dash.receipts14') }}</h2>
-                <TrendChart :points="recentReceipts" :unit="t('admin.payments.baht')" />
-            </Card>
-        </div>
-
-        <!-- Roles without the Notifications menu (reviewers, authors, finance) read their notifications here -->
+        <!-- Roles without the Notifications menu (reviewers, authors) read their notifications here -->
         <Card v-if="!hasNotificationsMenu">
             <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
                 <h2 :class="[h2, 'mb-0']"><Fa icon="bell" class="text-gold-500" /> {{ t('admin.menu.notifications') }}</h2>
@@ -316,6 +285,6 @@ const row = 'flex items-center gap-3 rounded-lg px-3 py-2.5 transition hover:bg-
             </ul>
         </Card>
 
-        <p class="text-xs text-neutral-500 dark:text-neutral-400"><Fa icon="circle-info" class="mr-1 text-gold-500" /> {{ t(['editor', 'reviewer', 'author'].includes(role) ? 'admin.dash.realNote' : 'admin.dash.mockNote') }}</p>
+        <p class="text-xs text-neutral-500 dark:text-neutral-400"><Fa icon="circle-info" class="mr-1 text-gold-500" /> {{ t(['editor', 'reviewer', 'author', 'journal'].includes(role) ? 'admin.dash.realNote' : 'admin.dash.mockNote') }}</p>
     </div>
 </template>

@@ -46,7 +46,13 @@ const day = (value) => formatDate(value, { day: 'numeric', month: 'short', year:
                         </td>
                         <td class="px-4 py-3 whitespace-nowrap text-neutral-600 dark:text-neutral-300">{{ tr(review.paper.track.name) }}</td>
                         <td class="px-4 py-3 whitespace-nowrap" :class="review.state === 'overdue' ? 'font-medium text-red-600 dark:text-red-400' : 'text-neutral-500 dark:text-neutral-400'">{{ day(review.dueDate) }}</td>
-                        <td class="px-4 py-3 text-center"><ReviewBadge kind="state" :value="review.state" /></td>
+                        <td class="px-4 py-3 text-center">
+                            <ReviewBadge kind="state" :value="review.state" />
+                            <!-- The editor's decision on the round I evaluated -->
+                            <span v-if="review.outcome" class="mt-1 block text-xs text-neutral-500 dark:text-neutral-400">
+                                {{ t('reviews.outcome.short') }}: {{ t(`submissions.history.decided.${review.outcome.decision}`) }}
+                            </span>
+                        </td>
                         <td class="px-4 py-3 text-right">
                             <Link
                                 :href="`/admin/reviews/${review.id}`"

@@ -12,8 +12,9 @@ const styles = {
     editor: 'border-gold-400 bg-gold-50 text-gold-600 dark:border-gold-400/60 dark:bg-gold-400/10 dark:text-gold-300',
     reviewer: 'border-violet-300 bg-violet-50 text-violet-700 dark:border-violet-400/50 dark:bg-violet-400/10 dark:text-violet-200',
     author: 'border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-400/50 dark:bg-sky-400/10 dark:text-sky-200',
+    journal: 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-400/50 dark:bg-emerald-400/10 dark:text-emerald-200',
 };
-const icons = { editor: 'user-tie', reviewer: 'user-check', author: 'user-pen' };
+const icons = { editor: 'user-tie', reviewer: 'user-check', author: 'user-pen', journal: 'newspaper' };
 </script>
 
 <template>

@@ -14,7 +14,6 @@ const props = defineProps({
     filters: { type: Object, required: true },
     tracks: { type: Array, required: true },
     statuses: { type: Array, required: true },
-    optionBCount: { type: Number, required: true },
     cameraReadyCount: { type: Number, required: true },
     queues: { type: Object, required: true }, // papers per editor work queue (Submission::queueCounts())
     deadline: { type: String, default: null },
@@ -77,15 +76,6 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
         <PageHeader icon="file-lines" :title="t('admin.menu.submissions')" :subtitle="t('submissions.manage.subtitle')" />
         <div class="flex flex-col gap-3 lg:flex-row lg:items-center">
             <DeadlineNotice :opens-at="opensAt" :deadline="deadline" :phase="phase" class="flex-1" />
-            <!-- Option B papers for the editors to send to journals (a plain link: it is a file download) -->
-            <a
-                href="/admin/submissions/export/option-b"
-                :class="optionBCount ? 'hover:border-emerald-500 hover:text-emerald-600 dark:hover:text-emerald-400' : 'pointer-events-none opacity-50'"
-                class="flex shrink-0 items-center justify-center gap-2 rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition dark:border-white/20"
-                :aria-disabled="!optionBCount"
-            >
-                <Fa icon="file-excel" class="text-emerald-600 dark:text-emerald-400" /> {{ t('publication.export', { count: formatNumber(optionBCount) }) }}
-            </a>
             <!-- Every camera-ready file in one ZIP, for compiling the Proceeding -->
             <a
                 href="/admin/submissions/export/camera-ready"

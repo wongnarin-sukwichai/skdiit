@@ -1,4 +1,7 @@
 <script setup>
+import { useSite } from '@/composables/useSite';
+
+const site = useSite();
 defineProps({
     icon: { type: String, required: true },
     title: { type: String, required: true },
@@ -8,7 +11,7 @@ defineProps({
 
 <template>
     <section class="mx-auto max-w-[1600px] px-4 pt-12 pb-8 sm:px-6 lg:px-8">
-        <p class="mb-2 text-xs font-semibold tracking-[0.35em] text-gold-400 uppercase">SKDIIT 2027</p>
+        <p class="mb-2 text-xs font-semibold tracking-[0.35em] text-gold-400 uppercase">{{ site.conference.shortName }}</p>
         <h1 class="flex items-center gap-3 text-3xl font-bold text-white sm:text-4xl">
             <Fa :icon="icon" class="text-gold-400" />
             {{ title }}

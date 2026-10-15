@@ -37,7 +37,7 @@ class User extends Authenticatable
     ];
 
     /** Staff roles that admin creates and manages; registrants have role 'user'. */
-    public const STAFF_ROLES = ['admin', 'editor', 'reviewer', 'finance'];
+    public const STAFF_ROLES = ['admin', 'editor', 'reviewer', 'journal'];
 
     /** Optional academic title for staff and reviewers (managed in Settings › Academic titles). */
     public function academicTitle(): BelongsTo
@@ -173,6 +173,7 @@ class User extends Authenticatable
     {
         return [
             'email_verified_at' => 'datetime',
+            'pdpa_accepted_at' => 'datetime',
             'password' => 'hashed',
             'password_by_admin' => 'boolean',
             'suspended_at' => 'datetime',

@@ -6,6 +6,7 @@ use App\Enums\SubmissionAction;
 use App\Enums\SubmissionStatus;
 use App\Models\AcademicTitle;
 use App\Models\Review;
+use App\Models\ReviewCriterion;
 use App\Models\Submission;
 use App\Models\SubmissionEvent;
 use App\Models\Track;
@@ -14,10 +15,12 @@ use Illuminate\Database\Seeder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 /**
- * Sample papers for the testing phase: 20 papers covering every SubmissionStatus,
- * with authors, reviewers, reviews, history and a small PDF each.
+ * Sample data for the testing phase, from resources/js/data/demo.json (the sample pages in mock.js read the
+ * same file): 20 registrants (5 attend only, 15 authors), one paper per author covering the whole workflow
+ * (journal first, then the conference track), reviewers with their tracks, reviews, history and small files.
  *
  *   php artisan db:seed --class=DemoSubmissionSeeder
  *
@@ -30,14 +33,18 @@ class DemoSubmissionSeeder extends Seeder
 
     private User $editor;
 
-    /** @var array<string, User> */
-    private array $authors = [];
+    private User $journal;
+
+    /** @var array<string, User> registrants by key */
+    private array $people = [];
 
     /** @var array<string, User> */
     private array $reviewers = [];
 
     /** @var array<int, Track> keyed by position 1..5 */
     private array $tracks = [];
+
+    private array $data;
 
     public function run(): void
     {
@@ -47,17 +54,26 @@ class DemoSubmissionSeeder extends Seeder
 
             return;
         }
+        $this->data = json_decode(file_get_contents(resource_path('js/data/demo.json')), true, flags: JSON_THROW_ON_ERROR);
 
         $this->clear();
         $this->accounts();
+        $this->criteria();
 
-        DB::transaction(function () {
-            foreach ($this->papers() as $paper) {
-                $this->create($paper);
+        // Replaying the workflow must not send the workflow emails (withoutEvents turns off every model's events)
+        SubmissionEvent::withoutEvents(fn () => DB::transaction(function () {
+            foreach ($this->data['papers'] as $i => $paper) {
+                $this->create($paper, $i + 1);
             }
-        });
+        }));
 
-        $this->command?->info('Created '.count($this->papers()).' sample papers.');
+        $this->command?->info('Created '.count($this->people).' registrants and '.count($this->data['papers']).' sample papers.');
+    }
+
+    /** n days before now, at a time of day that varies, so timelines read like real use. */
+    private function at(int $daysAgo): Carbon
+    {
+        return Carbon::now()->subDays($daysAgo)->setTime(9 + $daysAgo % 8, ($daysAgo * 7) % 60);
     }
 
     /** Remove earlier sample papers (owned by *@skdiit.test accounts) and their files. */
@@ -66,7 +82,7 @@ class DemoSubmissionSeeder extends Seeder
         Submission::whereHas('user', fn ($q) => $q->where('email', 'like', '%@skdiit.test'))->get()
             ->each(function (Submission $submission) {
                 Storage::delete(array_filter([
-                    $submission->file_path, $submission->camera_ready_path,
+                    $submission->file_path, $submission->camera_ready_path, $submission->slides_path,
                     ...$submission->files()->pluck('path'), ...$submission->reviews()->pluck('attachment_path'),
                 ]));
                 $submission->delete();
@@ -75,286 +91,86 @@ class DemoSubmissionSeeder extends Seeder
 
     private function accounts(): void
     {
-        $user = fn (string $email, array $attributes) => tap(User::updateOrCreate(['email' => $email], [
+        $title = fn (?string $short) => $short ? AcademicTitle::where('short_th', $short)->value('id') : null;
+        $user = fn (string $email, array $attributes, bool $verified = true, ?Carbon $created = null) => tap(User::updateOrCreate(['email' => $email], [
             'password' => self::PASSWORD,
             'participation' => 'attend',
+            'affiliation' => 'msu',
             ...$attributes,
-        ]), fn (User $u) => $u->forceFill(['email_verified_at' => $u->email_verified_at ?? now(), 'password_by_admin' => false])->save());
+        ]), fn (User $u) => $u->forceFill([
+            'email_verified_at' => $verified ? ($u->email_verified_at ?? now()) : null,
+            'password_by_admin' => false,
+            ...($created ? ['created_at' => $created] : []),
+        ])->save());
 
-        $this->editor = $user('editor@skdiit.test', ['name' => 'Demo Editor', 'role' => 'editor', 'affiliation' => 'msu']);
+        $this->editor = $user('editor@skdiit.test', ['name' => 'Demo Editor', 'role' => 'editor']);
+        $this->journal = $user('journal@skdiit.test', ['name' => 'Demo Journal', 'role' => 'journal']);
 
-        // Authors: the demo author plus a few more, so lists look real
-        foreach ([
-            'author' => ['Demo Author', 'msu'],
-            'somchai' => ['สมชาย ใจดี', 'kku'],
-            'pranee' => ['ปราณี ศรีสุข', 'msu'],
-            'anan' => ['อนันต์ วงศ์ไทย', 'cmu'],
-            'kanya' => ['กันยา พรหมมา', 'nu'],
-            'wichai' => ['วิชัย แสงทอง', 'ubu'],
-            'malee' => ['มาลี บุญมา', 'rmu'],
-            'tanakorn' => ['ธนากร ศักดิ์ดี', 'kmitl'],
-        ] as $key => [$name, $affiliation]) {
-            $this->authors[$key] = $user("{$key}@skdiit.test", [
-                'name' => $name, 'role' => 'user', 'affiliation' => $affiliation, 'participation' => 'attend_submit',
-            ]);
+        // Registrants: authors and attend-only, with their registration date
+        foreach ($this->data['people'] as $person) {
+            $this->people[$person['key']] = $user("{$person['key']}@skdiit.test", [
+                'name' => $person['th'], 'role' => 'user', 'affiliation' => $person['affiliation'],
+                'participation' => $person['participation'], 'registered_year' => Submission::conferenceYear(), 'phone' => $person['phone'], 'academic_title_id' => $title($person['title']),
+            ], $person['verified'], $this->at($person['registered']));
         }
 
-        // Reviewers and their tracks (2-3 per track); the demo reviewer covers tracks 1 and 2
-        foreach ([
-            'reviewer' => ['Demo Reviewer', 'รศ.', [1, 2]],
-            'rv.suda' => ['สุดา มีสุข', 'ผศ.', [1, 3]],
-            'rv.preecha' => ['ปรีชา คำแก้ว', 'รศ.', [2, 4]],
-            'rv.nattaya' => ['ณัฐยา ทองดี', 'อ.', [3, 5]],
-            'rv.kittisak' => ['กิตติศักดิ์ พันธ์ดี', 'ผศ.', [4, 5]],
-            'rv.orawan' => ['อรวรรณ ศรีวงศ์', 'ศ.', [1, 5]],
-        ] as $key => [$name, $title, $tracks]) {
-            $reviewer = $user("{$key}@skdiit.test", ['name' => $name, 'role' => 'reviewer', 'affiliation' => 'msu', 'academic_title_id' => AcademicTitle::where('short_th', $title)->value('id')]);
-            $reviewer->tracks()->sync(array_map(fn ($n) => $this->tracks[$n]->id, $tracks));
-            $this->reviewers[$key] = $reviewer;
+        // Reviewers and their tracks; one has not signed in yet (shows on the editor's home page)
+        foreach ($this->data['reviewers'] as $reviewer) {
+            $account = $user("{$reviewer['key']}@skdiit.test", [
+                'name' => $reviewer['th'], 'role' => 'reviewer', 'academic_title_id' => $title($reviewer['title']),
+            ], $reviewer['verified']);
+            $account->tracks()->sync(array_map(fn ($n) => $this->tracks[$n]->id, $reviewer['tracks']));
+            $this->reviewers[$reviewer['key']] = $account;
         }
-
-        // A reviewer admin added who has not signed in yet (shows on the editor's home page)
-        $user('rv.somsak@skdiit.test', ['name' => 'สมศักดิ์ ทองคำ', 'role' => 'reviewer', 'affiliation' => 'msu', 'academic_title_id' => AcademicTitle::where('short_th', 'ผศ.')->value('id')])
-            ->forceFill(['email_verified_at' => null])->save();
-        User::where('email', 'rv.somsak@skdiit.test')->first()->tracks()->sync([$this->tracks[2]->id]);
     }
 
-    /**
-     * One entry per paper. `steps` replays the workflow in order; each step becomes a history entry
-     * with its own date (days before today), so the timeline reads like real use.
-     */
-    private function papers(): array
+    /** Sample scoring criteria, only when admin has not set any (Settings › Review criteria). */
+    private function criteria(): void
     {
-        $at = fn (int $daysAgo) => Carbon::now()->subDays($daysAgo)->setTime(9 + $daysAgo % 8, ($daysAgo * 7) % 60);
-
-        return [
-            // ---- Waiting for screening ----
-            [
-                'author' => 'author', 'track' => 1, 'at' => $at(30),
-                'title' => ['ระบบแนะนำหนังสือห้องสมุดด้วยการเรียนรู้ของเครื่อง', 'A Machine-Learning Book Recommender for University Libraries'],
-                'keywords' => ['ระบบแนะนำ, ห้องสมุด, การเรียนรู้ของเครื่อง', 'recommender system, library, machine learning'],
-                'coauthors' => [['ดร.สมศรี รักเรียน', 'มหาวิทยาลัยมหาสารคาม', null]],
-                'steps' => [['updated', $at(25)]],
-            ],
-            [
-                'author' => 'somchai', 'track' => 5, 'at' => $at(28),
-                'title' => ['การจำแนกโรคใบข้าวด้วยโครงข่ายประสาทเทียมแบบคอนโวลูชัน', 'Rice Leaf Disease Classification with Convolutional Neural Networks'],
-                'keywords' => ['ปัญญาประดิษฐ์, ภาพถ่าย, การเกษตร', 'deep learning, image classification, agriculture'],
-                // Author picked Track 3; the editor moved it, so the author can no longer change it
-                'steps' => [['track', $at(20), 3]],
-                'initialTrack' => 3,
-            ],
-            [
-                'author' => 'kanya', 'track' => 3, 'at' => $at(6),
-                'title' => ['พฤติกรรมการรับข่าวสารผ่าน TikTok ของนักศึกษาปริญญาตรี', 'News Consumption on TikTok among Undergraduate Students'],
-                'keywords' => ['สื่อสังคมออนไลน์, พฤติกรรมผู้รับสาร, นักศึกษา', 'social media, audience behaviour, students'],
-                'steps' => [],
-            ],
-
-            // ---- Screening outcomes ----
-            [
-                'author' => 'pranee', 'track' => 2, 'at' => $at(40),
-                'title' => ['ห้องเรียนอัจฉริยะด้วยเซนเซอร์ IoT เพื่อประหยัดพลังงาน', 'An IoT Smart Classroom for Energy Saving'],
-                'keywords' => ['อินเทอร์เน็ตของสรรพสิ่ง, ห้องเรียนอัจฉริยะ, พลังงาน', 'IoT, smart classroom, energy'],
-                'steps' => [['screen', $at(15), 'revise', 'กรุณาจัดรูปแบบตามแม่แบบของงานประชุม และเพิ่มบทคัดย่อภาษาอังกฤษให้ครบ 250 คำ']],
-            ],
-            [
-                'author' => 'wichai', 'track' => 4, 'at' => $at(42),
-                'title' => ['แนวทางการตลาดดิจิทัลสำหรับร้านกาแฟท้องถิ่น', 'Digital Marketing Guidelines for Local Coffee Shops'],
-                'keywords' => ['การตลาดดิจิทัล, ธุรกิจขนาดเล็ก', 'digital marketing, small business'],
-                'steps' => [['screen', $at(14), 'reject', 'เนื้อหาไม่ตรงกับขอบเขตของงานประชุม']],
-            ],
-
-            // ---- Peer review, round 1 ----
-            [
-                'author' => 'anan', 'track' => 1, 'at' => $at(45),
-                'title' => ['การประเมินคุณภาพเมทาดาทาในคลังสถาบัน', 'Assessing Metadata Quality in Institutional Repositories'],
-                'keywords' => ['เมทาดาทา, คลังสถาบัน, คุณภาพข้อมูล', 'metadata, institutional repository, data quality'],
-                'steps' => [
-                    ['screen', $at(13), 'pass'], ['assign', $at(12), 'reviewer', 14], ['assign', $at(12), 'rv.suda', 14],
-                    // The demo reviewer has started: a saved draft
-                    ['draft', $at(1), 'reviewer', 'minor', 'ภาพรวมดี ควรอธิบายเกณฑ์การให้คะแนนคุณภาพเมทาดาทาให้ชัดเจนขึ้น (ยังเขียนไม่เสร็จ)'],
-                ],
-            ],
-            [
-                'author' => 'malee', 'track' => 2, 'at' => $at(44),
-                'title' => ['ระบบติดตามที่นั่งว่างในห้องสมุดแบบเรียลไทม์', 'Real-Time Seat Availability Tracking in Libraries'],
-                'keywords' => ['ระบบติดตาม, พื้นที่อัจฉริยะ, ห้องสมุด', 'occupancy tracking, smart space, library'],
-                'steps' => [
-                    ['screen', $at(13), 'pass'], ['assign', $at(12), 'reviewer', 14], ['assign', $at(12), 'rv.preecha', 14],
-                    ['review', $at(4), 'reviewer', 'minor', 'งานวิจัยมีประโยชน์ ควรอธิบายวิธีเก็บข้อมูลและขนาดตัวอย่างให้ชัดเจนขึ้น'],
-                    // Both reviews are in: ready for the editor's decision
-                    ['review', $at(2), 'rv.preecha', 'accept', 'บทความเขียนชัดเจน ผลการทดลองน่าเชื่อถือ'],
-                ],
-            ],
-            [
-                'author' => 'tanakorn', 'track' => 5, 'at' => $at(46),
-                'title' => ['แชตบอตตอบคำถามงานทะเบียนด้วยโมเดลภาษาขนาดใหญ่', 'An LLM Chatbot for Student Registration Enquiries'],
-                'keywords' => ['แชตบอต, โมเดลภาษาขนาดใหญ่, งานทะเบียน', 'chatbot, large language model, student services'],
-                // One reviewer is overdue
-                'steps' => [
-                    ['screen', $at(20), 'pass'], ['assign', $at(19), 'rv.nattaya', 10], ['assign', $at(19), 'rv.orawan', 10],
-                    ['review', $at(10), 'rv.orawan', 'major', 'ควรเปรียบเทียบกับวิธีเดิม และรายงานความถูกต้องของคำตอบอย่างเป็นระบบ', 'ข้อมูลทดสอบบางส่วนดูซ้ำกับบทความที่เคยตีพิมพ์ปีที่แล้ว ควรตรวจสอบการคัดลอกผลงาน'],
-                    ['note', $at(3), 'editor', 'โทรหา อ.ณัฐยา แล้ว ขอเลื่อนส่งผลประเมินไป 3 วัน เพราะติดสอบปลายภาค', true],
-                    ['note', $at(1), 'admin', 'ถ้าวันศุกร์ยังไม่ได้ผล ให้มอบหมายผู้ประเมินสำรองเพิ่ม'],
-                ],
-            ],
-            [
-                'author' => 'somchai', 'track' => 3, 'at' => $at(43),
-                'title' => ['การรู้เท่าทันสื่อดิจิทัลของผู้สูงอายุในชุมชนเมือง', 'Digital Media Literacy of Older Adults in Urban Communities'],
-                'keywords' => ['การรู้เท่าทันสื่อ, ผู้สูงอายุ', 'media literacy, older adults'],
-                // Conflict of interest: a co-author's email matches reviewer rv.suda
-                'coauthors' => [['สุดา มีสุข', 'มหาวิทยาลัยมหาสารคาม', 'rv.suda@skdiit.test']],
-                'steps' => [['screen', $at(12), 'pass']],
-            ],
-
-            // ---- Editor decisions after review ----
-            [
-                'author' => 'pranee', 'track' => 1, 'at' => $at(50),
-                'title' => ['การใช้ฐานข้อมูลออนไลน์ของนักศึกษาบัณฑิตศึกษา', 'Online Database Use by Graduate Students'],
-                'keywords' => ['ฐานข้อมูลออนไลน์, บัณฑิตศึกษา', 'online databases, graduate students'],
-                'steps' => [
-                    ['screen', $at(30), 'pass'], ['assign', $at(29), 'rv.suda', 14], ['assign', $at(29), 'rv.orawan', 14],
-                    ['review', $at(18), 'rv.suda', 'minor', 'ควรปรับตารางผลการวิจัยให้อ่านง่ายขึ้น'],
-                    ['review', $at(17), 'rv.orawan', 'accept', 'บทความเขียนได้ดี มีข้อเสนอแนะเล็กน้อยเรื่องการอ้างอิง'],
-                    ['decide', $at(15), 'minor', 'กรุณาแก้ไขตามข้อเสนอแนะของผู้ประเมิน', 10],
-                ],
-            ],
-            [
-                'author' => 'author', 'track' => 4, 'at' => $at(52),
-                'title' => ['การยอมรับเทคโนโลยีการชำระเงินดิจิทัลของผู้ค้าในตลาดสด', 'Digital Payment Adoption among Fresh-Market Vendors'],
-                'keywords' => ['การชำระเงินดิจิทัล, การยอมรับเทคโนโลยี', 'digital payment, technology acceptance'],
-                // Revision is overdue (flagged, not blocked)
-                'steps' => [
-                    ['screen', $at(35), 'pass'], ['assign', $at(34), 'rv.preecha', 14], ['assign', $at(34), 'rv.kittisak', 14],
-                    ['review', $at(24), 'rv.preecha', 'major', 'กรอบแนวคิดยังไม่ชัดเจน ควรใช้แบบจำลอง UTAUT ให้ครบทุกตัวแปร'],
-                    ['review', $at(22), 'rv.kittisak', 'major', 'กลุ่มตัวอย่างน้อยเกินไป ควรเพิ่มและทดสอบความเชื่อมั่นของแบบสอบถาม'],
-                    ['decide', $at(20), 'major', 'ผู้ประเมินทั้งสองท่านเสนอให้แก้ไขมาก กรุณาแก้ไขและส่งกลับภายในกำหนด', -3],
-                ],
-            ],
-            [
-                'author' => 'kanya', 'track' => 2, 'at' => $at(55),
-                'title' => ['การออกแบบพื้นที่การเรียนรู้แบบยืดหยุ่นด้วยข้อมูลการใช้งานจริง', 'Data-Driven Design of Flexible Learning Spaces'],
-                'keywords' => ['พื้นที่การเรียนรู้, การออกแบบ', 'learning space, design'],
-                // Revised: the editor may decide directly or start round 2
-                'steps' => [
-                    ['screen', $at(38), 'pass'], ['assign', $at(37), 'reviewer', 14],
-                    ['review', $at(27), 'reviewer', 'minor', 'ควรเพิ่มภาพประกอบผังพื้นที่ก่อนและหลังการปรับปรุง'],
-                    ['decide', $at(25), 'minor', null, 10], ['resubmit', $at(18)],
-                    ['note', $at(17), 'editor', 'ผู้เขียนแจ้งทางโทรศัพท์ว่าแก้ครบแล้ว รอ Editor ตัดสินผล'],
-                ],
-            ],
-            [
-                'author' => 'anan', 'track' => 5, 'at' => $at(60),
-                'title' => ['การตรวจจับข่าวปลอมภาษาไทยด้วยโมเดล Transformer', 'Thai Fake News Detection with Transformer Models'],
-                'keywords' => ['ข่าวปลอม, ประมวลผลภาษาธรรมชาติ', 'fake news, natural language processing'],
-                // Second review round in progress
-                'steps' => [
-                    ['screen', $at(45), 'pass'], ['assign', $at(44), 'rv.nattaya', 14],
-                    ['review', $at(33), 'rv.nattaya', 'major', 'ควรเพิ่มชุดข้อมูลทดสอบจากหลายแหล่ง'],
-                    ['decide', $at(31), 'major', null, 14], ['resubmit', $at(20)], ['round', $at(18)],
-                    ['assign', $at(18), 'rv.nattaya', 25], ['assign', $at(18), 'rv.kittisak', 25],
-                    ['unavailable', $at(2), 'rv.kittisak', 'ไม่ตรงกับความเชี่ยวชาญ (งานด้าน NLP) แนะนำ อ.ณัฐยา หรือ ศ.อรวรรณ แทน'],
-                ],
-            ],
-            [
-                'author' => 'author', 'track' => 2, 'at' => $at(58),
-                'title' => ['ต้นแบบระบบควบคุมแสงสว่างอัตโนมัติในอาคารเรียน', 'An Automatic Lighting Control Prototype for Classroom Buildings'],
-                'keywords' => ['ระบบอัตโนมัติ, อาคารอัจฉริยะ', 'automation, smart building'],
-                // Accepted: waiting for the author to choose Option A or B
-                'steps' => [
-                    ['screen', $at(40), 'pass'], ['assign', $at(39), 'reviewer', 14], ['assign', $at(39), 'rv.preecha', 14],
-                    ['review', $at(30), 'reviewer', 'accept', 'บทความสมบูรณ์ ผลการทดลองชัดเจน'],
-                    ['review', $at(29), 'rv.preecha', 'accept', 'เห็นควรรับตีพิมพ์'],
-                    ['decide', $at(27), 'accept', 'ยินดีด้วย บทความของท่านผ่านการพิจารณา'],
-                ],
-            ],
-            [
-                'author' => 'wichai', 'track' => 3, 'at' => $at(57),
-                'title' => ['อิทธิพลของอินฟลูเอนเซอร์ต่อการตัดสินใจเลือกมหาวิทยาลัย', 'Influencer Impact on University Choice'],
-                'keywords' => ['อินฟลูเอนเซอร์, การตัดสินใจ', 'influencer, decision making'],
-                'steps' => [
-                    ['screen', $at(40), 'pass'], ['assign', $at(39), 'rv.suda', 14],
-                    ['review', $at(30), 'rv.suda', 'reject', 'วิธีวิจัยไม่เหมาะสมกับคำถามการวิจัย และขาดการทบทวนวรรณกรรม'],
-                    ['decide', $at(28), 'reject', 'ขอบคุณที่ส่งบทความ บทความยังไม่ผ่านเกณฑ์การพิจารณาในครั้งนี้'],
-                ],
-            ],
-
-            // ---- Publication ----
-            [
-                'author' => 'malee', 'track' => 4, 'at' => $at(62),
-                'title' => ['การเปลี่ยนผ่านสู่ดิจิทัลของงานสารบรรณในองค์การบริหารส่วนตำบล', 'Digital Transformation of Records Management in Local Government'],
-                'keywords' => ['การเปลี่ยนผ่านสู่ดิจิทัล, งานสารบรรณ', 'digital transformation, records management'],
-                'steps' => [...$this->accepted($at, 'rv.kittisak'), ['option', $at(20), 'a']],
-            ],
-            [
-                'author' => 'tanakorn', 'track' => 5, 'at' => $at(65),
-                'title' => ['การพยากรณ์จำนวนผู้ใช้บริการห้องสมุดด้วยอนุกรมเวลา', 'Forecasting Library Visits with Time-Series Models'],
-                'keywords' => ['อนุกรมเวลา, การพยากรณ์', 'time series, forecasting'],
-                'steps' => [...$this->accepted($at, 'rv.orawan'), ['option', $at(22), 'a'], ['cameraReady', $at(16)], ['present', $at(5), '2027-01-28 10:45', 'ห้อง 301 อาคาร IT']],
-            ],
-            [
-                'author' => 'pranee', 'track' => 1, 'at' => $at(66),
-                'title' => ['การพัฒนาบริการสารสนเทศเชิงรุกสำหรับนักวิจัย', 'Proactive Information Services for Researchers'],
-                'keywords' => ['บริการสารสนเทศ, นักวิจัย', 'information services, researchers'],
-                'steps' => [...$this->accepted($at, 'reviewer'), ['option', $at(21), 'b', 'วารสารสารสนเทศศาสตร์ มมส']],
-            ],
-            [
-                'author' => 'kanya', 'track' => 3, 'at' => $at(70),
-                'title' => ['การเล่าเรื่องดิจิทัลเพื่อส่งเสริมการท่องเที่ยวชุมชน', 'Digital Storytelling for Community Tourism'],
-                'keywords' => ['การเล่าเรื่องดิจิทัล, การท่องเที่ยวชุมชน', 'digital storytelling, community tourism'],
-                'steps' => [
-                    ...$this->accepted($at, 'rv.nattaya'), ['option', $at(24), 'b', 'Journal of Information Science Research and Practice'],
-                    ['journal', $at(9), 'accepted', 'วารสารตอบรับเพื่อตีพิมพ์ฉบับที่ 1/2570'], ['present', $at(4), '2027-01-28 13:00', 'ห้อง 302 อาคาร IT'],
-                ],
-            ],
-            [
-                'author' => 'somchai', 'track' => 4, 'at' => $at(72),
-                'title' => ['ปัจจัยความสำเร็จของการใช้ระบบ ERP ในมหาวิทยาลัย', 'Success Factors of ERP Use in Universities'],
-                'keywords' => ['ERP, ปัจจัยความสำเร็จ', 'ERP, success factors'],
-                // The journal declined, so the paper moved to Option A
-                'steps' => [
-                    ...$this->accepted($at, 'rv.preecha'), ['option', $at(25), 'b', 'วารสารวิทยาการจัดการ'],
-                    ['journal', $at(8), 'rejected', 'วารสารแจ้งว่าไม่ตรงขอบเขต จึงย้ายไปตีพิมพ์ใน Proceeding'],
-                ],
-            ],
-        ];
+        if (ReviewCriterion::exists()) {
+            return;
+        }
+        foreach ($this->data['criteria'] as $i => [$th, $en]) {
+            ReviewCriterion::create(['name_th' => $th, 'name_en' => $en, 'sort_order' => $i + 1]);
+        }
     }
 
-    /** Screening, one review and an "accept" decision: the start of every publication sample. */
-    private function accepted(\Closure $at, string $reviewer): array
+    /** Scores that fit the recommendation (accept 4-5 ... reject 1-2), varying by criterion. */
+    private function scoresFor(string $recommendation): array
     {
-        return [
-            ['screen', $at(48), 'pass'], ['assign', $at(47), $reviewer, 14],
-            ['review', $at(38), $reviewer, 'accept', 'บทความมีคุณภาพ เห็นควรรับตีพิมพ์'],
-            ['decide', $at(35), 'accept', 'ยินดีด้วย บทความของท่านผ่านการพิจารณา'],
-        ];
+        $base = ['accept' => 5, 'minor' => 4, 'major' => 3, 'reject' => 2][$recommendation];
+
+        return ReviewCriterion::ordered()->pluck('id')->values()->mapWithKeys(fn ($id, $i) => [$id => max(1, $base - ($i % 2))])->all();
     }
 
-    private function create(array $paper): void
+    private function create(array $paper, int $number): void
     {
-        $author = $this->authors[$paper['author']];
+        $author = $this->people[$paper['author']];
         [$titleTh, $titleEn] = $paper['title'];
         [$keywordsTh, $keywordsEn] = $paper['keywords'];
-        $submittedAt = $paper['at'];
+        $submittedAt = $this->at($paper['submitted']);
 
         $submission = new Submission([
             'track_id' => $this->tracks[$paper['initialTrack'] ?? $paper['track']]->id,
             'title_th' => $titleTh,
             'title_en' => $titleEn,
             'abstract_th' => "บทความนี้นำเสนอ{$titleTh} โดยศึกษาจากกลุ่มตัวอย่างในพื้นที่ภาคตะวันออกเฉียงเหนือ ใช้วิธีวิจัยแบบผสานวิธี ผลการวิจัยพบว่าแนวทางที่นำเสนอช่วยเพิ่มประสิทธิภาพการทำงานได้อย่างมีนัยสำคัญ และเสนอแนวทางการนำไปใช้ในหน่วยงานที่มีบริบทใกล้เคียงกัน",
-            'abstract_en' => "This paper presents ".lcfirst($titleEn).'. A mixed-methods study was conducted with participants from north-eastern Thailand. The results show that the proposed approach significantly improves efficiency, and the paper offers guidelines for organisations in similar settings.',
+            'abstract_en' => 'This paper presents '.lcfirst($titleEn).'. A mixed-methods study was conducted with participants from north-eastern Thailand. The results show that the proposed approach significantly improves efficiency, and the paper offers guidelines for organisations in similar settings.',
             'keywords_th' => $keywordsTh,
             'keywords_en' => $keywordsEn,
-            ...$this->file($paper['author'], $titleEn),
+            ...$this->pdf("v1-{$number}", $titleEn),
         ]);
         $submission->user()->associate($author);
         $submission->forceFill([
+            // Model events are off while seeding (see run()), so the year is set here
+            'year' => Submission::conferenceYear(),
             'status' => SubmissionStatus::Submitted,
             'review_round' => 0,
             'created_at' => $submittedAt,
             'updated_at' => $submittedAt,
         ])->save();
+        // Same codes as the sample pages (SKDIIT27-0001 ... in demo.json order)
+        $submission->forceFill(['code' => sprintf('SKDIIT%02d-%04d', $submission->year % 100, $number)])->saveQuietly();
 
         $submission->authors()->createMany([
             ['position' => 1, 'name' => $author->name, 'affiliation' => $this->affiliation($author->affiliation), 'email' => $author->email],
@@ -362,18 +178,41 @@ class DemoSubmissionSeeder extends Seeder
         ]);
 
         $this->event($submission, SubmissionAction::Submitted, $author, $submittedAt);
-        $submission->addManuscript($submission->only('file_path', 'file_name', 'file_size'), 'initial', $author);
-        $submission->files()->latest('id')->first()->forceFill(['created_at' => $submittedAt])->save();
+        $this->addVersion($submission, 'initial', $author, $submittedAt, withTurnitin: true);
 
         foreach ($paper['steps'] as $step) {
             $this->apply($submission, $step, $paper);
         }
+
+        if ($submission->status->value !== $paper['status']) {
+            $this->command?->warn("{$submission->code}: ended as {$submission->status->value}, demo.json says {$paper['status']}");
+        }
+    }
+
+    /** The files of one manuscript version: PDF (already stored on the paper), Word, and the Turnitin report on a new paper. */
+    private function addVersion(Submission $submission, string $stage, User $author, Carbon $when, bool $withTurnitin): int
+    {
+        $version = $submission->addManuscript($submission->only('file_path', 'file_name', 'file_size'), $stage, $author);
+        $extra = [['word', $this->docx("v{$version}-".$submission->code, $submission->title_en)]];
+        if ($withTurnitin) {
+            $extra[] = ['turnitin', [...$this->pdf('turnitin-'.$submission->code, 'Turnitin similarity report: 8% - '.$submission->title_en), 'file_name' => 'turnitin-report.pdf']];
+        }
+        foreach ($extra as [$kind, $file]) {
+            $submission->files()->create([
+                'version' => $version, 'kind' => $kind, 'stage' => $stage, 'round' => (int) $submission->review_round,
+                'path' => $file['file_path'], 'name' => $file['file_name'], 'size' => $file['file_size'], 'user_id' => $author->id,
+            ]);
+        }
+        $submission->files()->where('version', $version)->update(['created_at' => $when]);
+
+        return $version;
     }
 
     /** Replay one workflow step: change the paper the way the controllers do, and log it. */
     private function apply(Submission $submission, array $step, array $paper): void
     {
-        [$kind, $when] = $step;
+        $kind = $step[0];
+        $when = $this->at($step[1]);
         $from = $submission->status;
         $author = $submission->user;
 
@@ -382,9 +221,21 @@ class DemoSubmissionSeeder extends Seeder
                 $this->event($submission, SubmissionAction::Updated, $author, $when);
                 break;
 
+            case 'journalSelect': // the journal's first selection: select, or pass it on to the conference track
+                $submission->status = $step[2] === 'select' ? SubmissionStatus::JournalSelected : SubmissionStatus::Screening;
+                $submission->save();
+                $this->event($submission, SubmissionAction::JournalScreened, $this->journal, $when, $from, $step[3] ?? null);
+                break;
+
+            case 'journalResult': // the journal's final answer for a selected paper
+                $submission->status = $step[2] === 'accepted' ? SubmissionStatus::JournalAccepted : SubmissionStatus::Screening;
+                $submission->save();
+                $this->event($submission, SubmissionAction::JournalResult, $this->journal, $when, $from, $step[3] ?? null);
+                break;
+
             case 'track':
                 $old = $submission->track;
-                $submission->update(['track_id' => $this->tracks[$paper['track']]->id]);
+                $submission->update(['track_id' => $this->tracks[$step[2]]->id]);
                 $this->event($submission, SubmissionAction::TrackChanged, $this->editor, $when, meta: [
                     'from' => $old->toClient()['name'],
                     'to' => $submission->load('track')->track->toClient()['name'],
@@ -417,13 +268,25 @@ class DemoSubmissionSeeder extends Seeder
 
             case 'review':
                 [, , $key, $recommendation, $comment] = $step;
-                Review::where('submission_id', $submission->id)->where('round', $submission->review_round)
-                    ->where('reviewer_id', $this->reviewers[$key]->id)->firstOrFail()
-                    ->forceFill([
-                        'recommendation' => $recommendation, 'comment' => $comment, 'comment_to_editor' => $step[5] ?? null,
-                        'submitted_at' => $when, 'conflict_declared_at' => $when, 'updated_at' => $when,
-                    ])->save();
+                $this->review($submission, $key)->saveScores($this->scoresFor($recommendation));
+                $this->review($submission, $key)->forceFill([
+                    'recommendation' => $recommendation, 'comment' => $comment, 'comment_to_editor' => $step[5] ?? null,
+                    'submitted_at' => $when, 'conflict_declared_at' => $when, 'updated_at' => $when,
+                ])->save();
                 $this->event($submission, SubmissionAction::ReviewSubmitted, $this->reviewers[$key], $when, meta: ['recommendation' => $recommendation]);
+                break;
+
+            case 'draft': // a reviewer saved but has not sent
+                [, , $key, $recommendation, $comment] = $step;
+                // A draft: only the first two criteria scored so far
+                $this->review($submission, $key)->saveScores(array_slice($this->scoresFor($recommendation), 0, 2, preserve_keys: true));
+                $this->review($submission, $key)->forceFill(['recommendation' => $recommendation, 'comment' => $comment, 'draft_saved_at' => $when])->save();
+                break;
+
+            case 'unavailable': // a reviewer told the editors they cannot review
+                [, , $key, $reason] = $step;
+                $this->review($submission, $key)->forceFill(['unavailable_at' => $when, 'unavailable_reason' => $reason])->save();
+                $this->event($submission, SubmissionAction::ReviewUnavailable, $this->reviewers[$key], $when, meta: ['reviewer' => $this->reviewers[$key]->name, 'reason' => $reason]);
                 break;
 
             case 'decide':
@@ -434,11 +297,9 @@ class DemoSubmissionSeeder extends Seeder
                     $submission->revision_due_date ? ['due' => $submission->revision_due_date->toDateString()] : null);
                 break;
 
-            case 'resubmit':
-                $stored = $this->file('v'.((int) $submission->files()->max('version') + 1), $submission->title_en.' (revised)');
-                $submission->forceFill($stored)->save();
-                $version = $submission->addManuscript($stored, 'revision', $author);
-                $submission->files()->latest('id')->first()->forceFill(['created_at' => $when])->save();
+            case 'resubmit': // revised PDF + Word, an answer to every reviewer of the decided round
+                $submission->forceFill($this->pdf('v'.($submission->currentVersion() + 1).'-'.$submission->code, $submission->title_en.' (revised)'))->save();
+                $version = $this->addVersion($submission, 'revision', $author, $when, withTurnitin: false);
                 $answers = [
                     'ขอบคุณสำหรับข้อเสนอแนะ ได้เพิ่มรายละเอียดวิธีเก็บข้อมูลและขนาดกลุ่มตัวอย่างไว้ในหัวข้อ 3.2 (หน้า 4) แล้ว',
                     'ปรับตารางผลการวิจัยใหม่ให้อ่านง่ายขึ้น และเพิ่มคำอธิบายใต้ตาราง (หน้า 6–7)',
@@ -453,19 +314,11 @@ class DemoSubmissionSeeder extends Seeder
                 $this->event($submission, SubmissionAction::Resubmitted, $author, $when, $from);
                 break;
 
-            case 'draft': // a reviewer saved but has not sent
-                [, , $key, $recommendation, $comment] = $step;
-                Review::where('submission_id', $submission->id)->where('round', $submission->review_round)
-                    ->where('reviewer_id', $this->reviewers[$key]->id)->firstOrFail()
-                    ->forceFill(['recommendation' => $recommendation, 'comment' => $comment, 'draft_saved_at' => $when])->save();
-                break;
-
-            case 'unavailable': // a reviewer told the editors they cannot review
-                [, , $key, $reason] = $step;
-                Review::where('submission_id', $submission->id)->where('round', $submission->review_round)
-                    ->where('reviewer_id', $this->reviewers[$key]->id)->firstOrFail()
-                    ->forceFill(['unavailable_at' => $when, 'unavailable_reason' => $reason])->save();
-                $this->event($submission, SubmissionAction::ReviewUnavailable, $this->reviewers[$key], $when, meta: ['reviewer' => $this->reviewers[$key]->name, 'reason' => $reason]);
+            case 'round':
+                $submission->status = SubmissionStatus::InReview;
+                $submission->review_round++;
+                $submission->save();
+                $this->event($submission, SubmissionAction::ReviewRoundStarted, $this->editor, $when, $from, meta: ['round' => $submission->review_round]);
                 break;
 
             case 'note':
@@ -476,23 +329,8 @@ class DemoSubmissionSeeder extends Seeder
                 $this->event($submission, SubmissionAction::NoteAdded, User::find($note->user_id), $when);
                 break;
 
-            case 'round':
-                $submission->status = SubmissionStatus::InReview;
-                $submission->review_round++;
-                $submission->save();
-                $this->event($submission, SubmissionAction::ReviewRoundStarted, $this->editor, $when, $from, meta: ['round' => $submission->review_round]);
-                break;
-
-            case 'option':
-                $submission->publish_option = $step[2];
-                $submission->journal_name = $step[3] ?? null;
-                $submission->status = $step[2] === 'a' ? SubmissionStatus::OptionA : SubmissionStatus::OptionB;
-                $submission->save();
-                $this->event($submission, SubmissionAction::OptionChosen, $author, $when, $from, meta: ['option' => $step[2]]);
-                break;
-
             case 'cameraReady':
-                $file = $this->file('camera-ready', $submission->title_en);
+                $file = $this->pdf('camera-ready-'.$submission->code, $submission->title_en);
                 $submission->forceFill([
                     'camera_ready_path' => $file['file_path'],
                     'camera_ready_name' => 'camera-ready-'.$file['file_name'],
@@ -503,21 +341,6 @@ class DemoSubmissionSeeder extends Seeder
                 $this->event($submission, SubmissionAction::CameraReadyUploaded, $author, $when, $from);
                 break;
 
-            case 'journal':
-                [, , $result, $comment] = $step;
-                if ($result === 'accepted') {
-                    $submission->status = SubmissionStatus::JournalAccepted;
-                } else {
-                    $submission->status = SubmissionStatus::OptionA;
-                    $submission->publish_option = 'a';
-                }
-                $submission->save();
-                $this->event($submission, SubmissionAction::JournalResult, $this->editor, $when, $from, $comment, [
-                    'journal' => $submission->journal_name,
-                    'result' => $result,
-                ]);
-                break;
-
             case 'present':
                 $submission->forceFill(['presentation_at' => Carbon::parse($step[2]), 'presentation_room' => $step[3]])->save();
                 $this->event($submission, SubmissionAction::PresentationScheduled, $this->editor, $when, meta: [
@@ -525,9 +348,23 @@ class DemoSubmissionSeeder extends Seeder
                     'room' => $submission->presentation_room,
                 ]);
                 break;
+
+            case 'slides':
+                $file = $this->pdf('slides-'.$submission->code, 'Slides: '.$submission->title_en);
+                $submission->forceFill([
+                    'slides_path' => $file['file_path'], 'slides_name' => 'slides-'.$file['file_name'], 'slides_size' => $file['file_size'], 'slides_at' => $when,
+                ])->save();
+                $this->event($submission, SubmissionAction::SlidesUploaded, $author, $when);
+                break;
         }
 
         $submission->forceFill(['updated_at' => $when])->saveQuietly();
+    }
+
+    private function review(Submission $submission, string $key): Review
+    {
+        return Review::where('submission_id', $submission->id)->where('round', $submission->review_round)
+            ->where('reviewer_id', $this->reviewers[$key]->id)->firstOrFail();
     }
 
     /** History entry with its own date (Submission::log() always uses now). */
@@ -547,9 +384,9 @@ class DemoSubmissionSeeder extends Seeder
     }
 
     /** A one-page PDF stored like an uploaded file. */
-    private function file(string $prefix, string $title): array
+    private function pdf(string $prefix, string $title): array
     {
-        $text = str_replace(['\\', '(', ')'], ['\\\\', '\\(', '\\)'], 'SKDIIT 2027 sample paper: '.$title);
+        $text = str_replace(['\\', '(', ')'], ['\\\\', '\\(', '\\)'], 'SKDIIT 2027 sample: '.$title);
         $stream = "BT /F1 14 Tf 60 780 Td ({$text}) Tj ET";
         $objects = [
             '<< /Type /Catalog /Pages 2 0 R >>',
@@ -574,7 +411,32 @@ class DemoSubmissionSeeder extends Seeder
         $path = 'submissions/demo-'.$prefix.'-'.substr(md5($title), 0, 8).'.pdf';
         Storage::put($path, $pdf);
 
-        return ['file_path' => $path, 'file_name' => \Illuminate\Support\Str::slug(\Illuminate\Support\Str::limit($title, 40, '')).'.pdf', 'file_size' => strlen($pdf)];
+        return ['file_path' => $path, 'file_name' => Str::slug(Str::limit($title, 40, '')).'.pdf', 'file_size' => strlen($pdf)];
+    }
+
+    /** A minimal one-paragraph Word document stored like an uploaded file. */
+    private function docx(string $prefix, string $title): array
+    {
+        $text = htmlspecialchars('SKDIIT 2027 sample: '.$title, ENT_XML1);
+        $parts = [
+            '[Content_Types].xml' => '<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>',
+            '_rels/.rels' => '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>',
+            'word/document.xml' => '<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>'.$text.'</w:t></w:r></w:p></w:body></w:document>',
+        ];
+        $tmp = tempnam(sys_get_temp_dir(), 'docx');
+        $zip = new \ZipArchive;
+        $zip->open($tmp, \ZipArchive::OVERWRITE);
+        foreach ($parts as $name => $xml) {
+            $zip->addFromString($name, $xml);
+        }
+        $zip->close();
+
+        $path = 'submissions/word/demo-'.$prefix.'-'.substr(md5($title), 0, 8).'.docx';
+        Storage::put($path, file_get_contents($tmp));
+        $size = filesize($tmp);
+        unlink($tmp);
+
+        return ['file_path' => $path, 'file_name' => Str::slug(Str::limit($title, 40, '')).'.docx', 'file_size' => $size];
     }
 
     private function affiliation(?string $key): string
@@ -582,7 +444,8 @@ class DemoSubmissionSeeder extends Seeder
         return [
             'msu' => 'มหาวิทยาลัยมหาสารคาม', 'kku' => 'มหาวิทยาลัยขอนแก่น', 'cmu' => 'มหาวิทยาลัยเชียงใหม่',
             'nu' => 'มหาวิทยาลัยนเรศวร', 'rmu' => 'มหาวิทยาลัยราชภัฏมหาสารคาม', 'ubu' => 'มหาวิทยาลัยอุบลราชธานี',
-            'kmitl' => 'สถาบันเทคโนโลยีพระจอมเกล้าเจ้าคุณทหารลาดกระบัง',
+            'kmitl' => 'สถาบันเทคโนโลยีพระจอมเกล้าเจ้าคุณทหารลาดกระบัง', 'tu' => 'มหาวิทยาลัยธรรมศาสตร์',
+            'ksu' => 'มหาวิทยาลัยกาฬสินธุ์', 'obec' => 'สำนักงานคณะกรรมการการศึกษาขั้นพื้นฐาน',
         ][$key] ?? 'มหาวิทยาลัยมหาสารคาม';
     }
 }

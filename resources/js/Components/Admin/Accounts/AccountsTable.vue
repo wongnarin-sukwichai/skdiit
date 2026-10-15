@@ -12,7 +12,7 @@ import { useI18n } from '@/i18n';
 import { useAcademicTitles } from '@/composables/useAcademicTitles';
 
 /**
- * Account list for the Staff page (admin, editor, finance) and the Reviewers page.
+ * Account list for the Staff page (admin, editor, journal) and the Reviewers page.
  * baseUrl serves index, store, update, destroy and {id}/password (Admin\Concerns\ManagesAccounts).
  */
 const props = defineProps({

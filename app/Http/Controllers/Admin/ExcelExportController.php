@@ -10,14 +10,14 @@ use OpenSpout\Writer\XLSX\Writer;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
- * Excel download for the pages that still show sample data (registrants, payments, reports, activity log).
+ * Excel download for the pages that still show sample data (registrants, reports, activity log).
  * The page sends the rows it shows, already in the viewer's language; once a page reads real data it builds
  * its own rows on the server instead. Allowed for anyone who can open one of those pages.
  */
 class ExcelExportController extends Controller
 {
     /** Pages that export through here; the user needs one of them. */
-    private const MODULES = ['registrants', 'payments', 'reports', 'activity-log'];
+    private const MODULES = ['registrants', 'reports', 'activity-log'];
 
     public function __invoke(Request $request): StreamedResponse
     {
@@ -30,7 +30,7 @@ class ExcelExportController extends Controller
             'rows' => ['present', 'array', 'max:10000'],
             'rows.*' => ['array', 'max:20'],
             'rows.*.*' => ['nullable', 'string', 'max:1000'],
-            // e.g. registrants, payments, report-papers, activity-log
+            // e.g. registrants, report-papers, activity-log
             'name' => ['nullable', 'alpha_dash', 'max:40'],
         ]);
 

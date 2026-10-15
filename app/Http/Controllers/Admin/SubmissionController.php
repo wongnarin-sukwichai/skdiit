@@ -28,7 +28,7 @@ class SubmissionController extends Controller
     public function index(Request $request): Response
     {
         $filters = $request->only('q', 'track', 'status', 'queue');
-        $submissions = Submission::query()
+        $submissions = Submission::currentYear()
             ->with('track', 'authors')
             // This round's reviews: assigned, sent, late, cannot review
             ->withReviewCounts()
@@ -59,8 +59,7 @@ class SubmissionController extends Controller
             'filters' => $filters,
             'tracks' => Track::ordered()->get()->map->toClient(),
             'statuses' => array_column(SubmissionStatus::cases(), 'value'),
-            'optionBCount' => Submission::where('status', SubmissionStatus::OptionB)->count(),
-            'cameraReadyCount' => Submission::whereNotNull('camera_ready_path')->count(),
+            'cameraReadyCount' => Submission::currentYear()->whereNotNull('camera_ready_path')->count(),
             'queues' => Submission::queueCounts(),
             ...Submission::window(),
         ]);
@@ -78,6 +77,7 @@ class SubmissionController extends Controller
             // Staff coordinate with the author: their phone (reviewers and the author's own page never get it)
             'contactPhone' => $submission->user?->phone,
             'versions' => $submission->versionsFor('staff'),
+            'files' => $submission->currentFiles(),
             'notes' => $submission->notes()->with('user')->orderByDesc('pinned')->latest()->get()->map->toClient($request->user()),
             ...Submission::window(),
             'canScreen' => $submission->canBeScreened(),
@@ -90,6 +90,7 @@ class SubmissionController extends Controller
             'canDecide' => $submission->canBeDecided(),
             'canStartRound' => $submission->canStartReviewRound(),
             'canSchedule' => $submission->status->canBeScheduled(),
+            'journal' => JournalController::panel($request->user(), $submission),
             'reviewerOptions' => $submission->canAssignReviewers()
                 ? ReviewerAssignmentController::availableReviewers($submission)->map(fn (User $reviewer) => [
                     ...$reviewer->only('id', 'name', 'email'),
@@ -186,28 +187,21 @@ class SubmissionController extends Controller
         return back()->with('success', 'submissions.trackChanged');
     }
 
-    /** Download the paper: its author, submission managers, or a reviewer assigned to it. */
+    /** Download the paper: its author, submission managers, the journal (journal stage), or a reviewer assigned to it. */
     public function file(Request $request, Submission $submission): StreamedResponse
     {
-        $user = $request->user();
-        abort_unless(
-            $submission->user_id === $user->id
-                || $user->moduleAccess('submissions')
-                || $submission->reviews()->where('reviewer_id', $user->id)->exists(),
-            404
-        );
+        abort_unless(self::canReadPaper($request->user(), $submission), 404);
 
         return Storage::download($submission->file_path, $submission->file_name);
     }
 
-    /** Download the camera-ready file (Option A): its author or submission managers. */
     /**
      * Every camera-ready file in one ZIP for compiling the Proceeding, named by paper code and first author,
      * with an index (index.csv: code, titles, authors, track, file name).
      */
     public function cameraReadyZip(): BinaryFileResponse
     {
-        $papers = Submission::with('authors', 'track')->whereNotNull('camera_ready_path')->orderBy('code')->get();
+        $papers = Submission::currentYear()->with('authors', 'track')->whereNotNull('camera_ready_path')->orderBy('code')->get();
         abort_if($papers->isEmpty(), 404);
 
         $path = tempnam(sys_get_temp_dir(), 'skdiit-zip');
@@ -233,16 +227,14 @@ class SubmissionController extends Controller
         return response()->download($path, 'skdiit2027-camera-ready-'.now()->format('Ymd-His').'.zip')->deleteFileAfterSend();
     }
 
+    /** One stored file. Reviewers only get manuscripts (PDF) and response letters, never Word, Turnitin or supplementary files. */
     public function versionFile(Request $request, SubmissionFile $file): StreamedResponse
     {
-        $submission = $file->submission;
         $user = $request->user();
-        abort_unless(
-            $submission->user_id === $user->id
-                || $user->moduleAccess('submissions')
-                || $submission->reviews()->where('reviewer_id', $user->id)->exists(),
-            404
-        );
+        $submission = $file->submission;
+        $isReviewerOnly = $submission->user_id !== $user->id && ! $user->moduleAccess('submissions')
+            && ! ($user->moduleAccess('journal') && $submission->isJournalStage());
+        abort_unless(self::canReadPaper($user, $submission) && (! $isReviewerOnly || in_array($file->kind, ['manuscript', 'response'], true)), 404);
 
         return $request->boolean('inline') && $file->isPdf()
             ? Storage::response($file->path, $file->name)
@@ -255,5 +247,23 @@ class SubmissionController extends Controller
         abort_unless($submission->camera_ready_path && ($submission->user_id === $user->id || $user->moduleAccess('submissions')), 404);
 
         return Storage::download($submission->camera_ready_path, $submission->camera_ready_name);
+    }
+
+    /** Presentation slides: their author or submission managers. */
+    public function slides(Request $request, Submission $submission): StreamedResponse
+    {
+        $user = $request->user();
+        abort_unless($submission->slides_path && ($submission->user_id === $user->id || $user->moduleAccess('submissions')), 404);
+
+        return Storage::download($submission->slides_path, $submission->slides_name);
+    }
+
+    /** The paper's files: its author, submission managers, the journal while the paper is with it, or an assigned reviewer. */
+    public static function canReadPaper(User $user, Submission $submission): bool
+    {
+        return $submission->user_id === $user->id
+            || $user->moduleAccess('submissions')
+            || ($user->moduleAccess('journal') && $submission->isJournalStage())
+            || $submission->reviews()->where('reviewer_id', $user->id)->exists();
     }
 }
