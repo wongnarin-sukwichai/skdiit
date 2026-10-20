@@ -162,8 +162,8 @@ const h2 = 'mb-4 text-base font-semibold';
                 <Card class="xl:col-span-2">
                     <h2 :class="h2">{{ t('admin.reports.byStatus') }}</h2>
                     <div class="grid gap-x-10 md:grid-cols-2">
-                        <BarList :rows="statusRows.slice(0, 7)" :max="Math.max(...statusRows.map((x) => x.value))" />
-                        <BarList :rows="statusRows.slice(7)" :max="Math.max(...statusRows.map((x) => x.value))" class="mt-2.5 md:mt-0" />
+                        <BarList :rows="statusRows.slice(0, 7)" :max="Math.max(1, ...statusRows.map((x) => x.value))" />
+                        <BarList :rows="statusRows.slice(7)" :max="Math.max(1, ...statusRows.map((x) => x.value))" class="mt-2.5 md:mt-0" />
                     </div>
                 </Card>
             </div>

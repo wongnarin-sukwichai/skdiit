@@ -1,11 +1,11 @@
 <script setup>
 import { computed, ref } from 'vue';
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, router } from '@inertiajs/vue3';
 import Card from '@/Components/Admin/Card.vue';
 import PageHeader from '@/Components/Admin/PageHeader.vue';
 import DeadlineNotice from '@/Components/Admin/DeadlineNotice.vue';
 import Pagination from '@/Components/Pagination.vue';
-import SubmissionStatusBadge from '@/Components/Admin/SubmissionStatusBadge.vue';
+import FirstGateTable from '@/Components/Admin/Journal/FirstGateTable.vue';
 import { useI18n } from '@/i18n';
 
 // The journal's list (journal role and admin): papers to select, selected ones waiting for its final answer, accepted ones
@@ -15,13 +15,14 @@ const props = defineProps({
     counts: { type: Object, required: true }, // papers per tab
     pastDeadline: { type: Number, required: true }, // still waiting although the journal deadline has passed
     journalDeadline: { type: String, default: null },
+    declineBy: { type: String, required: true }, // admin | editor (after the journal deadline) | journal (never)
     deadline: { type: String, default: null },
     isOpen: { type: Boolean, required: true },
     opensAt: { type: String, default: null },
     phase: { type: String, required: true }, // upcoming | open | closed (Submission::window())
 });
 
-const { t, tr, formatDate, formatNumber } = useI18n();
+const { t, formatDate, formatNumber } = useI18n();
 
 const tabs = [
     { key: 'waiting', icon: 'inbox' },
@@ -50,7 +51,6 @@ const page = computed({
 });
 
 const input = 'w-full rounded-lg border border-neutral-300 bg-neutral-50 px-3 py-2.5 text-sm outline-none transition focus:border-gold-400 focus:ring-2 focus:ring-gold-400/20 dark:border-white/10 dark:bg-ink-800';
-const iconBtn = 'inline-grid size-8 place-items-center rounded-md border border-neutral-300 text-neutral-600 transition hover:border-gold-400 hover:text-gold-500 dark:border-white/15 dark:text-neutral-200';
 </script>
 
 <template>
@@ -104,41 +104,16 @@ const iconBtn = 'inline-grid size-8 place-items-center rounded-md border border-
             </button>
         </form>
 
-        <div class="overflow-x-auto rounded-xl border border-neutral-200 dark:border-white/10">
-            <table class="w-full min-w-200 text-sm">
-                <thead class="bg-neutral-50 text-left text-neutral-500 dark:bg-white/5 dark:text-neutral-400">
-                    <tr>
-                        <th class="px-4 py-3 font-medium">{{ t('submissions.code') }}</th>
-                        <th class="px-4 py-3 font-medium">{{ t('submissions.fields.title') }}</th>
-                        <th class="px-4 py-3 font-medium">{{ t('submissions.fields.track') }}</th>
-                        <th class="px-4 py-3 text-center font-medium">{{ t('registrants.status') }}</th>
-                        <th class="px-4 py-3 font-medium">{{ t('submissions.submittedAt') }}</th>
-                        <th class="px-4 py-3"><span class="sr-only">{{ t('registrants.actions') }}</span></th>
-                    </tr>
-                </thead>
-                <Transition name="fade" mode="out-in">
-                    <tbody :key="`${papers.current_page}-${papers.total}-${filters.q}-${filters.tab}`" class="divide-y divide-neutral-200 dark:divide-white/5">
-                        <tr v-for="item in papers.data" :key="item.id" class="transition hover:bg-gold-50 dark:hover:bg-gold-400/5">
-                            <!-- Red bar: past the journal deadline -->
-                            <td :class="item.pastDeadline ? 'border-red-500' : 'border-transparent'" class="border-l-4 px-4 py-3 font-mono text-xs whitespace-nowrap text-gold-600 dark:text-gold-400">{{ item.code }}</td>
-                            <td class="max-w-md px-4 py-3">
-                                <Link :href="`/admin/journal/${item.id}`" class="line-clamp-2 font-medium hover:text-gold-600 dark:hover:text-gold-400">{{ tr(item.title) }}</Link>
-                                <span class="block truncate text-xs text-neutral-500 dark:text-neutral-400">{{ item.authors.map((a) => a.name).join(', ') }}</span>
-                            </td>
-                            <td class="px-4 py-3 whitespace-nowrap text-neutral-600 dark:text-neutral-300">{{ tr(item.track.name) }}</td>
-                            <td class="px-4 py-3 text-center"><SubmissionStatusBadge :status="item.status" /></td>
-                            <td class="px-4 py-3 whitespace-nowrap text-neutral-500 dark:text-neutral-400">{{ formatDate(item.submittedAt) }}</td>
-                            <td class="px-4 py-3 text-right">
-                                <Link :href="`/admin/journal/${item.id}`" :class="iconBtn" :title="t('registrants.view')"><Fa icon="eye" class="text-xs" /></Link>
-                            </td>
-                        </tr>
-                        <tr v-if="!papers.data.length">
-                            <td colspan="6" class="px-4 py-12 text-center text-neutral-500 dark:text-neutral-400">{{ t('journal.empty') }}</td>
-                        </tr>
-                    </tbody>
-                </Transition>
-            </table>
-        </div>
+        <FirstGateTable
+            :papers="papers.data"
+            show-url="/admin/journal"
+            :deadline="deadline"
+            :phase="phase"
+            :journal-deadline="journalDeadline"
+            :decline-by="declineBy"
+            :empty-text="t('journal.empty')"
+            :table-key="`${papers.current_page}-${papers.total}-${filters.q}-${filters.tab}`"
+        />
 
         <div class="flex flex-col items-center justify-between gap-4 sm:flex-row">
             <p class="text-sm text-neutral-500 dark:text-neutral-400">{{ t('submissions.manage.total', { total: formatNumber(papers.total) }) }}</p>

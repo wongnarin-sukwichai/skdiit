@@ -33,13 +33,18 @@ class EmailTemplate extends Model
         'screening_revise' => ['comment'],
         'screening_reject' => ['comment'],
         'decision_accept' => ['comment'],
-        'decision_minor' => ['comment', 'due'],
-        'decision_major' => ['comment', 'due'],
+        'decision_revise' => ['comment', 'due'],
         'decision_reject' => ['comment'],
         'presentation_scheduled' => ['date', 'room'],
         'reviewer_assigned' => ['due'],
         'review_reminder' => ['due'],
+        'author_request_new' => ['registrant', 'email', 'reason'],
+        'author_request_approved' => [],
+        'author_request_rejected' => ['comment'],
     ];
+
+    /** Account emails, not about a paper: no {code} or {title}. */
+    public const ACCOUNT_KEYS = ['author_request_new', 'author_request_approved', 'author_request_rejected'];
 
     /** key => [subject_th, subject_en, body_th, body_en] */
     public const DEFAULTS = [
@@ -83,15 +88,10 @@ class EmailTemplate extends Model
             "เรียน {name}\n\nยินดีด้วย บทความ \"{title}\" ({code}) ผ่านการประเมินแล้ว กรุณาอัปโหลดไฟล์ฉบับสมบูรณ์ (camera-ready) ในระบบ\n\n{comment}",
             "Dear {name},\n\nCongratulations: your paper \"{title}\" ({code}) has been accepted. Please upload the camera-ready file in the system.\n\n{comment}",
         ],
-        'decision_minor' => [
-            'บทความ {code}: ขอให้แก้ไขเล็กน้อย', 'Your paper {code}: minor revision',
-            "เรียน {name}\n\nบรรณาธิการขอให้แก้ไขบทความ \"{title}\" ({code}) เล็กน้อยตามความเห็นของผู้ประเมิน กรุณาส่งฉบับแก้ไขภายในวันที่ {due}\n\n{comment}",
-            "Dear {name},\n\nThe editor asks for a minor revision of \"{title}\" ({code}) following the reviewers' comments. Please resubmit by {due}.\n\n{comment}",
-        ],
-        'decision_major' => [
-            'บทความ {code}: ขอให้แก้ไขมาก', 'Your paper {code}: major revision',
+        'decision_revise' => [
+            'บทความ {code}: ขอให้แก้ไข', 'Your paper {code}: revision requested',
             "เรียน {name}\n\nบรรณาธิการขอให้แก้ไขบทความ \"{title}\" ({code}) ตามความเห็นของผู้ประเมิน กรุณาส่งฉบับแก้ไขภายในวันที่ {due}\n\n{comment}",
-            "Dear {name},\n\nThe editor asks for a major revision of \"{title}\" ({code}) following the reviewers' comments. Please resubmit by {due}.\n\n{comment}",
+            "Dear {name},\n\nThe editor asks you to revise \"{title}\" ({code}) following the reviewers' comments. Please resubmit by {due}.\n\n{comment}",
         ],
         'decision_reject' => [
             'ผลการพิจารณาบทความ {code}', 'Decision on your paper {code}',
@@ -113,7 +113,28 @@ class EmailTemplate extends Model
             "เรียน {name}\n\nขอเตือนการประเมินบทความ \"{title}\" ({code}) ซึ่งครบกำหนดวันที่ {due} หากไม่สะดวกประเมิน กรุณาแจ้งในระบบ",
             "Dear {name},\n\nThis is a reminder about your review of \"{title}\" ({code}), due on {due}. If you cannot review it, please say so in the system.",
         ],
+        'author_request_new' => [
+            'คำขอส่งผลงานจาก {registrant}', 'Request to submit papers from {registrant}',
+            "เรียน {name}\n\n{registrant} ({email}) ลงทะเบียนเข้าร่วมงานอย่างเดียว และขอเปลี่ยนเป็นผู้ส่งผลงาน\n\n{reason}\n\nกรุณาพิจารณาที่หน้าผู้ลงทะเบียน แท็บคำขอส่งผลงาน: {link}",
+            "Dear {name},\n\n{registrant} ({email}) registered to attend only and asks to submit papers too.\n\n{reason}\n\nPlease decide on the Registrants page, Submit requests tab: {link}",
+        ],
+        'author_request_approved' => [
+            'คำขอส่งผลงานได้รับการอนุมัติ', 'You can now submit papers',
+            "เรียน {name}\n\nบัญชีของท่านเปลี่ยนเป็นผู้เข้าร่วมงานและส่งผลงานแล้ว เข้าสู่ระบบด้วยรหัสผ่านเดิม แล้วส่งบทความได้ที่เมนูบทความของฉัน: {link}",
+            "Dear {name},\n\nYour account can now submit papers. Sign in with your current password and submit under My submissions: {link}",
+        ],
+        'author_request_rejected' => [
+            'ผลการพิจารณาคำขอส่งผลงาน', 'Your request to submit papers',
+            "เรียน {name}\n\nขออภัย คำขอเปลี่ยนเป็นผู้ส่งผลงานของท่านไม่ได้รับการอนุมัติ ท่านยังเข้าร่วมงานได้ตามเดิม\n\n{comment}",
+            "Dear {name},\n\nSorry, your request to submit papers was not approved. You are still registered to attend.\n\n{comment}",
+        ],
     ];
+
+    /** Placeholders a template knows, for the template editor. */
+    public static function varsOf(string $key): array
+    {
+        return [...(in_array($key, self::ACCOUNT_KEYS, true) ? ['name', 'link'] : self::COMMON), ...self::VARS[$key]];
+    }
 
     public function updatedBy(): BelongsTo
     {

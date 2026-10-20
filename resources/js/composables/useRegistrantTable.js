@@ -1,14 +1,15 @@
-import { computed, reactive, ref, watch } from 'vue';
-import { affiliationByKey, registrants } from '@/data/mock';
+import { computed, reactive, ref, unref, watch } from 'vue';
 
 const normalize = (text) => String(text ?? '').toLowerCase().trim();
 
 /**
  * Search, page-size and pagination state for the registrant list (frontend and backend share it).
  * The backend adds its own fields via `filters` (initial values) and `match(row, applied)`,
- * and `withEmail` lets the name box match emails too (never on the public list).
+ * `withEmail` lets the name box match emails too (never on the public list), and `affiliationText(row)` gives
+ * the affiliation name to match (useAffiliations().affiliationOf).
+ * `source` may be an array or a ref/computed of one. Names may be { en, th } or plain text.
  */
-export function useRegistrantTable(source = registrants, { filters = {}, match = () => true, withEmail = false } = {}) {
+export function useRegistrantTable(source, { filters = {}, match = () => true, withEmail = false, affiliationText = (row) => row.affiliation } = {}) {
     const blank = { name: '', affiliation: '', ...filters };
     const form = reactive({ ...blank });
     const applied = reactive({ ...blank });
@@ -20,10 +21,10 @@ export function useRegistrantTable(source = registrants, { filters = {}, match =
         const name = normalize(applied.name);
         const affiliation = normalize(applied.affiliation);
 
-        return source.filter((row) => {
-            const aff = affiliationByKey[row.affiliation];
-            return (!name || normalize(`${row.name.en} ${row.name.th} ${withEmail ? row.email : ''}`).includes(name))
-                && (!affiliation || normalize(`${aff?.en} ${aff?.th}`).includes(affiliation))
+        return unref(source).filter((row) => {
+            const names = typeof row.name === 'string' ? row.name : `${row.name.en} ${row.name.th}`;
+            return (!name || normalize(`${names} ${withEmail ? row.email : ''}`).includes(name))
+                && (!affiliation || normalize(affiliationText(row)).includes(affiliation))
                 && match(row, applied);
         });
     });

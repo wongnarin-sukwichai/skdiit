@@ -58,10 +58,12 @@ class JournalWorkflowSmokeTest extends TestCase
         $this->actingAs($admin)->put('/admin/settings/site/conference', $conference)->assertSessionHasNoErrors();
         $this->get('/contact')->assertOk()->assertInertia(fn ($page) => $page->where('site.conference.shortName', 'SKDIIT 2028')->where('site.contact.hours.th', 'จันทร์–ศุกร์ 08:30–16:30 น.'));
 
-        // Page texts; the objectives list replaces the default one
-        $this->actingAs($admin)->put('/admin/settings/site/pages/about', ['lead' => ['th' => 'ก', 'en' => 'A'], 'objectives' => [['th' => 'ข้อ 1', 'en' => 'One']]])->assertSessionHasNoErrors();
-        $this->actingAs($admin)->put('/admin/settings/site/pages/nope', [])->assertNotFound();
-        $this->get('/about')->assertOk()->assertInertia(fn ($page) => $page->has('site.about.objectives', 1)->has('topics', Track::count()));
+        // Page texts (the About page was removed 2026-10-16)
+        $contact = ['lead' => ['th' => 'ก', 'en' => 'A'], 'address' => ['th' => 'ข', 'en' => 'B'], 'hours' => ['th' => 'ค', 'en' => 'C']];
+        $this->actingAs($admin)->put('/admin/settings/site/pages/contact', $contact)->assertSessionHasNoErrors();
+        $this->actingAs($admin)->put('/admin/settings/site/pages/about', [])->assertNotFound();
+        $this->get('/contact')->assertOk()->assertInertia(fn ($page) => $page->where('site.contact.lead.th', 'ก')->missing('site.about'));
+        $this->get('/about')->assertNotFound();
 
         // Documents: upload, public download, delete
         $this->actingAs($admin)->post('/admin/settings/site/documents', ['name_th' => 'แม่แบบ', 'name_en' => 'Template', 'file' => \Illuminate\Http\UploadedFile::fake()->create('t.docx', 50)])->assertSessionHasNoErrors();
@@ -204,15 +206,15 @@ class JournalWorkflowSmokeTest extends TestCase
         $this->assertStringEndsWith('@smoke.test', $attendee->email);
         $this->actingAs($attendee)->put('/my-details', ['name' => '', 'affiliation' => 'msu'])->assertSessionHasErrors('name');
 
-        // A reviewer sees the editor's decision on the round they evaluated (seeded sample: SKDIIT27-0011, minor revision)
+        // A reviewer sees the editor's decision on the round they evaluated (seeded sample: SKDIIT27-0011, revision requested)
         $paper = Submission::where('code', 'SKDIIT27-0011')->first();
         if (! $paper) {
             $this->markTestSkipped('Seed the sample papers first.');
         }
         $review = $paper->reviews()->whereHas('reviewer', fn ($q) => $q->where('email', 'reviewer@skdiit.test'))->first();
-        $this->assertSame('revision_minor', $review->outcomeForReviewer()['decision']);
+        $this->assertSame('review_revision', $review->outcomeForReviewer()['decision']);
         $this->actingAs($review->reviewer)->get("/admin/reviews/{$review->id}")->assertOk()
-            ->assertInertia(fn ($page) => $page->where('review.outcome.decision', 'revision_minor'));
+            ->assertInertia(fn ($page) => $page->where('review.outcome.decision', 'review_revision'));
         // Not decided yet (SKDIIT27-0009): no outcome
         $open = Submission::where('code', 'SKDIIT27-0009')->first()->reviews()->whereNotNull('submitted_at')->first();
         $this->assertNull($open->outcomeForReviewer());
@@ -244,7 +246,7 @@ class JournalWorkflowSmokeTest extends TestCase
         $this->assertSame(1, $review->scores()->count());
         $this->actingAs($reviewer)->get("/admin/reviews/{$review->id}")->assertOk()
             ->assertInertia(fn ($page) => $page->has('criteria', 2)->where('review.scores.0.score', 4));
-        $send = ['recommendation' => 'minor', 'comment' => 'ok', 'no_conflict' => '1'];
+        $send = ['recommendation' => 'revise', 'comment' => 'ok', 'no_conflict' => '1'];
         $this->actingAs($reviewer)->post("/admin/reviews/{$review->id}", [...$send, 'scores' => [$method->id => 4]])->assertSessionHasErrors("scores.{$writing->id}");
         $this->actingAs($reviewer)->post("/admin/reviews/{$review->id}", [...$send, 'scores' => [$method->id => 4, $writing->id => 6]])->assertSessionHasErrors("scores.{$writing->id}");
         $this->actingAs($reviewer)->post("/admin/reviews/{$review->id}", [...$send, 'scores' => [$method->id => 4, $writing->id => 3]])->assertSessionHasNoErrors();
@@ -253,7 +255,7 @@ class JournalWorkflowSmokeTest extends TestCase
         $editor = $this->user('editor');
         $this->actingAs($editor)->get("/admin/submissions/{$paper->id}")->assertOk()
             ->assertInertia(fn ($page) => $page->where('reviews.0.average', 3.5)->has('reviews.0.scores', 2));
-        $paper->forceFill(['status' => SubmissionStatus::RevisionMinor])->save(); // the round is decided: authors read the comments
+        $paper->forceFill(['status' => SubmissionStatus::ReviewRevision])->save(); // the round is decided: authors read the comments
         $forAuthor = $paper->fresh()->reviewsForAuthor()[0]['reviews'][0];
         $this->assertSame('ok', $forAuthor['comment']);
         $this->assertArrayNotHasKey('scores', $forAuthor);
@@ -337,12 +339,15 @@ class JournalWorkflowSmokeTest extends TestCase
         // Journal list and page; editors have no journal menu
         $this->actingAs($journal)->get('/admin/journal')->assertOk();
         $this->actingAs($journal)->get("/admin/journal/{$paper->id}")->assertOk();
-        $this->actingAs($editor)->get('/admin/journal')->assertRedirect();
+        $this->actingAs($editor)->get('/admin/journal')->assertRedirect(); // editors coordinate from Selection
+        $this->actingAs($journal)->get('/admin/selection')->assertRedirect();
         $this->actingAs($editor)->get("/admin/submissions/{$paper->id}")->assertOk();
         $this->actingAs($journal)->get('/admin')->assertOk();
 
-        // Editors cannot select for the journal
-        $this->actingAs($editor)->post("/admin/journal/{$paper->id}/selection", ['decision' => 'select'])->assertRedirect();
+        // Editors cannot select for the journal, nor pass a paper on before the journal deadline
+        Setting::put('journal_deadline', now()->addDay()->toDateString());
+        $this->actingAs($editor)->post("/admin/journal/{$paper->id}/selection", ['decision' => 'select'])->assertForbidden();
+        $this->actingAs($editor)->post("/admin/journal/{$paper->id}/selection", ['decision' => 'decline'])->assertForbidden();
         $this->assertSame(SubmissionStatus::Submitted, $paper->fresh()->status);
 
         // Select, then the journal rejects: conference track (editor screening)
@@ -369,8 +374,15 @@ class JournalWorkflowSmokeTest extends TestCase
         ]);
         Setting::put('journal_deadline', now()->subDay()->toDateString());
         $this->assertTrue($other->fresh()->isPastJournalDeadline());
+        // Only admin passes a paper on to the conference track (2026-10-20); the journal only selects
+        $this->actingAs($journal)->post("/admin/journal/{$other->id}/selection", ['decision' => 'decline'])->assertForbidden();
+        $this->assertSame(SubmissionStatus::Submitted, $other->fresh()->status);
         $this->actingAs($admin)->get('/admin')->assertOk()->assertInertia(fn ($page) => $page->where('papers.journalPastDeadline', fn ($n) => $n >= 1));
-        $this->actingAs($admin)->post("/admin/journal/{$other->id}/selection", ['decision' => 'decline'])->assertRedirect();
+        $this->assertTrue(Submission::query()->gate('late')->whereKey($other->id)->exists());
+        $this->actingAs($editor)->get('/admin/selection?tab=late')->assertOk()
+            ->assertInertia(fn ($page) => $page->where('counts.late', fn ($n) => $n >= 1));
+        // After the journal deadline an editor may pass it on
+        $this->actingAs($editor)->post("/admin/journal/{$other->id}/selection", ['decision' => 'decline'])->assertRedirect();
         $this->assertSame(SubmissionStatus::Screening, $other->fresh()->status);
 
         // Journal accepts a third paper: presents, slides open only with a slot

@@ -41,8 +41,7 @@ class WorkflowMail
             }, $author],
             SubmissionAction::Decided => [match ($event->to_status) {
                 'accepted' => 'decision_accept',
-                'revision_minor' => 'decision_minor',
-                'revision_major' => 'decision_major',
+                'review_revision' => 'decision_revise',
                 default => 'decision_reject',
             }, $author],
             SubmissionAction::PresentationScheduled => [$event->meta['at'] ?? null ? 'presentation_scheduled' : null, $author],
@@ -72,6 +71,14 @@ class WorkflowMail
         ]);
 
         static::send($to, $text['subject'], $text['body_th'], $text['body_en'], url($toReviewer ? '/admin/reviews' : "/admin/my-submissions/{$submission->id}"));
+    }
+
+    /** An account email (EmailTemplate::ACCOUNT_KEYS), e.g. a request to submit papers and its answer. */
+    public static function account(string $key, User $to, string $path, array $vars = []): bool
+    {
+        $text = EmailTemplate::render($key, ['name' => $to->name, 'link' => url($path), ...$vars]);
+
+        return static::send($to, $text['subject'], $text['body_th'], $text['body_en'], url($path));
     }
 
     public static function send(User $to, string $subject, string $bodyTh, ?string $bodyEn, ?string $url): bool

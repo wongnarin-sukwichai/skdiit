@@ -54,6 +54,14 @@ return [
     ],
 
     // Papers
+    // The first gate for editors (2026-10-20): every paper of the year with the journal's selection, files, and the
+    // Conference button once the journal deadline has passed (SelectionController; the journal works in its own menu)
+    'selection' => [
+        'group' => 'papers',
+        'href' => '/admin/selection',
+        'icon' => 'code-branch',
+        'access' => ['admin' => 'full', 'editor' => 'full'],
+    ],
     'my-submissions' => [
         'group' => 'papers',
         'href' => '/admin/my-submissions',
@@ -66,7 +74,8 @@ return [
         'icon' => 'file-lines',
         'access' => ['admin' => 'full', 'editor' => 'full'],
     ],
-    // The journal's first gate (admin may do every journal action; editors see it on each paper page)
+    // The journal's first gate (admin may do every journal action). Editors coordinate with the journal from Selection
+    // and pass papers on after the journal deadline (Submission::canBePassedOnBy)
     'journal' => [
         'group' => 'papers',
         'href' => '/admin/journal',

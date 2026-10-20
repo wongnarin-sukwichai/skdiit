@@ -4,8 +4,14 @@
  * People and papers come from demo.json, the same file DemoSubmissionSeeder puts into the real database, so the
  * sample pages (registrants, publication, presentations, reports, notifications, email and activity logs) show the
  * same 20 registrants, 15 papers, codes and statuses as the real paper pages. Dates are relative to today.
+ *
+ * SHOW_SAMPLE = false (real-data testing, 2026-10-19): those pages show no data until each one reads the database.
+ * Set it back to true together with `php artisan db:seed --class=DemoSubmissionSeeder` to present the sample again.
  */
-import demo from './demo.json';
+import sample from './demo.json';
+
+export const SHOW_SAMPLE = false;
+const demo = SHOW_SAMPLE ? sample : { people: [], papers: [], reviewers: [] };
 
 export const affiliations = [
     { key: 'msu', en: 'Mahasarakham University', th: 'มหาวิทยาลัยมหาสารคาม' },
@@ -95,33 +101,11 @@ export const registrants = [...people]
         registeredAt: p.registeredAt,
     }));
 
-/*
- * Backend view of each registrant, shaped like the users table (participation attend | attend_submit)
- * plus the paper's status (App\Enums\SubmissionStatus) from the same sample papers.
- */
-export const adminRegistrants = registrants.map((row) => {
-    const person = people.find((p) => p.email === row.email);
-    const paper = paperByAuthor[person.key];
-    return {
-        id: row.id,
-        name: row.name,
-        email: row.email,
-        affiliation: row.affiliation,
-        participation: person.participation,
-        paper: paper?.title ?? null,
-        paperStatus: paper?.status ?? null,
-        active: true,
-        verified: person.verified, // signed in at least once with the emailed password (users.email_verified_at)
-        phone: person.phone,
-        registeredAt: row.registeredAt,
-    };
-});
-
 export const registrantStats = {
     total: registrants.length,
     attend: registrants.filter((r) => r.attend).length,
     submitted: registrants.filter((r) => r.submitted).length,
-    underReview: papers.filter((p) => ['in_review', 'revision_minor', 'revision_major', 'revised'].includes(p.status)).length,
+    underReview: papers.filter((p) => ['in_review', 'review_revision', 'revised'].includes(p.status)).length,
 };
 
 // ---- Publication (papers that will present) ----
@@ -173,7 +157,7 @@ export const presentationBlocks = [
  * Built from the sample papers that have a slot; unscheduledPapers: papers that will present but have no slot yet.
  */
 function buildSessions() {
-    const chairs = ['rv.orawan', 'rv.preecha', 'rv.suda', 'rv.nattaya'].map((key) => reviewerByKey[key].name);
+    const chairs = ['rv.orawan', 'rv.preecha', 'rv.suda', 'rv.nattaya'].map((key) => reviewerByKey[key]?.name).filter(Boolean);
     const entry = (p) => ({ code: p.code, title: p.title, author: p.author.name, slides: !!stepOf(p, 'slides') });
     const sessions = [];
     papers.filter((p) => PRESENTING.includes(p.status) && stepOf(p, 'present')).forEach((p) => {
@@ -211,10 +195,10 @@ const due = (paper) => {
  * By access role (User::accessRole()). type: paper | review | system.
  * { id, type, icon, at, read, href, title: { en, th }, body: { en, th } }
  */
-export const notificationsByRole = {
+export const notificationsByRole = !SHOW_SAMPLE ? {} : {
     // Demo Author: SKDIIT27-0011
     author: [
-        note(1, 'paper', 'pen', stepOf(P['11'], 'decide').at, false, '/admin/my-submissions', { en: 'Minor revision requested', th: 'บทความต้องแก้ไขเล็กน้อย' }, { en: `SKDIIT27-0011: please resubmit by ${due(P['11']).en}.`, th: `SKDIIT27-0011: กรุณาส่งฉบับแก้ไขภายใน ${due(P['11']).th}` }),
+        note(1, 'paper', 'pen', stepOf(P['11'], 'decide').at, false, '/admin/my-submissions', { en: 'Revision requested', th: 'บทความต้องแก้ไข' }, { en: `SKDIIT27-0011: please resubmit by ${due(P['11']).en}.`, th: `SKDIIT27-0011: กรุณาส่งฉบับแก้ไขภายใน ${due(P['11']).th}` }),
         note(2, 'paper', 'newspaper', stepOf(P['11'], 'journalSelect').at, true, '/admin/my-submissions', { en: 'Moved to the conference process', th: 'บทความเข้าสู่กระบวนการ Conference' }, { en: 'SKDIIT27-0011 continues with editor screening and peer review.', th: 'SKDIIT27-0011 เข้าสู่การคัดกรองของบรรณาธิการและการประเมิน' }),
         note(3, 'paper', 'paper-plane', P['11'].submittedAt, true, '/admin/my-submissions', { en: 'Paper received', th: 'ได้รับบทความแล้ว' }, { en: 'SKDIIT27-0011 was submitted. You can edit it until the deadline.', th: 'ส่งบทความ SKDIIT27-0011 แล้ว แก้ไขได้จนถึงวันปิดรับ' }),
     ],
@@ -290,8 +274,8 @@ export const emailLog = (() => {
         EditorDecision: {
             subject: { en: 'Decision on your paper', th: 'ผลการพิจารณาบทความ' },
             body: (c, outcome) => ({
-                th: [`บรรณาธิการตัดสินผลบทความ ${c} แล้ว: ${{ accept: 'ผ่านการประเมิน', minor: 'แก้ไขเล็กน้อย', major: 'แก้ไขมาก', reject: 'ไม่ผ่าน' }[outcome]}`, 'ดูรายละเอียดได้ที่หน้าบทความ'],
-                en: [`The editor decided on ${c}: ${{ accept: 'accepted', minor: 'minor revision', major: 'major revision', reject: 'not accepted' }[outcome]}.`, 'See the details on your paper’s page.'],
+                th: [`บรรณาธิการตัดสินผลบทความ ${c} แล้ว: ${{ accept: 'ผ่านการประเมิน', revise: 'ให้แก้ไข', reject: 'ไม่ผ่าน' }[outcome]}`, 'ดูรายละเอียดได้ที่หน้าบทความ'],
+                en: [`The editor decided on ${c}: ${{ accept: 'accepted', revise: 'revision requested', reject: 'not accepted' }[outcome]}.`, 'See the details on your paper’s page.'],
             }),
             button: { th: 'ดูผลการพิจารณา', en: 'View the decision' },
         },
@@ -353,10 +337,10 @@ export const reportData = {
         byParticipation: countBy(people, (p) => p.participation),
     },
     papers: {
-        kpis: { submitted: papers.length, inReview: decided(['in_review', 'revision_minor', 'revision_major', 'revised']), accepted: acceptedCount, rejected: decided(['screening_rejected', 'rejected']) },
+        kpis: { submitted: papers.length, inReview: decided(['in_review', 'review_revision', 'revised']), accepted: acceptedCount, rejected: decided(['screening_rejected', 'rejected']) },
         byTrack: countBy(papers, (p) => p.track.id).map(([id, n]) => [Number(id), n]),
         byStatus: ['submitted', 'journal_selected', 'journal_accepted', 'screening', 'screening_revision', 'screening_rejected',
-            'in_review', 'revision_minor', 'revision_major', 'revised', 'accepted', 'rejected', 'camera_ready'].map((s) => [s, decided([s])]),
+            'in_review', 'review_revision', 'revised', 'accepted', 'rejected', 'camera_ready'].map((s) => [s, decided([s])]),
         // Papers that will present, by route: accepted by the journal, or through the conference track
         routes: [['journal', decided(['journal_accepted'])], ['conference', decided(['accepted', 'camera_ready'])]],
     },
@@ -366,7 +350,7 @@ export const reportData = {
         const avg = (rows) => (rows.length ? Math.round((rows.reduce((n, a) => n + (a.assignedDays - a.sentDays), 0) / rows.length) * 10) / 10 : 0);
         return {
             kpis: { assigned: assignments.length, done: sent.length, avgDays: avg(sent), overdue: assignments.filter(late).length },
-            recommendations: ['accept', 'minor', 'major', 'reject'].map((r) => [r, sent.filter((a) => a.recommendation === r).length]),
+            recommendations: ['accept', 'revise', 'reject'].map((r) => [r, sent.filter((a) => a.recommendation === r).length]),
             reviewers: demo.reviewers.map((r) => {
                 const mine = assignments.filter((a) => a.reviewer === r.key);
                 return { name: reviewerByKey[r.key].name, tracks: r.tracks, assigned: mine.length, done: mine.filter((a) => a.sentDays !== null).length, avgDays: avg(mine.filter((a) => a.sentDays !== null)), late: mine.filter(late).length };
@@ -419,6 +403,7 @@ export const dashboardData = {
  * Paper and account events replay the sample; sign-ins are spread over the same people.
  */
 export const activityLog = (() => {
+    if (!SHOW_SAMPLE) return [];
     const rand = seededRandom(43);
     const pick = (list) => list[Math.floor(rand() * list.length)];
     const ip = () => pick(['202.28.32.', '202.28.34.', '49.228.', '1.46.', '171.97.']) + `${Math.floor(rand() * 250) + 2}`;
@@ -427,7 +412,7 @@ export const activityLog = (() => {
     const author = (p) => actor(p, p.participation === 'attend' ? 'attendee' : 'author');
     const reviewer = (key) => actor(reviewerByKey[key], 'reviewer');
     const decision = { pass: { en: 'Passed screening', th: 'ผ่านการคัดกรอง' }, revise: { en: 'Sent back for revision', th: 'ส่งกลับให้แก้ไข' }, reject: { en: 'Rejected at screening', th: 'ไม่ผ่านการคัดกรอง' } };
-    const outcome = { accept: { en: 'Accepted', th: 'ตอบรับ' }, minor: { en: 'Minor revision', th: 'แก้ไขเล็กน้อย' }, major: { en: 'Major revision', th: 'แก้ไขมาก' }, reject: { en: 'Rejected', th: 'ไม่ผ่าน' } };
+    const outcome = { accept: { en: 'Accepted', th: 'ตอบรับ' }, revise: { en: 'Revision requested', th: 'ให้แก้ไข' }, reject: { en: 'Rejected', th: 'ไม่ผ่าน' } };
 
     const events = [];
     const add = (at, category, action, who, target = null, detail = null, flagged = false) => events.push({ at, category, action, actor: who, target, detail, flagged });
@@ -464,3 +449,29 @@ export const activityLog = (() => {
         .sort((a, b) => b.at.localeCompare(a.at))
         .map((e, i, all) => ({ id: all.length - i, ip: ip(), device: device(), ...e }));
 })();
+
+/*
+ * Settings › กำหนดการ, timeline phase 1 (2026-10-20): assumed dates to show the client; nothing here is saved or enforced.
+ * ScheduleTab replaces the rows the system already enforces with their real values (submission period, journal
+ * selection deadline, slides cut-off, conference day). Not sample data, so SHOW_SAMPLE does not hide it.
+ *   mode: lock = the step closes on its end date, warn = only a warning, info = shown only
+ *   who: who does the work (all / author / journal / editor / reviewer)
+ *   perItem: days each paper or reviewer gets inside the phase (per-paper deadlines never pass the phase end)
+ *   milestone: a single day
+ *   public: also listed in the important dates on the public site
+ */
+export const timelinePlan = [
+    { key: 'registration', icon: 'users', who: 'all', start: '2026-09-01', end: '2027-01-15', mode: 'lock', public: true },
+    { key: 'submission', icon: 'file-arrow-up', who: 'author', start: '2026-09-01', end: '2026-11-30', mode: 'lock', public: true },
+    { key: 'journalSelect', icon: 'newspaper', who: 'journal', start: '2026-12-01', end: '2026-12-04', mode: 'warn' },
+    { key: 'journalFinal', icon: 'newspaper', who: 'journal', start: '2026-12-02', end: '2026-12-07', mode: 'lock' },
+    { key: 'screening', icon: 'magnifying-glass', who: 'editor', start: '2026-12-02', end: '2026-12-08', mode: 'warn', perItem: { days: 3, unit: 'paper' } },
+    { key: 'review', icon: 'user-check', who: 'reviewer', start: '2026-12-03', end: '2026-12-16', mode: 'warn', perItem: { days: 7, unit: 'reviewer' } },
+    { key: 'notify', icon: 'bullhorn', who: 'editor', start: '2026-12-20', end: '2026-12-20', mode: 'info', milestone: true, public: true },
+    { key: 'revision', icon: 'pen-to-square', who: 'author', start: '2026-12-21', end: '2026-12-30', mode: 'lock', perItem: { days: 7, unit: 'paper' } },
+    { key: 'finalDecision', icon: 'gavel', who: 'editor', start: '2026-12-24', end: '2027-01-03', mode: 'warn' },
+    { key: 'cameraReady', icon: 'file-circle-check', who: 'author', start: '2026-12-20', end: '2027-01-08', mode: 'lock', public: true },
+    { key: 'scheduling', icon: 'table-columns', who: 'editor', start: '2027-01-04', end: '2027-01-15', mode: 'info' },
+    { key: 'slides', icon: 'file-powerpoint', who: 'author', start: '2027-01-04', end: '2027-01-25', mode: 'lock' },
+    { key: 'conference', icon: 'star', who: 'all', start: '2027-01-28', end: '2027-01-28', mode: 'info', milestone: true, public: true },
+];

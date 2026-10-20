@@ -6,7 +6,6 @@ namespace App\Enums;
 enum ReviewRecommendation: string
 {
     case Accept = 'accept';   // accept without revision
-    case Minor = 'minor';     // minor revision
-    case Major = 'major';     // major revision
+    case Revise = 'revise';   // revise and resubmit
     case Reject = 'reject';
 }

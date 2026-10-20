@@ -10,9 +10,9 @@ use OpenSpout\Writer\XLSX\Writer;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
- * Excel download for the pages that still show sample data (registrants, reports, activity log).
- * The page sends the rows it shows, already in the viewer's language; once a page reads real data it builds
- * its own rows on the server instead. Allowed for anyone who can open one of those pages.
+ * Excel download of the rows a list page shows (registrants, reports, activity log).
+ * The page sends the rows it shows, already filtered and in the viewer's language.
+ * Allowed for anyone with staff access to one of those pages.
  */
 class ExcelExportController extends Controller
 {

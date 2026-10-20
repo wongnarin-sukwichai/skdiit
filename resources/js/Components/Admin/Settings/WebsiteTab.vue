@@ -3,14 +3,14 @@ import { reactive, ref, watch } from 'vue';
 import { router, useForm } from '@inertiajs/vue3';
 import BilingualInput from '@/Components/Admin/Settings/BilingualInput.vue';
 import ConfirmModal from '@/Components/Admin/ConfirmModal.vue';
+import ScheduleContent from '@/Components/Admin/Settings/ScheduleContent.vue';
 import { useI18n } from '@/i18n';
 import { useSite } from '@/composables/useSite';
 import { formatFileSize } from '@/utils/format';
 
 /*
- * Public-site content (SiteContentController): the home headline, About (lead and objectives), Contact,
- * and the files on the Documents page. The conference name, date, venue, email and phone are in the Conference tab;
- * the topics on About are the tracks (Tracks menu).
+ * Public-site content (SiteContentController): the home headline, Contact, the privacy policy
+ * and the files on the Documents page. The conference name, date, venue, email and phone are in the Conference tab.
  */
 const props = defineProps({
     documents: { type: Array, required: true }, // { id, name: { en, th }, name_th, name_en, file_name, type, size, url }
@@ -25,7 +25,6 @@ const clone = (value) => JSON.parse(JSON.stringify(value));
 // One form per page; each saves on its own
 const forms = {
     home: useForm(clone(site.value.home)),
-    about: useForm(clone(site.value.about)),
     contact: useForm(clone(site.value.contact)),
     privacy: useForm(clone(site.value.privacy)),
 };
@@ -97,29 +96,8 @@ const accept = '.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.zip';
             <button type="submit" :class="saveBtn" :disabled="forms.home.processing || !forms.home.isDirty"><Fa icon="floppy-disk" /> {{ t('common.save') }}</button>
         </form>
 
-        <!-- About -->
-        <form :class="box" @submit.prevent="savePage('about')">
-            <h3 :class="h3"><Fa icon="building-columns" class="text-gold-500" /> {{ t('nav.about') }}</h3>
-            <BilingualInput v-model="forms.about.lead" field="lead" multiline :maxlength="2000" :label="t('admin.website.lead')" :errors="forms.about.errors" />
-            <div>
-                <p class="mb-1.5 text-sm font-medium">{{ t('about.objectivesTitle') }}</p>
-                <TransitionGroup name="fade" tag="ol" class="space-y-2">
-                    <li v-for="(item, i) in forms.about.objectives" :key="i" class="flex gap-2">
-                        <span class="mt-2 w-5 shrink-0 text-right text-sm text-neutral-400">{{ i + 1 }}.</span>
-                        <div class="grid flex-1 gap-2 md:grid-cols-2">
-                            <input v-model="item.th" maxlength="500" :placeholder="t('lang.th')" :class="[input, border(forms.about.errors[`objectives.${i}.th`])]">
-                            <input v-model="item.en" maxlength="500" :placeholder="t('lang.en')" :class="[input, border(forms.about.errors[`objectives.${i}.en`])]">
-                        </div>
-                        <button type="button" :class="iconBtn" class="mt-0.5 hover:text-red-500!" :title="t('admin.website.removeItem')" @click="forms.about.objectives.splice(i, 1)"><Fa icon="trash-can" class="text-xs" /></button>
-                    </li>
-                </TransitionGroup>
-                <button type="button" class="mt-2 flex items-center gap-2 rounded-lg border border-dashed border-gold-400 px-3 py-2 text-xs text-gold-600 transition hover:bg-gold-50 dark:text-gold-400 dark:hover:bg-gold-400/10" @click="forms.about.objectives.push({ th: '', en: '' })">
-                    <Fa icon="plus" /> {{ t('admin.website.addObjective') }}
-                </button>
-            </div>
-            <p class="text-xs text-neutral-500 dark:text-neutral-400"><Fa icon="circle-info" class="mr-1 text-gold-500" /> {{ t('admin.website.topicsHint') }}</p>
-            <button type="submit" :class="saveBtn" :disabled="forms.about.processing || !forms.about.isDirty"><Fa icon="floppy-disk" /> {{ t('common.save') }}</button>
-        </form>
+        <!-- Important dates and the conference-day programme (the public Schedule page) -->
+        <ScheduleContent />
 
         <!-- Contact -->
         <form :class="box" @submit.prevent="savePage('contact')">

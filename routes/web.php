@@ -11,10 +11,12 @@ use App\Http\Controllers\Admin\JournalController;
 use App\Http\Controllers\Admin\MySubmissionController;
 use App\Http\Controllers\Admin\PublicationController;
 use App\Http\Controllers\Admin\ExcelExportController;
+use App\Http\Controllers\Admin\RegistrantController;
 use App\Http\Controllers\Admin\ReviewerController;
 use App\Http\Controllers\Admin\ReviewController;
 use App\Http\Controllers\Admin\ReviewCriterionController;
 use App\Http\Controllers\Admin\ReviewerAssignmentController;
+use App\Http\Controllers\Admin\SelectionController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\SiteContentController;
 use App\Http\Controllers\Admin\StaffController;
@@ -23,15 +25,17 @@ use App\Http\Controllers\Admin\SubmissionNoteController;
 use App\Http\Controllers\Admin\TrackController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ImpersonationController;
+use App\Models\Setting;
 use App\Models\SiteDocument;
+use App\Models\Submission;
+use App\Models\User;
 use App\Models\Track;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
 // Frontend (public)
-Route::inertia('/', 'Front/Home')->name('home');
-// About lists the tracks as the conference topics (admin renames them in Tracks)
-Route::get('/about', fn () => Inertia::render('Front/About', ['topics' => Track::ordered()->get()->map->toClient()]))->name('about');
+// Home: headline and the public registrant list (this year's registrants, no contact details)
+Route::get('/', fn () => Inertia::render('Front/Home', ['registrants' => fn () => User::publicRegistrants()]))->name('home');
 Route::inertia('/schedule', 'Front/Schedule')->name('schedule');
 Route::inertia('/submission', 'Front/Submission')->name('submission');
 // Documents admin uploads (Settings › Website content), downloadable by anyone
@@ -44,8 +48,8 @@ Route::inertia('/privacy', 'Front/Privacy')->name('privacy');
 // Authentication (modal forms)
 // GET /login and /register show the home page with that modal already open
 Route::middleware('guest')->group(function () {
-    Route::inertia('/login', 'Front/Home', ['authModal' => 'login'])->name('login');
-    Route::inertia('/register', 'Front/Home', ['authModal' => 'register'])->name('register');
+    Route::get('/login', fn () => Inertia::render('Front/Home', ['authModal' => 'login', 'registrants' => fn () => User::publicRegistrants()]))->name('login');
+    Route::get('/register', fn () => Inertia::render('Front/Home', ['authModal' => 'register', 'registrants' => fn () => User::publicRegistrants()]))->name('register');
     Route::post('/login', [AuthController::class, 'login']);
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/password/resend', [AuthController::class, 'resendPassword'])->name('password.resend');
@@ -56,6 +60,8 @@ Route::put('/password', [AuthController::class, 'changePassword'])->middleware('
 Route::post('/join-year', [AuthController::class, 'joinYear'])->middleware('auth')->name('join-year');
 // "My details" on the public site: own name, phone and affiliation (attendees have no backend "My account")
 Route::put('/my-details', [AccountController::class, 'update'])->middleware('auth')->name('my-details.update');
+// "My details": an attend-only registrant asks admin to let them submit papers too
+Route::post('/author-request', [AuthController::class, 'requestAuthor'])->middleware('auth')->name('author-request');
 
 // Admin "view as this user": the way back works from any page, also for accounts without backend access
 Route::post('/impersonation/stop', [ImpersonationController::class, 'stop'])->middleware('auth')->name('impersonation.stop');
@@ -67,8 +73,22 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
     // Admin views the system as another user, read only (the controller checks who may)
     Route::post('/impersonate/{user}', [ImpersonationController::class, 'start'])->name('impersonate');
 
-    Route::inertia('/registrants', 'Admin/Registrants')->middleware('module:registrants')->name('registrants');
-    // Excel of what a sample-data page shows (registrants, reports, activity log; checked in the controller)
+    // Registrants of this year: admin manages them and decides on requests to submit papers, editors view
+    Route::prefix('registrants')->controller(RegistrantController::class)->group(function () {
+        Route::get('/', 'index')->middleware('module:registrants')->name('registrants');
+        Route::middleware('module:registrants,full')->group(function () {
+            Route::post('/', 'store')->name('registrants.store');
+            Route::put('/{user}', 'update')->name('registrants.update');
+            Route::post('/{user}/password', 'password')->name('registrants.password');
+            Route::post('/{user}/send-password', 'sendPassword')->name('registrants.send-password');
+            Route::post('/{user}/suspend', 'suspend')->name('registrants.suspend');
+            Route::post('/{user}/unsuspend', 'unsuspend')->name('registrants.unsuspend');
+            Route::post('/{user}/make-reviewer', 'makeReviewer')->name('registrants.make-reviewer');
+            Route::post('/requests/{authorRequest}/approve', 'approve')->name('registrants.requests.approve');
+            Route::post('/requests/{authorRequest}/reject', 'reject')->name('registrants.requests.reject');
+        });
+    });
+    // Excel of the rows a list page shows (registrants, reports, activity log; checked in the controller)
     Route::post('/export', ExcelExportController::class)->name('export');
 
     // Reports (mock): admin and editor
@@ -129,7 +149,13 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
     Route::prefix('settings')->middleware('module:settings')->controller(SettingsController::class)->group(function () {
         Route::get('/', 'index')->name('settings');
         Route::put('/submission', 'updateSubmission')->name('settings.submission');
+        Route::put('/deadlines', 'updateDeadlines')->name('settings.deadlines');
     });
+    // Design preview (2026-10-20): the author's paper journey in every status, before it goes on the author pages
+    Route::get('/preview/author-journey', fn () => Inertia::render('Admin/Preview/AuthorJourney', [
+        'deadline' => Submission::deadline()?->toIso8601String(),
+        'journalUrl' => Setting::get('journal_url'),
+    ]))->middleware('module:settings')->name('preview.author-journey');
     Route::prefix('settings/affiliations')->middleware('module:settings')->controller(AffiliationController::class)->group(function () {
         Route::post('/', 'store')->name('affiliations.store');
         Route::post('/adopt', 'adopt')->name('affiliations.adopt');
@@ -193,9 +219,14 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
     Route::prefix('journal')->middleware('module:journal')->controller(JournalController::class)->group(function () {
         Route::get('/', 'index')->name('journal');
         Route::get('/{submission}', 'show')->name('journal.show');
-        Route::post('/{submission}/selection', 'select')->middleware('module:journal,full')->name('journal.select');
         Route::post('/{submission}/result', 'result')->middleware('module:journal,full')->name('journal.result');
     });
+    // Selection outside the journal module: editors, who do not have the menu, pass papers on from Submissions after the
+    // journal deadline. Who may press what is checked in JournalController::select (Submission::canBePassedOnBy)
+    Route::post('/journal/{submission}/selection', [JournalController::class, 'select'])->name('journal.select');
+
+    // Editors and admin: the first gate (journal selection, passing papers on to the conference)
+    Route::get('/selection', [SelectionController::class, 'index'])->middleware('module:selection')->name('selection');
 
     // Editors and admin: all papers
     Route::prefix('submissions')->middleware('module:submissions')->controller(SubmissionController::class)->group(function () {

@@ -24,11 +24,10 @@ const { t, tr, formatDate } = useI18n();
 const day = (value) => formatDate(value, { day: 'numeric', month: 'long', year: 'numeric' });
 const when = (value) => formatDate(value, { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-const icons = { accept: 'circle-check', minor: 'pen', major: 'pen-to-square', reject: 'xmark' };
+const icons = { accept: 'circle-check', revise: 'pen', reject: 'xmark' };
 const active = {
     accept: 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
-    minor: 'border-gold-500 bg-gold-50 text-gold-700 dark:bg-gold-500/15 dark:text-gold-300',
-    major: 'border-orange-500 bg-orange-50 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300',
+    revise: 'border-gold-500 bg-gold-50 text-gold-700 dark:bg-gold-500/15 dark:text-gold-300',
     reject: 'border-red-500 bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-300',
 };
 
@@ -145,7 +144,7 @@ const box = 'rounded-xl border border-neutral-200 p-4 dark:border-white/10';
             <form v-else class="space-y-4" @submit.prevent="confirmOpen = true">
                 <div>
                     <p class="mb-2 text-sm font-medium">{{ t('reviews.form.recommendation') }} <span class="text-red-500">*</span></p>
-                    <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-4" role="radiogroup">
+                    <div class="grid gap-2 sm:grid-cols-3" role="radiogroup">
                         <button
                             v-for="value in recommendations"
                             :key="value"

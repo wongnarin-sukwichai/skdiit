@@ -1,6 +1,6 @@
 <script setup>
-import { computed, reactive, ref, watch } from 'vue';
-import { Head } from '@inertiajs/vue3';
+import { computed, ref, watch } from 'vue';
+import { Head, router, usePage } from '@inertiajs/vue3';
 import Card from '@/Components/Admin/Card.vue';
 import PageHeader from '@/Components/Admin/PageHeader.vue';
 import StatCards from '@/Components/Admin/StatCards.vue';
@@ -12,20 +12,28 @@ import CheckMark from '@/Components/CheckMark.vue';
 import RegistrantStatus from '@/Components/Admin/Registrants/RegistrantStatus.vue';
 import RegistrantDetailModal from '@/Components/Admin/Registrants/RegistrantDetailModal.vue';
 import RegistrantFormModal from '@/Components/Admin/Registrants/RegistrantFormModal.vue';
+import AuthorRequests from '@/Components/Admin/Registrants/AuthorRequests.vue';
 import { useI18n } from '@/i18n';
 import { useRegistrantTable } from '@/composables/useRegistrantTable';
 import { useModules } from '@/composables/useModules';
 import { useToast } from '@/composables/useToast';
-import { adminRegistrants, affiliationByKey } from '@/data/mock';
+import { useAffiliations } from '@/composables/useAffiliations';
+
+// Registrants of the current conference year (RegistrantController::index)
+const props = defineProps({
+    registrants: { type: Array, required: true },
+    requests: { type: Array, required: true }, // requests to submit papers, pending first
+});
 
 const { t, tr, formatDate, formatNumber } = useI18n();
 const { toast } = useToast();
-
-// Mock phase: a reactive copy of the sample list, so add/edit/suspend/delete show up until the page reloads
-const list = reactive(adminRegistrants.map((r) => ({ ...r })));
+const { affiliationOf } = useAffiliations();
+const inertiaPage = usePage();
+const me = computed(() => inertiaPage.props.auth.user);
+const year = computed(() => inertiaPage.props.site.year);
 
 // suspended | unverified (never signed in with the emailed password) | active
-const accountState = (row) => (!row.active ? 'suspended' : row.verified ? 'active' : 'unverified');
+const accountState = (row) => (row.suspended ? 'suspended' : row.verified ? 'active' : 'unverified');
 
 // YYYY-MM-DD in the app timezone, for the "registered from/to" filters
 const day = (iso) => new Date(iso).toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
@@ -35,44 +43,54 @@ const canEdit = computed(() => accessTo('registrants') === 'full');
 // Editors may look but not take the list away (personal data); only admin can export
 const canExport = canEdit;
 
+const list = computed(() => props.registrants);
 const { form, perPage, page, total, lastPage, rows, filtered, search, reset } = useRegistrantTable(list, {
     withEmail: true,
+    affiliationText: affiliationOf,
     filters: { participation: '', status: '', account: '', from: '', to: '' },
     match: (row, f) => (!f.participation || row.participation === f.participation)
         && (!f.status || (f.status === 'registered' && row.participation === 'attend')
             || (f.status === 'none' && row.participation === 'attend_submit' && !row.paperStatus)
+            || (f.status === 'requested' && row.requestPending)
             || row.paperStatus === f.status)
         && (!f.account || accountState(row) === f.account)
         && (!f.from || day(row.registeredAt) >= f.from)
         && (!f.to || day(row.registeredAt) <= f.to),
 });
 
-// Opened from the home page with a filter, e.g. ?account=unverified (registrants who never signed in)
-const initialAccount = new URLSearchParams(window.location.search).get('account');
-if (['active', 'unverified', 'suspended'].includes(initialAccount)) {
-    form.account = initialAccount;
+// Opened with a filter or a tab: ?account=unverified (home page), ?tab=requests (the request email)
+const query = new URLSearchParams(window.location.search);
+if (['active', 'unverified', 'suspended'].includes(query.get('account'))) {
+    form.account = query.get('account');
     search();
 }
+
+const tabs = [
+    { key: 'list', icon: 'users' },
+    { key: 'requests', icon: 'file-arrow-up' },
+];
+const tab = ref(query.get('tab') === 'requests' ? 'requests' : 'list');
+const pendingRequests = computed(() => props.requests.filter((r) => r.status === 'pending').length);
 
 // Status filter: attend-only, author without a paper, then each paper status (App\Enums\SubmissionStatus)
 const paperStatuses = [
     'submitted', 'journal_selected', 'journal_accepted',
-    'screening', 'screening_revision', 'screening_rejected', 'in_review', 'revision_minor', 'revision_major', 'revised',
+    'screening', 'screening_revision', 'screening_rejected', 'in_review', 'review_revision', 'revised',
     'accepted', 'rejected', 'camera_ready',
 ];
 
 const stats = computed(() => ({
-    total: list.length,
-    attendOnly: list.filter((r) => r.participation === 'attend').length,
-    authors: list.filter((r) => r.participation === 'attend_submit').length,
-    papers: list.filter((r) => r.paperStatus).length,
+    total: list.value.length,
+    attendOnly: list.value.filter((r) => r.participation === 'attend').length,
+    authors: list.value.filter((r) => r.participation === 'attend_submit').length,
+    papers: list.value.filter((r) => r.paperStatus).length,
 }));
-const statCards = computed(() => [
+const statCards = [
     { key: 'total', icon: 'user' },
     { key: 'attendOnly', icon: 'users' },
     { key: 'authors', icon: 'file-arrow-up' },
     { key: 'papers', icon: 'file-lines' },
-]);
+];
 
 // Row selection (export the selected rows)
 const checked = ref(new Set());
@@ -90,57 +108,29 @@ function toggle(id) {
 }
 watch(filtered, () => (checked.value = new Set([...checked.value].filter((id) => filtered.value.some((r) => r.id === id)))));
 
-const find = (id) => list.find((r) => r.id === id);
+const find = (id) => list.value.find((r) => r.id === id);
 
 // ---- Details, add and edit ----
 const viewing = ref(null);
-const editor = reactive({ show: false, registrant: null });
-
-const emailTaken = (email, exceptId) => list.some((r) => r.email.toLowerCase() === email && r.id !== exceptId);
-
-function openEditor(registrant = null) {
-    Object.assign(editor, { show: true, registrant });
-}
-
-function save(data) {
-    const name = { en: data.name, th: data.name };
-    if (editor.registrant) {
-        const registrant = find(editor.registrant.id);
-        const switched = registrant.participation !== data.participation;
-        Object.assign(registrant, { name, email: data.email, affiliation: data.affiliation, participation: data.participation });
-        // Real system: a notification email (the registrant keeps their password)
-        toast(switched ? 'admin.registrants.toast.participationChanged' : 'admin.registrants.toast.updated', { email: data.email });
-    } else {
-        const registrant = {
-            id: Math.max(0, ...list.map((r) => r.id)) + 1,
-            name,
-            email: data.email,
-            affiliation: data.affiliation,
-            participation: data.participation,
-            paper: null,
-            paperStatus: null,
-            active: true,
-            verified: false,
-            registeredAt: new Date().toISOString(),
-        };
-        list.unshift(registrant);
-        // Real system: a generated 6-digit password, emailed (App\Mail\LoginPassword)
-        toast('admin.registrants.toast.created', { email: data.email });
-    }
-    editor.show = false;
-}
+const editor = ref({ show: false, registrant: null });
+const openEditor = (registrant = null) => (editor.value = { show: true, registrant });
 
 // ---- Row actions (confirmed first) ----
 const pending = ref(null); // { action, registrant }
+const busy = ref(false);
 const generated = ref(null); // { name, email, password } for OneTimePasswordModal
 const shownPending = ref(null); // keeps the text while the modal fades out
 watch(pending, (value) => value && (shownPending.value = value));
 
-const confirmIcons = { sendPassword: 'paper-plane', generatePassword: 'key', makeReviewer: 'user-check', suspend: 'ban', unsuspend: 'lock-open' };
+const confirmIcons = { impersonate: 'user-secret', sendPassword: 'paper-plane', generatePassword: 'key', makeReviewer: 'user-check', suspend: 'ban', unsuspend: 'lock-open' };
 
 function menuItems(row) {
     return [
         { key: 'edit', label: t('admin.registrants.edit'), icon: 'pen' },
+        // Admin sees the system exactly as this registrant does (read only)
+        ...(me.value.accessRole === 'admin'
+            ? [{ key: 'impersonate', label: t('impersonation.action'), icon: 'user-secret', disabled: row.suspended, title: row.suspended ? t('impersonation.suspended') : undefined }]
+            : []),
         { key: 'sendPassword', label: t('admin.registrants.action.sendPassword'), icon: 'paper-plane' },
         { key: 'generatePassword', label: t('admin.oneTimePassword.action'), icon: 'key' },
         {
@@ -148,13 +138,13 @@ function menuItems(row) {
             label: t('admin.registrants.action.makeReviewer'),
             icon: 'user-check',
             // One role per account; a reviewer must not have papers of their own
-            disabled: !!row.paperStatus,
-            title: row.paperStatus ? t('admin.registrants.makeReviewerBlocked') : undefined,
+            disabled: !!row.paper,
+            title: row.paper ? t('admin.registrants.makeReviewerBlocked') : undefined,
         },
         // Registrants are never deleted, only suspended (their records stay for the conference history)
-        row.active
-            ? { key: 'suspend', label: t('admin.registrants.action.suspend'), icon: 'ban' }
-            : { key: 'unsuspend', label: t('admin.registrants.action.unsuspend'), icon: 'lock-open' },
+        row.suspended
+            ? { key: 'unsuspend', label: t('admin.registrants.action.unsuspend'), icon: 'lock-open' }
+            : { key: 'suspend', label: t('admin.registrants.action.suspend'), icon: 'ban' },
     ];
 }
 
@@ -165,24 +155,33 @@ function onMenu(row, action) {
 
 function confirmAction() {
     const { action, registrant } = pending.value;
-    pending.value = null;
+    const options = {
+        preserveScroll: true,
+        onStart: () => (busy.value = true),
+        onFinish: () => {
+            busy.value = false;
+            pending.value = null;
+        },
+    };
+    const url = `/admin/registrants/${registrant.id}`;
 
-    if (action === 'generatePassword') {
-        // Real system: POST like Settings (SettingsController::generatePassword); shown once, not emailed
-        const [n] = crypto.getRandomValues(new Uint32Array(1));
-        generated.value = { name: tr(registrant.name), email: registrant.email, password: String(n % 1_000_000).padStart(6, '0') };
-    } else if (action === 'sendPassword') {
-        // Real system: a new 6-digit password, emailed; nobody sees it on screen
-        toast('admin.registrants.toast.passwordSent', { email: registrant.email });
-    } else if (action === 'makeReviewer') {
-        // Real system: role becomes 'reviewer' and the account moves to the Reviewers page (no tracks yet)
-        list.splice(list.indexOf(registrant), 1);
-        toast('admin.registrants.toast.madeReviewer', { name: tr(registrant.name) });
-    } else if (action === 'suspend' || action === 'unsuspend') {
-        registrant.active = action === 'unsuspend';
-        toast(`admin.registrants.toast.${action}`, { name: tr(registrant.name) });
+    if (action === 'impersonate') {
+        router.post(`/admin/impersonate/${registrant.id}`, {}, options);
+    } else if (action === 'generatePassword') {
+        // Shown once, not emailed (ManagesAccounts::password)
+        router.post(`${url}/password`, {}, { ...options, onSuccess: () => (generated.value = inertiaPage.props.flash.generatedPassword) });
+    } else {
+        router.post(`${url}/${{ sendPassword: 'send-password', makeReviewer: 'make-reviewer', suspend: 'suspend', unsuspend: 'unsuspend' }[action]}`, {}, options);
     }
 }
+
+const confirmTitle = (p) => t(p.action === 'impersonate' ? 'impersonation.confirmTitle'
+    : p.action === 'generatePassword' ? 'admin.oneTimePassword.confirmTitle' : `admin.registrants.confirm.${p.action}.title`);
+const confirmText = (p) => (p.action === 'impersonate' ? t('impersonation.confirmText', { name: p.registrant.name })
+    : p.action === 'generatePassword' ? t('admin.oneTimePassword.confirmText', { name: p.registrant.name })
+    : t(`admin.registrants.confirm.${p.action}.message`, { name: p.registrant.name, email: p.registrant.email }));
+const confirmLabel = (p) => t(p.action === 'impersonate' ? 'impersonation.action'
+    : p.action === 'generatePassword' ? 'admin.oneTimePassword.action' : `admin.registrants.action.${p.action}`);
 
 // ---- Export to Excel (selected rows, or every row that matches the filters) ----
 const exporting = ref(false);
@@ -195,18 +194,19 @@ function statusText(row) {
 async function exportExcel() {
     const source = checked.value.size ? filtered.value.filter((r) => checked.value.has(r.id)) : filtered.value;
     const headers = [
-        t('registrants.no'), t('registrants.name'), t('registrants.email'), t('registrants.affiliation'),
+        t('registrants.no'), t('registrants.name'), t('registrants.email'), t('admin.accounts.phone'), t('registrants.affiliation'),
         t('registrants.participation'), t('registrants.paper'),
         t('registrants.status'), t('admin.registrants.account'),
         t('registrants.registeredAt'),
     ];
     const body = source.map((r, i) => [
         String(i + 1),
-        tr(r.name),
+        r.name,
         r.email,
-        tr(affiliationByKey[r.affiliation]),
+        r.phone ?? '',
+        affiliationOf(r),
         t(`admin.registrants.participationType.${r.participation}`),
-        r.paper ? tr(r.paper) : '',
+        r.paper ? `${r.paper.code} ${tr(r.paper.title)}` : '',
         statusText(r),
         t(`admin.registrants.${accountState(r)}`),
         formatDate(r.registeredAt, { dateStyle: 'medium', timeStyle: 'short' }),
@@ -218,7 +218,7 @@ async function exportExcel() {
         const response = await fetch('/admin/export', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-XSRF-TOKEN': xsrf },
-            body: JSON.stringify({ headers, rows: body }),
+            body: JSON.stringify({ headers, rows: body, name: 'registrants' }),
         });
         if (!response.ok) throw new Error(response.statusText);
 
@@ -249,6 +249,29 @@ const plainBadge = 'inline-flex items-center rounded-full border px-3 py-0.5 tex
         </Card>
 
         <Card>
+            <nav class="mb-5 flex gap-1 overflow-x-auto border-b border-neutral-200 dark:border-white/10" role="tablist">
+                <button
+                    v-for="item in tabs"
+                    :key="item.key"
+                    role="tab"
+                    :aria-selected="tab === item.key"
+                    :class="tab === item.key
+                        ? 'border-gold-400 text-gold-600 dark:text-gold-400'
+                        : 'border-transparent text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-100'"
+                    class="-mb-px flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition"
+                    @click="tab = item.key"
+                >
+                    <Fa :icon="item.icon" /> {{ t(`admin.registrants.tabs.${item.key}`) }}
+                    <span v-if="item.key === 'requests' && pendingRequests" class="grid min-w-5 place-items-center rounded-full bg-red-500 px-1.5 text-xs font-semibold text-white">
+                        {{ formatNumber(pendingRequests) }}
+                    </span>
+                </button>
+            </nav>
+
+            <Transition name="fade" mode="out-in">
+            <AuthorRequests v-if="tab === 'requests'" key="requests" :requests="requests" :can-edit="canEdit" />
+
+            <div v-else key="list">
             <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <h2 class="flex items-center gap-2 text-lg font-semibold">
                     <Fa icon="magnifying-glass" class="text-gold-400" /> {{ t('admin.registrants.searchTitle') }}
@@ -289,6 +312,7 @@ const plainBadge = 'inline-flex items-center rounded-full border px-3 py-0.5 tex
                     <select v-model="form.status" :class="[input, 'pl-3']" :aria-label="t('registrants.status')">
                         <option value="">{{ t('admin.registrants.allStatuses') }}</option>
                         <option value="registered">{{ t('admin.registrants.registered') }}</option>
+                        <option value="requested">{{ t('admin.registrants.requestPending') }}</option>
                         <option value="none">{{ t('admin.registrants.notSubmitted') }}</option>
                         <option v-for="s in paperStatuses" :key="s" :value="s">{{ t(`submissions.status.${s}`) }}</option>
                     </select>
@@ -348,18 +372,21 @@ const plainBadge = 'inline-flex items-center rounded-full border px-3 py-0.5 tex
                                 <td class="px-3 py-2.5 text-neutral-500 dark:text-neutral-400">{{ row.no }}</td>
                                 <td class="px-3 py-2.5">
                                     <div class="flex items-center gap-2 whitespace-nowrap">
-                                        {{ tr(row.name) }}
-                                        <span v-if="!row.active" :class="plainBadge" class="border-red-200 bg-red-50 text-red-700 dark:border-red-500/40 dark:bg-red-500/15 dark:text-red-300">
+                                        {{ row.name }}
+                                        <span v-if="row.suspended" :class="plainBadge" class="border-red-200 bg-red-50 text-red-700 dark:border-red-500/40 dark:bg-red-500/15 dark:text-red-300">
                                             <Fa icon="ban" class="mr-1" /> {{ t('admin.registrants.suspended') }}
                                         </span>
                                         <span v-else-if="!row.verified" :class="plainBadge" class="border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-300" :title="t('admin.registrants.unverifiedHint')">
                                             <Fa icon="envelope" class="mr-1" /> {{ t('admin.registrants.unverified') }}
                                         </span>
+                                        <button v-if="row.requestPending" type="button" :class="plainBadge" class="border-gold-300 bg-gold-50 text-gold-700 dark:border-gold-400/40 dark:bg-gold-400/15 dark:text-gold-300" @click="tab = 'requests'">
+                                            <Fa icon="file-arrow-up" class="mr-1" /> {{ t('admin.registrants.requestPending') }}
+                                        </button>
                                     </div>
                                     <div class="text-xs text-neutral-500 dark:text-neutral-400">{{ row.email }}</div>
                                 </td>
-                                <td class="px-3 py-2.5 text-neutral-600 dark:text-neutral-300">{{ tr(affiliationByKey[row.affiliation]) }}</td>
-                                <!-- Every registrant attends; "submit" = chose attend + submit at registration -->
+                                <td class="px-3 py-2.5 text-neutral-600 dark:text-neutral-300">{{ affiliationOf(row) }}</td>
+                                <!-- Every registrant attends; "submit" = attend + submit (chosen at sign-up, or switched later) -->
                                 <td class="px-3 py-2.5 text-center"><CheckMark checked /></td>
                                 <td class="px-3 py-2.5 text-center"><CheckMark :checked="row.participation === 'attend_submit'" /></td>
                                 <td class="px-3 py-2.5 text-center">
@@ -381,7 +408,7 @@ const plainBadge = 'inline-flex items-center rounded-full border px-3 py-0.5 tex
                                 </td>
                             </tr>
                             <tr v-if="!rows.length">
-                                <td colspan="9"class="px-4 py-12 text-center text-neutral-500">{{ t('registrants.empty') }}</td>
+                                <td colspan="9" class="px-4 py-12 text-center text-neutral-500">{{ t('registrants.empty') }}</td>
                             </tr>
                         </tbody>
                     </Transition>
@@ -406,23 +433,24 @@ const plainBadge = 'inline-flex items-center rounded-full border px-3 py-0.5 tex
             </div>
 
             <p class="mt-4 text-xs text-neutral-500 dark:text-neutral-400">
-                <Fa icon="circle-info" class="mr-1 text-gold-500" /> {{ t('admin.registrants.mockNote') }}
+                <Fa icon="circle-info" class="mr-1 text-gold-500" /> {{ t('admin.registrants.yearNote', { year }) }}
             </p>
+            </div>
+            </Transition>
         </Card>
     </div>
 
     <RegistrantDetailModal :registrant="viewing" @close="viewing = null" />
-    <RegistrantFormModal :show="editor.show" :registrant="editor.registrant" :email-taken="emailTaken" @close="editor.show = false" @save="save" />
+    <RegistrantFormModal :show="editor.show" :registrant="editor.registrant" @close="editor.show = false" />
     <OneTimePasswordModal :result="generated" @close="generated = null" />
     <ConfirmModal
         :show="!!pending"
         :icon="confirmIcons[shownPending?.action]"
         :danger="shownPending?.action === 'suspend'"
-        :title="shownPending ? t(shownPending.action === 'generatePassword' ? 'admin.oneTimePassword.confirmTitle' : `admin.registrants.confirm.${shownPending.action}.title`) : ''"
-        :message="shownPending ? (shownPending.action === 'generatePassword'
-            ? t('admin.oneTimePassword.confirmText', { name: tr(shownPending.registrant.name) })
-            : t(`admin.registrants.confirm.${shownPending.action}.message`, { name: tr(shownPending.registrant.name), email: shownPending.registrant.email })) : ''"
-        :confirm-label="shownPending ? (shownPending.action === 'generatePassword' ? t('admin.oneTimePassword.action') : t(`admin.registrants.action.${shownPending.action}`)) : ''"
+        :processing="busy"
+        :title="shownPending ? confirmTitle(shownPending) : ''"
+        :message="shownPending ? confirmText(shownPending) : ''"
+        :confirm-label="shownPending ? confirmLabel(shownPending) : ''"
         @close="pending = null"
         @confirm="confirmAction"
     />

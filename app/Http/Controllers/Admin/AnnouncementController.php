@@ -33,7 +33,7 @@ class AnnouncementController extends Controller
                 return [
                     'key' => $key,
                     ...EmailTemplate::textOf($key),
-                    'vars' => [...EmailTemplate::COMMON, ...EmailTemplate::VARS[$key]],
+                    'vars' => EmailTemplate::varsOf($key),
                     'changed' => $saved ? ['by' => $saved->updatedBy?->name, 'at' => $saved->updated_at->toIso8601String()] : null,
                 ];
             }),

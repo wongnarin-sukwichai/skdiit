@@ -193,7 +193,7 @@ class Submission extends Model
     /** Reviews the author must answer when revising after peer review (the decided round), numbered like the author sees them. */
     public function reviewsToAnswer(): array
     {
-        if (! in_array($this->status, [SubmissionStatus::RevisionMinor, SubmissionStatus::RevisionMajor], true)) {
+        if (! in_array($this->status, [SubmissionStatus::ReviewRevision], true)) {
             return [];
         }
 
@@ -279,6 +279,41 @@ class Submission extends Model
         };
     }
 
+    /** First-gate tabs of Selection, in order: still waiting, waiting past the journal deadline, sent to the journal or the conference, all. */
+    public const GATE_TABS = ['waiting', 'late', 'journal', 'conference', 'all'];
+
+    /**
+     * Papers by where they stand at the first gate (Selection, 2026-10-20). journal / conference: where the first
+     * selection sent them (a paper the journal later turned down is still "journal" here).
+     */
+    public function scopeGate(Builder $query, string $tab): void
+    {
+        $sentTo = fn (SubmissionStatus $status) => fn ($event) => $event
+            ->where('action', SubmissionAction::JournalScreened)->where('to_status', $status->value);
+        $late = (bool) static::journalDeadline()?->isPast();
+
+        match ($tab) {
+            'waiting' => $query->where('status', SubmissionStatus::Submitted)->when($late, fn ($none) => $none->whereRaw('1 = 0')),
+            'late' => $query->where('status', SubmissionStatus::Submitted)->when(! $late, fn ($none) => $none->whereRaw('1 = 0')),
+            'journal' => $query->whereHas('events', $sentTo(SubmissionStatus::JournalSelected)),
+            'conference' => $query->whereHas('events', $sentTo(SubmissionStatus::Screening)),
+            default => null,
+        };
+    }
+
+    /** Where the first selection sent the paper: journal | conference | null while it waits (needs scopeWithGate). */
+    public function scopeWithGate(Builder $query): void
+    {
+        $sentTo = fn (SubmissionStatus $status) => fn ($event) => $event
+            ->where('action', SubmissionAction::JournalScreened)->where('to_status', $status->value);
+        $query->withExists(['events as gate_journal' => $sentTo(SubmissionStatus::JournalSelected), 'events as gate_conference' => $sentTo(SubmissionStatus::Screening)]);
+    }
+
+    public function gate(): ?string
+    {
+        return $this->gate_journal ? 'journal' : ($this->gate_conference ? 'conference' : null);
+    }
+
     /**
      * Whose move it is now, and what they have to do: { who: editor|reviewer|author|none, task, done?, total?, late? }.
      * Needs reviews_total / reviews_done / reviews_late counts for papers in review (SubmissionController::index).
@@ -288,7 +323,12 @@ class Submission extends Model
         $scheduled = (bool) $this->presentation_at;
 
         return match ($this->status) {
-            SubmissionStatus::Submitted => ['who' => 'journal', 'task' => static::isClosed() ? 'journalSelect' : 'journalAfterDeadline'],
+            // Past the journal deadline and not selected: the editors' move, they pass it on to the conference (2026-10-20)
+            SubmissionStatus::Submitted => match (true) {
+                ! static::isClosed() => ['who' => 'journal', 'task' => 'journalAfterDeadline'],
+                $this->isPastJournalDeadline() => ['who' => 'editor', 'task' => 'passOn'],
+                default => ['who' => 'journal', 'task' => 'journalSelect'],
+            },
             SubmissionStatus::JournalSelected => ['who' => 'journal', 'task' => 'journalResult'],
             SubmissionStatus::Screening => ['who' => 'editor', 'task' => 'screen'],
             SubmissionStatus::InReview => match (true) {
@@ -297,7 +337,7 @@ class Submission extends Model
                 $this->reviews_done < $this->reviews_total => ['who' => 'reviewer', 'task' => 'review', 'done' => $this->reviews_done, 'total' => $this->reviews_total, 'late' => $this->reviews_late],
                 default => ['who' => 'editor', 'task' => 'decide'],
             },
-            SubmissionStatus::Revision, SubmissionStatus::RevisionMinor, SubmissionStatus::RevisionMajor => ['who' => 'author', 'task' => 'revise'],
+            SubmissionStatus::Revision, SubmissionStatus::ReviewRevision => ['who' => 'author', 'task' => 'revise'],
             SubmissionStatus::Revised => ['who' => 'editor', 'task' => 'decideRevision'],
             SubmissionStatus::Accepted => ['who' => 'author', 'task' => 'cameraReady'],
             SubmissionStatus::CameraReady, SubmissionStatus::JournalAccepted => match (true) {
@@ -307,6 +347,12 @@ class Submission extends Model
             },
             SubmissionStatus::Rejected, SubmissionStatus::ReviewRejected => ['who' => 'none', 'task' => 'closed'],
         };
+    }
+
+    /** `had_revision`: the author has sent a revision before (the author's journey keeps the revision step). */
+    public function scopeWithHadRevision(Builder $query): void
+    {
+        $query->withExists(['events as had_revision' => fn ($event) => $event->where('action', SubmissionAction::Resubmitted)]);
     }
 
     /** This round's review counts that waitingOn() needs: assigned, sent, late, and reviewers who cannot review. */
@@ -482,6 +528,19 @@ class Submission extends Model
     public function canBeSelectedByJournal(): bool
     {
         return static::isClosed() && $this->status === SubmissionStatus::Submitted;
+    }
+
+    /**
+     * Who may pass a waiting paper on to the conference track (client decision 2026-10-20): admin once submissions
+     * close; editors, who coordinate with the journal, only after the journal's selection deadline; never the journal.
+     */
+    public function canBePassedOnBy(User $user): bool
+    {
+        if (! $this->canBeSelectedByJournal()) {
+            return false;
+        }
+
+        return $user->isAdmin() || ($user->accessRole() === 'editor' && (bool) static::journalDeadline()?->isPast());
     }
 
     /** Still waiting for the journal's first selection although its deadline has passed (admin moves these by hand). */

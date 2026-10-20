@@ -4,6 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title inertia>SKDIIT 2027</title>
+    {{-- ?v= makes browsers drop an icon cached from another project on localhost --}}
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

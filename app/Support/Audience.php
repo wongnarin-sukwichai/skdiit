@@ -34,7 +34,7 @@ class Audience
             'attendees' => $registrants()->where('participation', 'attend'),
             'authors' => $registrants()->where('participation', 'attend_submit'),
             // Their paper waits for a revision (screening or after review)
-            'authors_revision' => $paper(fn ($s) => $s->whereIn('status', [SubmissionStatus::Revision, SubmissionStatus::RevisionMinor, SubmissionStatus::RevisionMajor])),
+            'authors_revision' => $paper(fn ($s) => $s->whereIn('status', [SubmissionStatus::Revision, SubmissionStatus::ReviewRevision])),
             // Accepted in the conference track, camera-ready not sent yet
             'authors_camera_ready' => $paper(fn ($s) => $s->where('status', SubmissionStatus::Accepted)),
             // Presenting with a slot, slides not uploaded yet

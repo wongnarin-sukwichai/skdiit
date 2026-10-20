@@ -30,10 +30,10 @@ const tabs = [
     { key: 'conference', icon: 'calendar-days' },
     { key: 'website', icon: 'globe' },
     { key: 'schedule', icon: 'clock' },
-    { key: 'submission', icon: 'file-arrow-up' },
     { key: 'academicTitles', icon: 'user-tie' },
     { key: 'affiliations', icon: 'building-columns' },
     { key: 'reviewCriteria', icon: 'list-check' },
+    { key: 'submission', icon: 'file-arrow-up' },
     { key: 'year', icon: 'database' },
 ];
 const tab = ref('conference');
@@ -61,15 +61,19 @@ const tab = ref('conference');
             </button>
         </nav>
 
+        <!-- One keyed element per tab: several tabs render more than one root node (their ConfirmModal),
+             which out-in cannot animate, so the next tab sometimes never appeared -->
         <Transition name="fade" mode="out-in">
-            <ConferenceTab v-if="tab === 'conference'" key="conference" />
-            <ScheduleTab v-else-if="tab === 'schedule'" key="schedule" />
-            <YearTab v-else-if="tab === 'year'" key="year" :summary="yearSummary" />
-            <WebsiteTab v-else-if="tab === 'website'" key="website" :documents="siteDocuments" :max-mb="submission.maxMb" />
-            <SubmissionTab v-else-if="tab === 'submission'" key="submission" :settings="submission" />
-            <AcademicTitlesTab v-else-if="tab === 'academicTitles'" key="academicTitles" :titles="academicTitles" />
-            <ReviewCriteriaTab v-else-if="tab === 'reviewCriteria'" key="reviewCriteria" :criteria="reviewCriteria" />
-            <AffiliationsTab v-else key="affiliations" :affiliations="affiliationList" :typed="typedAffiliations" />
+            <div :key="tab">
+                <ConferenceTab v-if="tab === 'conference'" />
+                <ScheduleTab v-else-if="tab === 'schedule'" :settings="submission" />
+                <YearTab v-else-if="tab === 'year'" :summary="yearSummary" />
+                <WebsiteTab v-else-if="tab === 'website'" :documents="siteDocuments" :max-mb="submission.maxMb" />
+                <SubmissionTab v-else-if="tab === 'submission'" :settings="submission" />
+                <AcademicTitlesTab v-else-if="tab === 'academicTitles'" :titles="academicTitles" />
+                <ReviewCriteriaTab v-else-if="tab === 'reviewCriteria'" :criteria="reviewCriteria" />
+                <AffiliationsTab v-else :affiliations="affiliationList" :typed="typedAffiliations" />
+            </div>
         </Transition>
     </Card>
 </template>

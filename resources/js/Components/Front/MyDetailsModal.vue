@@ -27,6 +27,7 @@ watch(() => props.show, () => {
     passwordForm.clearErrors();
     editing.value = false;
     saved.value = false;
+    asking.value = false;
 });
 
 // Edit my own name, phone and affiliation (AccountController::update via PUT /my-details)
@@ -53,6 +54,21 @@ function saveDetails() {
             editing.value = false;
             saved.value = true;
         },
+    });
+}
+
+// Attend only: { status: null | pending | approved | rejected, at, note, canAsk } (AuthorRequest::forRegistrant)
+const request = computed(() => user.value?.authorRequest ?? null);
+const asking = ref(false);
+const requestForm = useForm({ reason: '' });
+function startAsking() {
+    requestForm.reset();
+    asking.value = true;
+}
+function sendRequest() {
+    requestForm.transform((data) => ({ reason: data.reason.trim() || null })).post('/author-request', {
+        preserveScroll: true,
+        onSuccess: () => (asking.value = false),
     });
 }
 
@@ -132,6 +148,47 @@ function changePassword() {
                     <dd class="mt-0.5">{{ formatDate(user.created_at, { dateStyle: 'medium', timeStyle: 'short' }) }}</dd>
                 </div>
             </dl>
+
+            <!-- Attend only: ask the organisers to submit papers too (AuthController::requestAuthor) -->
+            <div v-if="request" class="mt-6 rounded-xl border border-gold-400/30 bg-gold-400/5 p-4 text-sm">
+                <p class="flex items-center gap-2 font-semibold text-gold-400"><Fa icon="file-arrow-up" /> {{ t('auth.authorRequest.title') }}</p>
+                <Transition name="fade" mode="out-in">
+                    <p v-if="request.status === 'pending'" key="pending" class="mt-2 text-neutral-300">
+                        <Fa icon="hourglass-half" class="mr-1 text-gold-400" />
+                        {{ t('auth.authorRequest.pending', { date: formatDate(request.at, { dateStyle: 'medium', timeStyle: 'short' }) }) }}
+                    </p>
+                    <form v-else-if="asking" key="ask" class="mt-3 space-y-3" @submit.prevent="sendRequest">
+                        <label class="block">
+                            <span class="mb-1.5 block text-neutral-300">{{ t('auth.authorRequest.reason') }}</span>
+                            <textarea
+                                v-model="requestForm.reason"
+                                rows="3"
+                                maxlength="2000"
+                                :placeholder="t('auth.authorRequest.reasonPlaceholder')"
+                                class="w-full rounded-lg border border-white/10 bg-ink-800 px-3 py-2.5 text-white outline-none focus:border-gold-400"
+                            />
+                        </label>
+                        <div class="flex justify-end gap-2">
+                            <button type="button" class="rounded-lg border border-white/20 px-4 py-2 transition hover:border-gold-400" @click="asking = false">{{ t('common.cancel') }}</button>
+                            <button type="submit" class="flex items-center gap-2 rounded-lg bg-gold-400 px-4 py-2 font-semibold text-black transition hover:bg-gold-300 disabled:opacity-60" :disabled="requestForm.processing">
+                                <Fa icon="paper-plane" /> {{ t('auth.authorRequest.send') }}
+                            </button>
+                        </div>
+                    </form>
+                    <div v-else key="intro" class="mt-2 space-y-2 text-neutral-300">
+                        <template v-if="request.status === 'rejected'">
+                            <p class="text-red-300"><Fa icon="circle-exclamation" class="mr-1" />{{ t('auth.authorRequest.rejected') }}</p>
+                            <p v-if="request.note" class="rounded-lg bg-white/5 px-3 py-2 whitespace-pre-line text-neutral-300">{{ request.note }}</p>
+                            <p v-if="request.canAsk">{{ t('auth.authorRequest.askAgain') }}</p>
+                        </template>
+                        <p v-else-if="request.canAsk">{{ t('auth.authorRequest.intro') }}</p>
+                        <p v-if="!request.canAsk" class="text-neutral-400">{{ t('auth.authorRequest.closed') }}</p>
+                        <button v-if="request.canAsk" type="button" class="flex items-center gap-2 rounded-lg bg-gold-400 px-4 py-2 font-semibold text-black transition hover:bg-gold-300" @click="startAsking">
+                            <Fa icon="file-arrow-up" /> {{ t('auth.authorRequest.ask') }}
+                        </button>
+                    </div>
+                </Transition>
+            </div>
 
             <div class="mt-6 border-t border-white/10 pt-5">
                 <div v-if="!changing" class="flex flex-wrap gap-2">

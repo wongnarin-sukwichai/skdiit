@@ -30,17 +30,6 @@ class SiteContent
         'home' => [
             'title' => ['th' => 'ระบบลงทะเบียนส่งผลงานวิชาการ', 'en' => 'Academic Paper Registration & Submission'],
         ],
-        'about' => [
-            'lead' => [
-                'th' => 'SKDIIT 2027 เป็นเวทีให้นักการศึกษา นักวิจัย และนักนวัตกรรม ได้แลกเปลี่ยนงานวิจัยและแนวปฏิบัติด้านนวัตกรรมดิจิทัลเพื่อการศึกษาและการเรียนรู้แห่งอนาคต',
-                'en' => 'SKDIIT 2027 brings together educators, researchers and innovators to share research and practice on digital innovation for the future of education and learning.',
-            ],
-            'objectives' => [
-                ['th' => 'เป็นเวทีนำเสนอและเผยแพร่ผลงานวิจัยด้านนวัตกรรมดิจิทัลทางการศึกษา', 'en' => 'Provide a forum to present and publish research on digital innovation in education.'],
-                ['th' => 'ส่งเสริมความร่วมมือระหว่างมหาวิทยาลัย สถานศึกษา และหน่วยงานทางการศึกษา', 'en' => 'Encourage collaboration between universities, schools and educational agencies.'],
-                ['th' => 'เผยแพร่เทคโนโลยีเชิงปฏิบัติที่ช่วยพัฒนาการเรียนการสอน', 'en' => 'Showcase practical technology that improves teaching and learning.'],
-            ],
-        ],
         'contact' => [
             'lead' => [
                 'th' => 'ติดต่อคณะกรรมการจัดงานสำหรับคำถามเกี่ยวกับการลงทะเบียนหรือการส่งผลงาน',
@@ -87,7 +76,7 @@ Under the Personal Data Protection Act B.E. 2562 (2019) you may ask to see, corr
     ];
 
     /** Sections admin edits from the "Website content" tab (conference has its own tab). */
-    public const PAGES = ['home', 'about', 'contact', 'privacy'];
+    public const PAGES = ['home', 'contact', 'privacy'];
 
     /** Sections whose value is a list: a saved list replaces the default instead of merging item by item. */
     private const LISTS = ['dates', 'program'];
@@ -97,9 +86,6 @@ Under the Personal Data Protection Act B.E. 2562 (2019) you may ask to see, corr
         $saved = json_decode((string) Setting::get(self::KEY), true) ?: [];
         $content = array_replace_recursive(self::DEFAULTS, $saved);
         // Lists replace the default list instead of merging item by item
-        if (isset($saved['about']['objectives'])) {
-            $content['about']['objectives'] = $saved['about']['objectives'];
-        }
         foreach (self::LISTS as $list) {
             if (isset($saved[$list])) {
                 $content[$list] = $saved[$list];

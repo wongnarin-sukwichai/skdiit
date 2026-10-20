@@ -10,7 +10,7 @@ import { useI18n } from '@/i18n';
  */
 const props = defineProps({
     submission: { type: Object, required: true },
-    journal: { type: Object, required: true }, // { canAct, canSelect, canResult, deadline, pastDeadline, url, decisions }
+    journal: { type: Object, required: true }, // { canAct, canSelect, canDecline (admin only), canResult, deadline, pastDeadline, url, decisions }
     deadlinePassed: { type: Boolean, required: true }, // the submission deadline (the journal selects after it)
 });
 
@@ -21,9 +21,10 @@ const when = (value) => formatDate(value, { day: 'numeric', month: 'long', year:
 const visible = computed(() => ['submitted', 'journal_selected', 'journal_accepted'].includes(props.submission.status) || props.journal.decisions.length);
 
 // Step 1 (selection) or step 2 (the journal's final answer): same form, different choices and endpoint
-const step = computed(() => (props.journal.canSelect ? 'select' : props.journal.canResult ? 'result' : null));
+// Editors may only pass on (after the journal deadline), so step 1 also opens with just canDecline
+const step = computed(() => (props.journal.canSelect || props.journal.canDecline ? 'select' : props.journal.canResult ? 'result' : null));
 const choices = computed(() => (step.value === 'select'
-    ? [{ value: 'select', icon: 'circle-check', tone: 'good' }, { value: 'decline', icon: 'arrow-right', tone: 'other' }]
+    ? [{ value: 'select', icon: 'circle-check', tone: 'good', disabled: !props.journal.canSelect }, { value: 'decline', icon: 'arrow-right', tone: 'other', disabled: !props.journal.canDecline }]
     : [{ value: 'accepted', icon: 'circle-check', tone: 'good' }, { value: 'rejected', icon: 'arrow-right', tone: 'other' }]));
 const form = useForm({ choice: '', comment: '' });
 const confirmOpen = ref(false);
@@ -73,8 +74,10 @@ const input = 'w-full rounded-lg border border-neutral-300 bg-neutral-50 px-3 py
                     type="button"
                     role="radio"
                     :aria-checked="form.choice === option.value"
+                    :disabled="option.disabled"
+                    :title="option.disabled ? t(option.value === 'select' ? 'journal.panel.selectJournalOnly' : 'journal.panel.declineAdminOnly') : undefined"
                     :class="form.choice === option.value ? toneActive[option.tone] : 'border-neutral-300 text-neutral-600 hover:border-gold-400 dark:border-white/15 dark:text-neutral-300'"
-                    class="flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-medium transition"
+                    class="flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40"
                     @click="form.choice = option.value"
                 >
                     <Fa :icon="option.icon" /> {{ t(`journal.choice.${option.value}`) }}

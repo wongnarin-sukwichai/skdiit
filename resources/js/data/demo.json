@@ -92,7 +92,7 @@
             "steps": [
                 ["journalSelect", 2, "decline", null], ["screen", 2, "pass"],
                 ["assign", 1, "reviewer", 14], ["assign", 1, "rv.suda", 14],
-                ["draft", 0, "reviewer", "minor", "ภาพรวมดี ควรอธิบายเกณฑ์การให้คะแนนคุณภาพเมทาดาทาให้ชัดเจนขึ้น (ยังเขียนไม่เสร็จ)"]
+                ["draft", 0, "reviewer", "revise", "ภาพรวมดี ควรอธิบายเกณฑ์การให้คะแนนคุณภาพเมทาดาทาให้ชัดเจนขึ้น (ยังเขียนไม่เสร็จ)"]
             ]
         },
         {
@@ -102,7 +102,7 @@
             "steps": [
                 ["journalSelect", 22, "decline", null], ["screen", 21, "pass"],
                 ["assign", 20, "reviewer", 14], ["assign", 20, "rv.preecha", 14],
-                ["review", 9, "reviewer", "minor", "งานวิจัยมีประโยชน์ ควรอธิบายวิธีเก็บข้อมูลและขนาดตัวอย่างให้ชัดเจนขึ้น"],
+                ["review", 9, "reviewer", "revise", "งานวิจัยมีประโยชน์ ควรอธิบายวิธีเก็บข้อมูลและขนาดตัวอย่างให้ชัดเจนขึ้น"],
                 ["review", 7, "rv.preecha", "accept", "บทความเขียนชัดเจน ผลการทดลองน่าเชื่อถือ"]
             ]
         },
@@ -112,23 +112,23 @@
             "keywords": ["ข่าวปลอม, ประมวลผลภาษาธรรมชาติ", "fake news, natural language processing"],
             "steps": [
                 ["journalSelect", 40, "decline", null], ["screen", 39, "pass"], ["assign", 38, "rv.nattaya", 14],
-                ["review", 27, "rv.nattaya", "major", "ควรเพิ่มชุดข้อมูลทดสอบจากหลายแหล่ง", "ข้อมูลทดสอบบางส่วนดูซ้ำกับบทความที่เคยตีพิมพ์ปีที่แล้ว ควรตรวจสอบกับผล Turnitin"],
-                ["decide", 25, "major", null, -10], ["resubmit", 18], ["round", 16],
+                ["review", 27, "rv.nattaya", "revise", "ควรเพิ่มชุดข้อมูลทดสอบจากหลายแหล่ง", "ข้อมูลทดสอบบางส่วนดูซ้ำกับบทความที่เคยตีพิมพ์ปีที่แล้ว ควรตรวจสอบกับผล Turnitin"],
+                ["decide", 25, "revise", null, -10], ["resubmit", 18], ["round", 16],
                 ["assign", 16, "rv.nattaya", 12], ["assign", 16, "rv.kittisak", 12],
                 ["unavailable", 2, "rv.kittisak", "ไม่ตรงกับความเชี่ยวชาญ (งานด้าน NLP) แนะนำ อ.ณัฐยา หรือ ศ.อรวรรณ แทน"],
                 ["note", 1, "editor", "โทรหา อ.ณัฐยา แล้ว ขอเลื่อนส่งผลประเมินไป 3 วัน เพราะติดสอบปลายภาค", true]
             ]
         },
         {
-            "author": "author", "track": 2, "submitted": 36, "status": "revision_minor",
+            "author": "author", "track": 2, "submitted": 36, "status": "review_revision",
             "title": ["ต้นแบบระบบควบคุมแสงสว่างอัตโนมัติในอาคารเรียน", "An Automatic Lighting Control Prototype for Classroom Buildings"],
             "keywords": ["ระบบอัตโนมัติ, อาคารอัจฉริยะ", "automation, smart building"],
             "coauthors": [["ผศ.ปราณี ศรีสุข", "มหาวิทยาลัยมหาสารคาม", null]],
             "steps": [
                 ["journalSelect", 30, "decline", null], ["screen", 29, "pass"], ["assign", 28, "reviewer", 14], ["assign", 28, "rv.preecha", 14],
-                ["review", 18, "reviewer", "minor", "ควรเพิ่มภาพประกอบผังวงจรและผลการวัดพลังงานก่อนและหลังติดตั้ง"],
+                ["review", 18, "reviewer", "revise", "ควรเพิ่มภาพประกอบผังวงจรและผลการวัดพลังงานก่อนและหลังติดตั้ง"],
                 ["review", 16, "rv.preecha", "accept", "บทความสมบูรณ์ มีข้อเสนอแนะเล็กน้อยเรื่องการอ้างอิง"],
-                ["decide", 3, "minor", "กรุณาแก้ไขตามข้อเสนอแนะของผู้ประเมิน", 7]
+                ["decide", 3, "revise", "กรุณาแก้ไขตามข้อเสนอแนะของผู้ประเมิน", 7]
             ]
         },
         {
@@ -138,9 +138,9 @@
             "steps": [
                 ["journalSelect", 40, "select", null], ["journalResult", 33, "rejected", "วารสารแจ้งว่ามีบทความในประเด็นเดียวกันรอตีพิมพ์แล้ว"],
                 ["screen", 32, "pass"], ["assign", 31, "rv.suda", 14], ["assign", 31, "rv.nattaya", 14],
-                ["review", 22, "rv.suda", "minor", "ควรปรับตารางผลการวิจัยให้อ่านง่ายขึ้น"],
-                ["review", 20, "rv.nattaya", "minor", "ควรเพิ่มตัวอย่างเนื้อหาที่ผลิตจริงในภาคผนวก"],
-                ["decide", 18, "minor", null, 10], ["resubmit", 5],
+                ["review", 22, "rv.suda", "revise", "ควรปรับตารางผลการวิจัยให้อ่านง่ายขึ้น"],
+                ["review", 20, "rv.nattaya", "revise", "ควรเพิ่มตัวอย่างเนื้อหาที่ผลิตจริงในภาคผนวก"],
+                ["decide", 18, "revise", null, 10], ["resubmit", 5],
                 ["note", 4, "editor", "ผู้เขียนแจ้งทางโทรศัพท์ว่าแก้ครบแล้ว รอบรรณาธิการตัดสินผล"]
             ]
         },

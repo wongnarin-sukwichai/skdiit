@@ -6,8 +6,13 @@ import Pagination from '@/Components/Pagination.vue';
 import { useI18n } from '@/i18n';
 import { useRegistrantTable } from '@/composables/useRegistrantTable';
 import { useAuthModal } from '@/composables/useAuthModal';
-import { affiliationByKey } from '@/data/mock';
 import { useSite } from '@/composables/useSite';
+import { useAffiliations } from '@/composables/useAffiliations';
+
+// This year's registrants, newest first (User::publicRegistrants)
+const props = defineProps({
+    registrants: { type: Array, default: () => [] },
+});
 
 const { t, tr, formatDate, formatNumber } = useI18n();
 const { openLogin, openRegister } = useAuthModal();
@@ -15,7 +20,8 @@ const user = computed(() => usePage().props.auth.user);
 // Conference information and the headline (Settings)
 const site = useSite();
 const conference = computed(() => site.value.conference);
-const { form, perPage, page, total, lastPage, rows, search, reset } = useRegistrantTable();
+const { affiliationOf } = useAffiliations();
+const { form, perPage, page, total, lastPage, rows, search, reset } = useRegistrantTable(computed(() => props.registrants), { affiliationText: affiliationOf });
 </script>
 
 <template>
@@ -118,9 +124,9 @@ const { form, perPage, page, total, lastPage, rows, search, reset } = useRegistr
                         <tbody :key="`${page}-${perPage}-${total}`" class="divide-y divide-white/5">
                             <tr v-for="row in rows" :key="row.id" class="transition odd:bg-white/[0.02] hover:bg-gold-400/5">
                                 <td class="px-4 py-2.5 text-neutral-400">{{ row.no }}</td>
-                                <td class="px-4 py-2.5 whitespace-nowrap text-white">{{ tr(row.name) }}</td>
-                                <td class="px-4 py-2.5 text-neutral-200">{{ tr(affiliationByKey[row.affiliation]) }}</td>
-                                <td class="px-4 py-2.5 text-center"><CheckMark :checked="row.attend" /></td>
+                                <td class="px-4 py-2.5 whitespace-nowrap text-white">{{ row.name }}</td>
+                                <td class="px-4 py-2.5 text-neutral-200">{{ affiliationOf(row) }}</td>
+                                <td class="px-4 py-2.5 text-center"><CheckMark checked /></td>
                                 <td class="px-4 py-2.5 text-center"><CheckMark :checked="row.submitted" /></td>
                                 <td class="px-4 py-2.5 whitespace-nowrap text-neutral-300">{{ formatDate(row.registeredAt) }}</td>
                             </tr>

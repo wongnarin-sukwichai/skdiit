@@ -15,7 +15,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Conference information (Settings › Conference) and public-site content (Settings › Website content):
- * the home headline, About, Contact, the privacy policy, the downloadable documents, and the important dates and day
+ * the home headline, Contact, the privacy policy, the downloadable documents, and the important dates and day
  * programme (Settings › Schedule). Admin only (module settings).
  */
 class SiteContentController extends Controller
@@ -54,26 +54,17 @@ class SiteContentController extends Controller
         return back()->with('success', 'admin.settings.saved');
     }
 
-    /** One page's texts: home | about | contact. */
+    /** One page's texts: home | contact | privacy. */
     public function updatePage(Request $request, string $page): RedirectResponse
     {
         abort_unless(in_array($page, SiteContent::PAGES, true), 404);
 
         $rules = match ($page) {
             'home' => self::bilingual('title', 255),
-            'about' => [
-                ...self::bilingual('lead', 2000),
-                'objectives' => ['present', 'array', 'max:20'],
-                'objectives.*.th' => ['required', 'string', 'max:500'],
-                'objectives.*.en' => ['required', 'string', 'max:500'],
-            ],
             'contact' => [...self::bilingual('lead', 2000), ...self::bilingual('address', 500), ...self::bilingual('hours', 255)],
             'privacy' => self::bilingual('body', 20000),
         };
         $data = $request->validate($rules, self::MESSAGES);
-        if ($page === 'about') {
-            $data['objectives'] = array_values($data['objectives']);
-        }
 
         SiteContent::put($page, $data);
 

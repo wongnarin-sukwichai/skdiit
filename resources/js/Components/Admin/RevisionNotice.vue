@@ -14,8 +14,7 @@ const { t, formatDate } = useI18n();
 
 const tone = computed(() => ({
     screening_revision: 'orange',
-    revision_minor: 'orange',
-    revision_major: 'orange',
+    review_revision: 'orange',
     accepted: 'green',
     screening_rejected: 'red',
     rejected: 'red',

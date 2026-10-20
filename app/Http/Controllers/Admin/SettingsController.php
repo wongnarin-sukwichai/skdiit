@@ -31,6 +31,7 @@ class SettingsController extends Controller
         'opens.date_format' => 'validation.date',
         'deadline.date_format' => 'validation.date',
         'deadline.after' => 'validation.deadline_after_opens',
+        'journal_deadline.after' => 'validation.journal_after_deadline',
         'journal_deadline.date_format' => 'validation.date',
         'journal_url.url' => 'validation.url',
         'slides_cutoff_days.min' => 'validation.integer',
@@ -75,28 +76,46 @@ class SettingsController extends Controller
         ]);
     }
 
+    /** Settings › ตั้งค่า: the upload limit and the journal's submission site. */
     public function updateSubmission(Request $request): RedirectResponse
     {
         $data = $request->validate([
             'max_mb' => ['required', 'integer', 'min:1', 'max:'.Setting::serverUploadLimitMb()],
-            // Authors can submit from the opening date until the deadline; empty = no limit on that side
-            'opens' => ['nullable', 'date_format:Y-m-d\TH:i'],
-            'deadline' => ['nullable', 'date_format:Y-m-d\TH:i', ...($request->filled('opens') ? ['after:opens'] : [])],
-            // The journal's first selection should be done by this day (a warning only); its site for selected authors
-            'journal_deadline' => ['nullable', 'date_format:Y-m-d'],
+            // Shown to authors whose paper the journal selected
             'journal_url' => ['nullable', 'url', 'max:500'],
+        ], self::MESSAGES);
+
+        Setting::put('upload_max_mb', $data['max_mb']);
+        Setting::put('journal_url', $data['journal_url'] ?? null);
+
+        return back()->with('success', 'admin.settings.saved');
+    }
+
+    /**
+     * Settings › กำหนดการ: one timeline row at a time, so only the fields sent are saved
+     * (submission: opens + deadline; journal selection: journal_deadline; slides: slides_cutoff_days).
+     */
+    public function updateDeadlines(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            // Authors can submit from the opening time until the deadline; empty = no limit on that side
+            'opens' => ['sometimes', 'nullable', 'date_format:Y-m-d\TH:i'],
+            'deadline' => ['sometimes', 'nullable', 'date_format:Y-m-d\TH:i', ...($request->filled('opens') ? ['after:opens'] : [])],
+            // The journal's first selection should be done by this day (a warning only)
+            // It starts the day after submissions close, so it cannot be on or before that day
+            'journal_deadline' => ['sometimes', 'nullable', 'date_format:Y-m-d', ...(Setting::get('submission_deadline') ? ['after:'.substr(Setting::get('submission_deadline'), 0, 10)] : [])],
             // Slides can be replaced until this many days before the talk; empty = until the talk
-            'slides_cutoff_days' => ['nullable', 'integer', 'min:0', 'max:60'],
+            'slides_cutoff_days' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:60'],
         ], self::MESSAGES);
 
         $toSetting = fn (?string $value) => $value ? str_replace('T', ' ', $value) : null;
+        $keys = ['opens' => 'submission_opens', 'deadline' => 'submission_deadline', 'journal_deadline' => 'journal_deadline', 'slides_cutoff_days' => 'slides_cutoff_days'];
 
-        Setting::put('upload_max_mb', $data['max_mb']);
-        Setting::put('submission_opens', $toSetting($data['opens']));
-        Setting::put('submission_deadline', $toSetting($data['deadline']));
-        Setting::put('journal_deadline', $data['journal_deadline'] ?? null);
-        Setting::put('journal_url', $data['journal_url'] ?? null);
-        Setting::put('slides_cutoff_days', $data['slides_cutoff_days'] ?? null);
+        foreach ($keys as $field => $setting) {
+            if (array_key_exists($field, $data)) {
+                Setting::put($setting, in_array($field, ['opens', 'deadline'], true) ? $toSetting($data[$field]) : $data[$field]);
+            }
+        }
 
         return back()->with('success', 'admin.settings.saved');
     }

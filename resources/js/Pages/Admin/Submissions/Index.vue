@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import Card from '@/Components/Admin/Card.vue';
 import PageHeader from '@/Components/Admin/PageHeader.vue';
@@ -45,8 +45,25 @@ function pickQueue(key) {
     load();
 }
 
+// List (paged table) or cards grouped by track (every matching paper); the choice is remembered on this browser
+const VIEW_KEY = 'skdiit.submissions.view';
+const readView = () => { try { return localStorage.getItem(VIEW_KEY); } catch { return null; } };
+const view = ref(props.filters.view ?? (readView() === 'tracks' ? 'tracks' : 'list'));
+function pickView(value) {
+    view.value = value;
+    try { localStorage.setItem(VIEW_KEY, value); } catch { /* private mode: not remembered */ }
+    load();
+}
+onMounted(() => {
+    if (view.value === 'tracks' && props.filters.view !== 'tracks') load();
+});
+// Tracks in their usual order, each with its papers (tracks without a matching paper are left out)
+const byTrack = computed(() => props.tracks
+    .map((item) => ({ track: item, papers: props.submissions.data.filter((p) => p.track?.id === item.id) }))
+    .filter((group) => group.papers.length));
+
 function load(params = {}) {
-    router.get('/admin/submissions', { q: q.value || undefined, track: track.value || undefined, status: status.value || undefined, queue: queue.value || undefined, ...params }, {
+    router.get('/admin/submissions', { q: q.value || undefined, track: track.value || undefined, status: status.value || undefined, queue: queue.value || undefined, view: view.value === 'tracks' ? 'tracks' : undefined, ...params }, {
         only: ['submissions', 'filters', 'queues'],
         preserveState: true,
         preserveScroll: true,
@@ -131,7 +148,25 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
             </button>
         </form>
 
-        <div class="overflow-x-auto rounded-xl border border-neutral-200 dark:border-white/10">
+        <!-- List or cards by track -->
+        <div class="flex justify-end">
+            <div class="flex rounded-lg border border-neutral-200 p-0.5 text-xs dark:border-white/10" role="group">
+                <button
+                    v-for="mode in [{ key: 'list', icon: 'list' }, { key: 'tracks', icon: 'layer-group' }]"
+                    :key="mode.key"
+                    type="button"
+                    :aria-pressed="view === mode.key"
+                    :class="view === mode.key ? 'bg-gold-400 text-black' : 'text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white'"
+                    class="flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition"
+                    @click="pickView(mode.key)"
+                >
+                    <Fa :icon="mode.icon" /> {{ t(`submissions.manage.view.${mode.key}`) }}
+                </button>
+            </div>
+        </div>
+
+        <Transition name="fade" mode="out-in">
+        <div v-if="view === 'list'" key="list" class="overflow-x-auto rounded-xl border border-neutral-200 dark:border-white/10">
             <table class="w-full min-w-240 text-sm">
                 <thead class="bg-neutral-50 text-left text-neutral-500 dark:bg-white/5 dark:text-neutral-400">
                     <tr>
@@ -160,8 +195,10 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
                             <!-- Whose move it is: editor, reviewer (with x/y sent) or author -->
                             <td class="px-4 py-3"><WaitingOnBadge :waiting="item.waitingOn" /></td>
                             <td class="px-4 py-3 whitespace-nowrap text-neutral-500 dark:text-neutral-400">{{ formatDate(item.submittedAt) }}</td>
-                            <td class="px-4 py-3 text-right">
-                                <Link :href="`/admin/submissions/${item.id}`" :class="[iconBtn, 'inline-grid']" :title="t('registrants.view')"><Fa icon="eye" class="text-xs" /></Link>
+                            <td class="px-4 py-3">
+                                <div class="flex items-center justify-end gap-1.5">
+                                    <Link :href="`/admin/submissions/${item.id}`" :class="[iconBtn, 'inline-grid']" :title="t('registrants.view')"><Fa icon="eye" class="text-xs" /></Link>
+                                </div>
                             </td>
                         </tr>
                         <tr v-if="!submissions.data.length">
@@ -171,6 +208,38 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
                 </Transition>
             </table>
         </div>
+
+        <!-- Cards by track: every matching paper, its status and whose move it is -->
+        <div v-else key="tracks" class="space-y-6">
+            <p v-if="!byTrack.length" class="rounded-xl border border-dashed border-neutral-300 py-12 text-center text-sm text-neutral-500 dark:border-white/15 dark:text-neutral-400">{{ t(queue ? 'submissions.queue.empty' : 'submissions.manage.empty') }}</p>
+            <section v-for="group in byTrack" :key="group.track.id">
+                <h3 class="mb-3 flex items-center gap-2 font-semibold">
+                    <Fa icon="layer-group" class="text-gold-500" /> {{ tr(group.track.name) }}
+                    <span class="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-semibold text-neutral-600 dark:bg-white/10 dark:text-neutral-300">{{ formatNumber(group.papers.length) }}</span>
+                </h3>
+                <ul class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    <li v-for="item in group.papers" :key="item.id">
+                        <Link
+                            :href="`/admin/submissions/${item.id}`"
+                            :class="item.waitingOn.who === 'editor' ? 'border-l-gold-400' : 'border-l-neutral-200 dark:border-l-white/10'"
+                            class="flex h-full flex-col gap-2 rounded-xl border border-l-4 border-neutral-200 p-3 transition hover:border-gold-400 hover:bg-gold-50/50 dark:border-white/10 dark:hover:bg-gold-400/5"
+                        >
+                            <span class="flex items-center justify-between gap-2">
+                                <span class="font-mono text-xs text-gold-600 dark:text-gold-400">{{ item.code }}</span>
+                                <span v-if="item.notes" class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 text-xs text-amber-700 dark:bg-amber-400/15 dark:text-amber-300" :title="t('notes.count', { n: item.notes })"><Fa icon="note-sticky" class="text-[0.65rem]" />{{ item.notes }}</span>
+                            </span>
+                            <span class="line-clamp-2 text-sm font-medium">{{ tr(item.title) }}</span>
+                            <span class="truncate text-xs text-neutral-500 dark:text-neutral-400">{{ item.authors.map((a) => a.name).join(', ') }}</span>
+                            <span class="mt-auto flex flex-wrap items-center gap-2 pt-1">
+                                <SubmissionStatusBadge :status="item.status" />
+                                <WaitingOnBadge :waiting="item.waitingOn" />
+                            </span>
+                        </Link>
+                    </li>
+                </ul>
+            </section>
+        </div>
+        </Transition>
 
         <div class="flex flex-col items-center justify-between gap-4 sm:flex-row">
             <p class="text-sm text-neutral-500 dark:text-neutral-400">{{ t('submissions.manage.total', { total: formatNumber(submissions.total) }) }}</p>

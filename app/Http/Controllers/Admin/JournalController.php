@@ -18,7 +18,8 @@ use Inertia\Response;
 /**
  * The journal's first gate (journal role; admin may do every journal action, editors only look on the paper page):
  *   1. selection after the submission deadline: selected -> the author submits on the journal's site,
- *      not selected -> the conference track (editor screening);
+ *      not selected -> the conference track (editor screening): admin, or an editor after the journal deadline, never
+ *      the journal itself (client decision 2026-10-20, Submission::canBePassedOnBy); editors see the list read only otherwise;
  *   2. the journal's final answer for a selected paper: accepted (presents, no camera-ready) or rejected -> conference track.
  * The journal deadline in Settings only warns; admin moves late papers by hand ("not selected").
  * Authors see the outcome, never the journal's reason. Papers in the conference track are hidden from the journal.
@@ -34,6 +35,7 @@ class JournalController extends Controller
     {
         $filters = $request->only('q', 'tab');
         $tab = in_array($filters['tab'] ?? null, self::TABS, true) ? $filters['tab'] : 'waiting';
+        $canAct = $request->user()->moduleAccess('journal') === 'full';
         $byTab = fn ($query, string $tab) => match ($tab) {
             'waiting' => $query->where('status', SubmissionStatus::Submitted),
             'selected' => $query->where('status', SubmissionStatus::JournalSelected),
@@ -43,6 +45,7 @@ class JournalController extends Controller
 
         $papers = $byTab(Submission::currentYear(), $tab)
             ->with('track', 'authors')
+            ->withGate()
             ->when($filters['q'] ?? null, fn ($query, string $q) => $query->where(fn ($query) => $query
                 ->where('code', 'like', "%{$q}%")
                 ->orWhere('title_th', 'like', "%{$q}%")
@@ -54,6 +57,12 @@ class JournalController extends Controller
             ->through(fn (Submission $submission) => [
                 ...$submission->toClient(),
                 'pastDeadline' => $submission->isPastJournalDeadline(),
+                'gate' => $submission->gate(),
+                // Opened and decided straight from the table: the current PDF, Word and Turnitin report, and the open step
+                'files' => collect($submission->currentFiles())->only('pdf', 'word', 'turnitin')->filter()->all(),
+                'canSelect' => $canAct && $submission->canBeSelectedByJournal(),
+                'canDecline' => $submission->canBePassedOnBy($request->user()),
+                'canResult' => $canAct && $submission->status === SubmissionStatus::JournalSelected,
             ]);
 
         return Inertia::render('Admin/Journal/Index', [
@@ -62,6 +71,8 @@ class JournalController extends Controller
             'counts' => collect(self::TABS)->mapWithKeys(fn (string $key) => [$key => $byTab(Submission::currentYear(), $key)->count()]),
             'pastDeadline' => Submission::currentYear()->where('status', SubmissionStatus::Submitted)->get()->filter->isPastJournalDeadline()->count(),
             'journalDeadline' => Submission::journalDeadline()?->toIso8601String(),
+            // Who is looking, for the Conference button's hint: admin, editor (after the journal deadline) or the journal
+            'declineBy' => $request->user()->isAdmin() ? 'admin' : ($request->user()->accessRole() === 'editor' ? 'editor' : 'journal'),
             ...Submission::window(),
         ]);
     }
@@ -94,6 +105,9 @@ class JournalController extends Controller
             'decision' => ['required', Rule::in(['select', 'decline'])],
             'comment' => ['nullable', 'string', 'max:5000'],
         ], self::MESSAGES);
+        // Selecting is the journal's (and admin's); passing on is admin's, or an editor's after the journal deadline (2026-10-20)
+        $user = $request->user();
+        abort_unless($data['decision'] === 'select' ? $user->moduleAccess('journal') === 'full' : $submission->canBePassedOnBy($user), 403);
 
         $from = $submission->status;
         $submission->status = $data['decision'] === 'select' ? SubmissionStatus::JournalSelected : SubmissionStatus::Screening;
@@ -132,6 +146,7 @@ class JournalController extends Controller
         return [
             'canAct' => $canAct,
             'canSelect' => $canAct && $submission->canBeSelectedByJournal(),
+            'canDecline' => $submission->canBePassedOnBy($user),
             'canResult' => $canAct && $submission->status === SubmissionStatus::JournalSelected,
             'deadline' => Submission::journalDeadline()?->toIso8601String(),
             'pastDeadline' => $submission->isPastJournalDeadline(),

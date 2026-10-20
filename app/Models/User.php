@@ -103,6 +103,21 @@ class User extends Authenticatable
         return $password;
     }
 
+    /**
+     * The public registrant list on the home page: this year's registrants, newest first, without emails or phones.
+     * Suspended accounts are left out.
+     */
+    public static function publicRegistrants(): array
+    {
+        return static::where('role', 'user')->where('registered_year', Submission::conferenceYear())->whereNull('suspended_at')
+            ->latest()->get(['id', 'name', 'affiliation', 'affiliation_other', 'participation', 'created_at'])
+            ->map(fn (User $user) => [
+                ...$user->only('id', 'name', 'affiliation', 'affiliation_other'),
+                'submitted' => $user->participation === 'attend_submit',
+                'registeredAt' => $user->created_at?->toIso8601String(),
+            ])->all();
+    }
+
     public function isAdmin(): bool
     {
         return $this->role === 'admin';

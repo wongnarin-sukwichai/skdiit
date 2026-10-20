@@ -21,7 +21,6 @@ const userMenuOpen = ref(false);
 
 const navItems = [
     { href: '/', key: 'home' },
-    { href: '/about', key: 'about' },
     { href: '/schedule', key: 'schedule' },
     { href: '/submission', key: 'submission' },
     { href: '/important', key: 'important' },

@@ -4,8 +4,7 @@ import { Head, Link, usePage } from '@inertiajs/vue3';
 import Card from '@/Components/Admin/Card.vue';
 import PageHeader from '@/Components/Admin/PageHeader.vue';
 import StatCards from '@/Components/Admin/StatCards.vue';
-import SubmissionStatusBadge from '@/Components/Admin/SubmissionStatusBadge.vue';
-import AuthorNextStep from '@/Components/Admin/AuthorNextStep.vue';
+import AuthorPapersBoard from '@/Components/Admin/Journey/AuthorPapersBoard.vue';
 import TrendChart from '@/Components/Admin/Charts/TrendChart.vue';
 import { useI18n } from '@/i18n';
 import { timeAgo, useNotifications } from '@/composables/useNotifications';
@@ -213,77 +212,68 @@ const row = 'flex items-center gap-3 rounded-lg px-3 py-2.5 transition hover:bg-
         </div>
 
         <!-- Author: my papers and what to do next -->
-        <div v-if="role === 'author'" class="grid gap-6 xl:grid-cols-[1.4fr_1fr]">
+        <div v-if="role === 'author'" class="space-y-6">
+            <!-- Every paper on one path: each sits under the step it is on -->
             <Card>
-                <h2 :class="h2"><Fa icon="file-arrow-up" class="text-gold-500" /> {{ t('admin.dash.myPapers') }}</h2>
+                <div class="mb-5 flex flex-wrap items-center justify-between gap-2">
+                    <h2 :class="[h2, 'mb-0']"><Fa icon="chart-line" class="text-gold-500" /> {{ t('admin.dash.timeline') }}</h2>
+                    <Link v-if="data.papers.length" href="/admin/my-submissions" class="text-sm text-gold-600 hover:underline dark:text-gold-400">{{ t('admin.menu.my-submissions') }} <Fa icon="chevron-right" class="text-xs" /></Link>
+                </div>
+                <div v-if="!data.papers.length" class="rounded-xl border border-dashed border-neutral-300 py-10 text-center text-sm text-neutral-500 dark:border-white/15">
+                    {{ t('submissions.mine.empty') }}
+                    <Link href="/admin/my-submissions" class="mt-2 block text-gold-600 hover:underline dark:text-gold-400">{{ t('submissions.mine.new') }}</Link>
+                </div>
+                <AuthorPapersBoard v-else :papers="data.papers" />
+            </Card>
+        </div>
+
+        <!-- Authors: upcoming dates and notifications side by side -->
+        <div v-if="role === 'author' || !hasNotificationsMenu" :class="role === 'author' && !hasNotificationsMenu ? 'grid items-start gap-6 xl:grid-cols-2' : 'space-y-6'">
+            <Card v-if="role === 'author'">
+                <h2 :class="h2"><Fa icon="calendar-days" class="text-gold-500" /> {{ t('admin.dash.upcoming') }}</h2>
                 <ul class="space-y-3">
-                    <li v-if="!data.papers.length" class="rounded-xl border border-dashed border-neutral-300 py-10 text-center text-sm text-neutral-500 dark:border-white/15">
-                        {{ t('submissions.mine.empty') }}
-                        <Link href="/admin/my-submissions" class="mt-2 block text-gold-600 hover:underline dark:text-gold-400">{{ t('submissions.mine.new') }}</Link>
-                    </li>
-                    <li v-for="paper in data.papers" :key="paper.code">
-                        <Link
-                            :href="`/admin/my-submissions/${paper.id}`"
-                            :class="paper.next.mine ? 'border-sky-400 bg-sky-50/60 dark:bg-sky-400/10' : 'border-neutral-200 dark:border-white/10'"
-                            class="block rounded-xl border p-4 transition hover:border-gold-400"
-                        >
-                            <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-                                <span class="font-mono text-xs text-gold-600 dark:text-gold-400">{{ paper.code }}</span>
-                                <SubmissionStatusBadge :status="paper.status" />
-                            </div>
-                            <p class="font-medium">{{ tr(paper.title) }}</p>
-                            <p class="mt-2"><AuthorNextStep :next="paper.next" /></p>
-                        </Link>
+                    <li v-for="item in upcomingDates" :key="item.date" class="flex items-center gap-3 text-sm">
+                        <span class="w-24 shrink-0 font-medium text-gold-700 dark:text-gold-300">{{ formatDate(item.date) }}</span>
+                        <span class="flex-1">{{ tr(item.label) }}</span>
+                        <span class="shrink-0 text-xs text-neutral-500 dark:text-neutral-400">{{ t('admin.dash.inDays', { n: daysUntil(item.date) }) }}</span>
                     </li>
                 </ul>
             </Card>
-            <div class="space-y-6">
-                <Card>
-                    <h2 :class="h2"><Fa icon="calendar-days" class="text-gold-500" /> {{ t('admin.dash.upcoming') }}</h2>
-                    <ul class="space-y-3">
-                        <li v-for="item in upcomingDates" :key="item.date" class="flex items-center gap-3 text-sm">
-                            <span class="w-24 shrink-0 font-medium text-gold-700 dark:text-gold-300">{{ formatDate(item.date) }}</span>
-                            <span class="flex-1">{{ tr(item.label) }}</span>
-                            <span class="shrink-0 text-xs text-neutral-500 dark:text-neutral-400">{{ t('admin.dash.inDays', { n: daysUntil(item.date) }) }}</span>
-                        </li>
-                    </ul>
-                </Card>
-            </div>
-        </div>
-
-        <!-- Roles without the Notifications menu (reviewers, authors) read their notifications here -->
-        <Card v-if="!hasNotificationsMenu">
-            <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
-                <h2 :class="[h2, 'mb-0']"><Fa icon="bell" class="text-gold-500" /> {{ t('admin.menu.notifications') }}</h2>
-                <div class="flex items-center gap-4 text-sm">
-                    <button v-if="unread" class="text-gold-600 hover:underline dark:text-gold-400" @click="markAllRead">{{ t('admin.notificationsPage.markAll') }}</button>
-                    <Link v-if="role === 'reviewer'" href="/admin/reviews" class="text-gold-600 hover:underline dark:text-gold-400">{{ t('admin.dash.allReviews') }} <Fa icon="chevron-right" class="text-xs" /></Link>
+    
+            <!-- Roles without the Notifications menu (reviewers, authors) read their notifications here -->
+            <Card v-if="!hasNotificationsMenu">
+                <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
+                    <h2 :class="[h2, 'mb-0']"><Fa icon="bell" class="text-gold-500" /> {{ t('admin.menu.notifications') }}</h2>
+                    <div class="flex items-center gap-4 text-sm">
+                        <button v-if="unread" class="text-gold-600 hover:underline dark:text-gold-400" @click="markAllRead">{{ t('admin.notificationsPage.markAll') }}</button>
+                        <Link v-if="role === 'reviewer'" href="/admin/reviews" class="text-gold-600 hover:underline dark:text-gold-400">{{ t('admin.dash.allReviews') }} <Fa icon="chevron-right" class="text-xs" /></Link>
+                    </div>
                 </div>
-            </div>
-            <ul class="divide-y divide-neutral-200 rounded-xl border border-neutral-200 dark:divide-white/5 dark:border-white/10">
-                <li v-for="item in notifications" :key="item.id">
-                    <Link
-                        :href="item.href"
-                        :class="item.read ? '' : 'bg-gold-50/60 dark:bg-gold-400/5'"
-                        class="flex gap-3 p-3 transition hover:bg-gold-50 dark:hover:bg-gold-400/10"
-                        @click="markRead(item)"
-                    >
-                        <span :class="item.read ? 'bg-neutral-100 text-neutral-500 dark:bg-white/5 dark:text-neutral-400' : 'bg-gold-100 text-gold-600 dark:bg-gold-400/15 dark:text-gold-400'" class="grid size-9 shrink-0 place-items-center rounded-full text-sm">
-                            <Fa :icon="item.icon" />
-                        </span>
-                        <span class="min-w-0 flex-1">
-                            <span class="flex flex-wrap items-baseline justify-between gap-x-3">
-                                <span :class="item.read ? '' : 'font-semibold'" class="text-sm">{{ tr(item.title) }}</span>
-                                <span class="text-xs text-neutral-500 dark:text-neutral-400">{{ timeAgo(item.at) }}</span>
+                <ul class="divide-y divide-neutral-200 rounded-xl border border-neutral-200 dark:divide-white/5 dark:border-white/10">
+                    <li v-for="item in notifications" :key="item.id">
+                        <Link
+                            :href="item.href"
+                            :class="item.read ? '' : 'bg-gold-50/60 dark:bg-gold-400/5'"
+                            class="flex gap-3 p-3 transition hover:bg-gold-50 dark:hover:bg-gold-400/10"
+                            @click="markRead(item)"
+                        >
+                            <span :class="item.read ? 'bg-neutral-100 text-neutral-500 dark:bg-white/5 dark:text-neutral-400' : 'bg-gold-100 text-gold-600 dark:bg-gold-400/15 dark:text-gold-400'" class="grid size-9 shrink-0 place-items-center rounded-full text-sm">
+                                <Fa :icon="item.icon" />
                             </span>
-                            <span class="block text-sm text-neutral-600 dark:text-neutral-300">{{ tr(item.body) }}</span>
-                        </span>
-                        <span v-if="!item.read" class="mt-2 size-2 shrink-0 rounded-full bg-gold-400" />
-                    </Link>
-                </li>
-                <li v-if="!notifications.length" class="py-8 text-center text-sm text-neutral-500">{{ t('admin.notificationsPage.empty') }}</li>
-            </ul>
-        </Card>
+                            <span class="min-w-0 flex-1">
+                                <span class="flex flex-wrap items-baseline justify-between gap-x-3">
+                                    <span :class="item.read ? '' : 'font-semibold'" class="text-sm">{{ tr(item.title) }}</span>
+                                    <span class="text-xs text-neutral-500 dark:text-neutral-400">{{ timeAgo(item.at) }}</span>
+                                </span>
+                                <span class="block text-sm text-neutral-600 dark:text-neutral-300">{{ tr(item.body) }}</span>
+                            </span>
+                            <span v-if="!item.read" class="mt-2 size-2 shrink-0 rounded-full bg-gold-400" />
+                        </Link>
+                    </li>
+                    <li v-if="!notifications.length" class="py-8 text-center text-sm text-neutral-500">{{ t('admin.notificationsPage.empty') }}</li>
+                </ul>
+            </Card>
+        </div>
 
         <p class="text-xs text-neutral-500 dark:text-neutral-400"><Fa icon="circle-info" class="mr-1 text-gold-500" /> {{ t(['editor', 'reviewer', 'author', 'journal'].includes(role) ? 'admin.dash.realNote' : 'admin.dash.mockNote') }}</p>
     </div>

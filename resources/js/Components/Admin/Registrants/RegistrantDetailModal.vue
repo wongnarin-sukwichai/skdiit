@@ -3,15 +3,16 @@ import { ref, watch } from 'vue';
 import Modal from '@/Components/Modal.vue';
 import RegistrantStatus from '@/Components/Admin/Registrants/RegistrantStatus.vue';
 import { useI18n } from '@/i18n';
-import { affiliationByKey } from '@/data/mock';
+import { useAffiliations } from '@/composables/useAffiliations';
 
-// Backend registrant record (mock: adminRegistrants)
+// A row of RegistrantController::index
 const props = defineProps({
     registrant: { type: Object, default: null },
 });
 const emit = defineEmits(['close']);
 
 const { t, tr, formatDate } = useI18n();
+const { affiliationOf } = useAffiliations();
 
 // Keep the last record so the content stays visible while the modal fades out
 const shown = ref(null);
@@ -27,7 +28,7 @@ watch(() => props.registrant, (value) => value && (shown.value = value), { immed
                 </span>
                 <div>
                     <p class="text-xs tracking-wider text-gold-400 uppercase">{{ t('registrants.detailTitle') }}</p>
-                    <h3 class="text-xl font-semibold">{{ tr(shown.name) }}</h3>
+                    <h3 class="text-xl font-semibold">{{ shown.name }}</h3>
                 </div>
             </div>
 
@@ -45,7 +46,7 @@ watch(() => props.registrant, (value) => value && (shown.value = value), { immed
                 </div>
                 <div>
                     <dt class="text-neutral-400">{{ t('registrants.affiliation') }}</dt>
-                    <dd class="mt-0.5">{{ tr(affiliationByKey[shown.affiliation]) }}</dd>
+                    <dd class="mt-0.5">{{ affiliationOf(shown) }}</dd>
                 </div>
                 <div>
                     <dt class="text-neutral-400">{{ t('registrants.participation') }}</dt>
@@ -63,7 +64,7 @@ watch(() => props.registrant, (value) => value && (shown.value = value), { immed
                 </div>
                 <div>
                     <dt class="text-neutral-400">{{ t('admin.registrants.account') }}</dt>
-                    <dd v-if="!shown.active" class="mt-0.5 text-red-400">{{ t('admin.registrants.suspended') }}</dd>
+                    <dd v-if="shown.suspended" class="mt-0.5 text-red-400">{{ t('admin.registrants.suspended') }}</dd>
                     <dd v-else-if="!shown.verified" class="mt-0.5 text-amber-400">
                         {{ t('admin.registrants.unverified') }}
                         <span class="block text-xs text-neutral-500">{{ t('admin.registrants.unverifiedHint') }}</span>
@@ -73,7 +74,8 @@ watch(() => props.registrant, (value) => value && (shown.value = value), { immed
                 <div v-if="shown.participation === 'attend_submit'" class="sm:col-span-2">
                     <dt class="text-neutral-400">{{ t('registrants.paper') }}</dt>
                     <dd class="mt-0.5" :class="{ 'text-neutral-500 italic': !shown.paper }">
-                        {{ shown.paper ? tr(shown.paper) : t('registrants.noPaper') }}
+                        <template v-if="shown.paper"><span class="font-mono text-xs text-gold-400">{{ shown.paper.code }}</span> {{ tr(shown.paper.title) }}</template>
+                        <template v-else>{{ t('registrants.noPaper') }}</template>
                     </dd>
                 </div>
             </dl>

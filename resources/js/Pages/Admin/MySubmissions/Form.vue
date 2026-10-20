@@ -23,7 +23,7 @@ const props = defineProps({
 const { t, tr } = useI18n();
 const isEdit = computed(() => !!props.submission);
 // Sent back by the editor: saving resubmits the paper for screening
-const isRevision = computed(() => ['screening_revision', 'revision_minor', 'revision_major'].includes(props.submission?.status));
+const isRevision = computed(() => ['screening_revision', 'review_revision'].includes(props.submission?.status));
 
 // A new paper starts with the signed-in user as the first author
 const me = usePage().props.auth.user;

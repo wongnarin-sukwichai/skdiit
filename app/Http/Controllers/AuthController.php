@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Mail\LoginPassword;
 use App\Models\Affiliation;
+use App\Models\AuthorRequest;
 use App\Models\Submission;
 use App\Models\User;
+use App\Support\WorkflowMail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -155,6 +157,28 @@ class AuthController extends Controller
         $user->forceFill(['registered_year' => Submission::conferenceYear()])->save();
 
         return back();
+    }
+
+    /**
+     * "My details": an attend-only registrant asks to submit papers too; every admin gets an email and decides
+     * on the Registrants page. Allowed until submissions close, one pending request at a time.
+     */
+    public function requestAuthor(Request $request): RedirectResponse
+    {
+        $user = $request->user();
+        abort_unless($user->role === 'user' && $user->participation === 'attend' && (int) $user->registered_year === Submission::conferenceYear(), 403);
+        abort_unless(AuthorRequest::canAskNow(), 403);
+        abort_if(AuthorRequest::pending()->where('user_id', $user->id)->exists(), 409);
+
+        $data = $request->validate(['reason' => ['nullable', 'string', 'max:2000']], ['max' => 'validation.too_long']);
+        AuthorRequest::create(['user_id' => $user->id, 'year' => Submission::conferenceYear(), 'reason' => $data['reason'] ?? null]);
+
+        User::where('role', 'admin')->whereNull('suspended_at')->get()->each(fn (User $admin) => WorkflowMail::account(
+            'author_request_new', $admin, '/admin/registrants?tab=requests',
+            ['registrant' => $user->name, 'email' => $user->email, 'reason' => $data['reason'] ?? ''],
+        ));
+
+        return back()->with('success', 'auth.authorRequest.sent');
     }
 
     public function logout(Request $request): RedirectResponse

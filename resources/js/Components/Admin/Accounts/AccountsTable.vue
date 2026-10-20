@@ -191,7 +191,7 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
                         <tr v-for="account in accounts.data" :key="account.id" class="transition hover:bg-gold-50 dark:hover:bg-gold-400/5">
                             <td class="px-4 py-3">
                                 <span class="block font-medium">
-                                    <span v-if="account.academic_title_id" class="text-neutral-500 dark:text-neutral-400">{{ titleOf(account.academic_title_id) }}</span>
+                                    <span v-if="account.academic_title_id">{{ titleOf(account.academic_title_id) }}</span>
                                     {{ account.name }}
                                     <span v-if="account.id === me.id" class="ml-1 text-xs text-gold-600 dark:text-gold-400">({{ t('admin.accounts.you') }})</span>
                                     <span v-if="account.suspended" class="ml-1 inline-flex items-center rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-xs font-medium text-red-700 dark:border-red-500/40 dark:bg-red-500/15 dark:text-red-300">

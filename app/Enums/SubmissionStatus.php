@@ -20,8 +20,7 @@ enum SubmissionStatus: string
 
     // Conference track: peer review
     case InReview = 'in_review';                   // reviewers are evaluating it
-    case RevisionMinor = 'revision_minor';         // editor decision after review: minor revision
-    case RevisionMajor = 'revision_major';         // editor decision after review: major revision
+    case ReviewRevision = 'review_revision';       // editor decision after review: revise and resubmit
     case Revised = 'revised';                      // author sent the revision; the editor decides or starts a new review round
     case Accepted = 'accepted';                    // accepted; waiting for the camera-ready file
     case ReviewRejected = 'rejected';              // rejected after review (final)
@@ -60,8 +59,7 @@ enum SubmissionStatus: string
     {
         return match ($decision) {
             'accept' => self::Accepted,
-            'minor' => self::RevisionMinor,
-            'major' => self::RevisionMajor,
+            'revise' => self::ReviewRevision,
             'reject' => self::ReviewRejected,
         };
     }
@@ -69,6 +67,6 @@ enum SubmissionStatus: string
     /** Statuses where the author is asked to revise and resubmit. */
     public function awaitsAuthorRevision(): bool
     {
-        return in_array($this, [self::Revision, self::RevisionMinor, self::RevisionMajor], true);
+        return in_array($this, [self::Revision, self::ReviewRevision], true);
     }
 }

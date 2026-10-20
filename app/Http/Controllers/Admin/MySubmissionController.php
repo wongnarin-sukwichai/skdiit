@@ -50,10 +50,11 @@ class MySubmissionController extends Controller
     public function index(Request $request): Response
     {
         return Inertia::render('Admin/MySubmissions/Index', [
-            'submissions' => $request->user()->submissions()->with('track', 'authors')->withReviewCounts()->latest()->get()
+            'submissions' => $request->user()->submissions()->with('track', 'authors')->withReviewCounts()->withHadRevision()->latest()->get()
                 ->map(fn (Submission $submission) => [
                     ...$submission->toClient(),
                     'canEdit' => $submission->canBeEditedByAuthor(),
+                    'hadRevision' => (bool) $submission->had_revision,
                     'next' => $submission->nextForAuthor(),
                 ]),
             ...Submission::window(),

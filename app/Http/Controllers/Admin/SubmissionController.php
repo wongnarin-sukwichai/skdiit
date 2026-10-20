@@ -27,7 +27,7 @@ class SubmissionController extends Controller
 {
     public function index(Request $request): Response
     {
-        $filters = $request->only('q', 'track', 'status', 'queue');
+        $filters = $request->only('q', 'track', 'status', 'queue', 'view');
         $submissions = Submission::currentYear()
             ->with('track', 'authors')
             // This round's reviews: assigned, sent, late, cannot review
@@ -42,7 +42,8 @@ class SubmissionController extends Controller
             ->when($filters['track'] ?? null, fn ($query, $track) => $query->where('track_id', $track))
             ->when(! isset($filters['queue']) ? ($filters['status'] ?? null) : null, fn ($query, string $status) => $query->where('status', $status))
             ->latest()
-            ->paginate(15)
+            // Cards by track show every paper that matches, one page
+            ->paginate(($filters['view'] ?? null) === 'tracks' ? 500 : 15)
             ->withQueryString()
             ->through(fn (Submission $submission) => [
                 ...$submission->toClient(),
@@ -125,7 +126,7 @@ class SubmissionController extends Controller
     }
 
     /**
-     * Editor's decision after review (accept / minor / major / reject). One editor's decision is final;
+     * Editor's decision after review (accept / revise / reject). One editor's decision is final;
      * a revision needs a due date for the author. Reviews still open in this round are closed.
      */
     public function decide(Request $request, Submission $submission): RedirectResponse
@@ -133,9 +134,9 @@ class SubmissionController extends Controller
         abort_unless($submission->canBeDecided(), 403);
 
         $data = $request->validate([
-            'decision' => ['required', Rule::in(['accept', 'minor', 'major', 'reject'])],
+            'decision' => ['required', Rule::in(['accept', 'revise', 'reject'])],
             'comment' => ['nullable', 'string', 'max:5000'],
-            'revision_due_date' => ['required_if:decision,minor,major', 'nullable', 'date_format:Y-m-d', 'after_or_equal:today'],
+            'revision_due_date' => ['required_if:decision,revise', 'nullable', 'date_format:Y-m-d', 'after_or_equal:today'],
         ], [
             'required' => 'validation.required',
             'required_if' => 'validation.required',

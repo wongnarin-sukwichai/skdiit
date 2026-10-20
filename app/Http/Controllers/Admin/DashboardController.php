@@ -52,12 +52,14 @@ class DashboardController extends Controller
     /** An author's papers, their turn first, with the next step in the author's terms. */
     private function authorPapers(User $author): array
     {
-        return $author->submissions()->withReviewCounts()->latest()->get()
+        return $author->submissions()->withReviewCounts()->withHadRevision()->latest()->get()
             ->map(fn (Submission $paper) => [
                 'id' => $paper->id,
                 'code' => $paper->code,
                 'title' => ['en' => $paper->title_en, 'th' => $paper->title_th],
                 'status' => $paper->status->value,
+                'canEdit' => $paper->canBeEditedByAuthor(),
+                'hadRevision' => (bool) $paper->had_revision,
                 'next' => $paper->nextForAuthor(),
             ])
             ->sortByDesc(fn ($paper) => $paper['next']['mine'])

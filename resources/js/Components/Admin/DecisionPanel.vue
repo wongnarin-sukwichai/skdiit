@@ -18,13 +18,12 @@ const today = isoDate(new Date());
 
 const decisions = [
     { value: 'accept', icon: 'circle-check', active: 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' },
-    { value: 'minor', icon: 'pen', active: 'border-gold-500 bg-gold-50 text-gold-700 dark:bg-gold-500/15 dark:text-gold-300' },
-    { value: 'major', icon: 'pen-to-square', active: 'border-orange-500 bg-orange-50 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300' },
+    { value: 'revise', icon: 'pen', active: 'border-gold-500 bg-gold-50 text-gold-700 dark:bg-gold-500/15 dark:text-gold-300' },
     { value: 'reject', icon: 'xmark', active: 'border-red-500 bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-300' },
 ];
 
 const form = useForm({ decision: '', comment: '', revision_due_date: isoDate(new Date(Date.now() + 14 * 86400000)) });
-const needsDue = computed(() => ['minor', 'major'].includes(form.decision));
+const needsDue = computed(() => form.decision === 'revise');
 
 const confirm = ref(null); // 'decision' | 'round'
 const roundBusy = ref(false);
@@ -68,7 +67,7 @@ const border = (error) => (error ? 'border-red-500/70' : 'border-neutral-300 dar
         </div>
 
         <form class="space-y-4" @submit.prevent="confirm = 'decision'">
-            <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-4" role="radiogroup">
+            <div class="grid gap-2 sm:grid-cols-3" role="radiogroup">
                 <button
                     v-for="option in decisions"
                     :key="option.value"

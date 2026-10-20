@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+    <!-- The SKDIIT knot mark (Components/Logo.vue) on black, for browser tabs -->
+    <defs>
+        <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#ffe58a" />
+            <stop offset=".5" stop-color="#ffcc29" />
+            <stop offset="1" stop-color="#d49b00" />
+        </linearGradient>
+    </defs>
+    <rect width="48" height="48" rx="10" fill="#0b0b0b" />
+    <g fill="none" stroke="url(#gold)" stroke-width="4.5" stroke-linejoin="round" transform="translate(4 4) scale(.8333)">
+        <rect x="9" y="9" width="17" height="17" rx="2" transform="rotate(45 17.5 17.5)" />
+        <rect x="22" y="22" width="17" height="17" rx="2" transform="rotate(45 30.5 30.5)" />
+        <rect x="22" y="9" width="17" height="17" rx="2" transform="rotate(45 30.5 17.5)" />
+        <rect x="9" y="22" width="17" height="17" rx="2" transform="rotate(45 17.5 30.5)" />
+    </g>
+</svg>
