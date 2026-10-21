@@ -25,6 +25,7 @@ return [
         'journal@skdiit.test' => ['Demo Journal', 'journal', 'attend'],
         'author@skdiit.test' => ['Demo Author', 'user', 'attend_submit'],
         'author_2@skdiit.test' => ['Demo Author 2', 'user', 'attend_submit'],
+        'author_3@skdiit.test' => ['Demo Author 3', 'user', 'attend_submit'],
         'attendee@skdiit.test' => ['Demo Attendee', 'user', 'attend'],
     ],
 

@@ -24,7 +24,8 @@ class JournalWorkflowSmokeTest extends TestCase
     public function test_demo_pages_render(): void
     {
         $paper = Submission::where('code', 'SKDIIT27-0004')->first();
-        if (! $paper) {
+        // Only with the full demo sample (its author malee@), not the small sample:journal / sample:review papers
+        if (! $paper || ! User::where('email', 'malee@skdiit.test')->exists()) {
             $this->markTestSkipped('Seed the sample papers first.');
         }
         $pages = [

@@ -35,10 +35,15 @@ class Submission extends Model
         static::creating(function (Submission $submission) {
             $submission->year ??= static::conferenceYear();
         });
-        static::created(function (Submission $submission) {
-            $number = static::where('year', $submission->year)->where('id', '<=', $submission->id)->count();
-            $submission->forceFill(['code' => sprintf('SKDIIT%02d-%04d', $submission->year % 100, $number)])->saveQuietly();
-        });
+        static::created(fn (Submission $submission) => $submission->assignCode());
+    }
+
+    /** The next free number of the year (the highest one + 1, so a removed sample paper never makes a duplicate). */
+    public function assignCode(): void
+    {
+        $last = static::where('year', $this->year)->whereKeyNot($this->id)->whereNotNull('code')->max('code');
+        $number = $last ? (int) substr($last, -4) + 1 : 1;
+        $this->forceFill(['code' => sprintf('SKDIIT%02d-%04d', $this->year % 100, $number)])->saveQuietly();
     }
 
     /** The conference year in use (Settings). */
