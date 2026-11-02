@@ -34,7 +34,11 @@ class User extends Authenticatable
         'participation',
         'academic_title_id',
         'phone',
+        ...self::MEAL_FIELDS,
     ];
+
+    /** Meal preference and the one companion a registrant may bring (MealOption::rules / columns). */
+    public const MEAL_FIELDS = ['meal', 'meal_other', 'companion_name', 'companion_meal', 'companion_meal_other'];
 
     /** Staff roles that admin creates and manages; registrants have role 'user'. */
     public const STAFF_ROLES = ['admin', 'editor', 'reviewer', 'journal'];

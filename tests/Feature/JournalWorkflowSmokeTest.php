@@ -187,7 +187,7 @@ class JournalWorkflowSmokeTest extends TestCase
 
         // PDPA: no registration without consent; the time of consent is kept
         auth()->logout();
-        $signup = ['email' => 'pdpa@smoke.test', 'name' => 'ทดสอบ', 'affiliation' => 'msu', 'participation' => 'attend'];
+        $signup = ['email' => 'pdpa@smoke.test', 'name' => 'ทดสอบ', 'affiliation' => 'msu', 'participation' => 'attend_submit', 'meal' => 'regular'];
         $this->post('/register', $signup)->assertSessionHasErrors('pdpa');
         $this->post('/register', [...$signup, 'pdpa' => '1'])->assertSessionHasNoErrors();
         $this->assertNotNull(User::where('email', 'pdpa@smoke.test')->value('pdpa_accepted_at'));

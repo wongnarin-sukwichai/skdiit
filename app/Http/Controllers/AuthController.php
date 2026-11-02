@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Mail\LoginPassword;
 use App\Models\Affiliation;
 use App\Models\AuthorRequest;
+use App\Models\MealOption;
 use App\Models\Submission;
 use App\Models\User;
 use App\Support\WorkflowMail;
@@ -90,16 +91,19 @@ class AuthController extends Controller
             'affiliation_other' => ['nullable', 'required_if:affiliation,'.Affiliation::OTHER, 'string', 'max:255'],
             // Optional: lets the editors (who coordinate) call when email does not get through
             'phone' => ['nullable', 'string', 'max:30'],
+            // The sign-up form only offers attend_submit since 2026-11-01 (client request); 'attend' stays for admin
             'participation' => ['required', Rule::in(['attend', 'attend_submit'])],
+            // Own meal, plus one optional companion (name + meal)
+            ...MealOption::rules(),
             // PDPA: consent to the privacy policy (/privacy) is required to register
             'pdpa' => ['accepted'],
-        ], self::MESSAGES);
-        unset($data['pdpa']);
+        ], [...self::MESSAGES, ...MealOption::MESSAGES]);
 
         // The password goes to the email address; the registrant signs in with it
         $password = User::generatePassword();
         $user = User::create([
-            ...$data,
+            ...collect($data)->only('email', 'name', 'affiliation', 'phone', 'participation')->all(),
+            ...MealOption::columns($data),
             'affiliation_other' => $data['affiliation'] === Affiliation::OTHER ? trim($data['affiliation_other']) : null,
             'password' => $password,
             'role' => 'user',

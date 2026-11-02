@@ -4,6 +4,7 @@ import Modal from '@/Components/Modal.vue';
 import RegistrantStatus from '@/Components/Admin/Registrants/RegistrantStatus.vue';
 import { useI18n } from '@/i18n';
 import { useAffiliations } from '@/composables/useAffiliations';
+import { useMealOptions } from '@/composables/useMealOptions';
 
 // A row of RegistrantController::index
 const props = defineProps({
@@ -13,6 +14,7 @@ const emit = defineEmits(['close']);
 
 const { t, tr, formatDate } = useI18n();
 const { affiliationOf } = useAffiliations();
+const { mealOf, companionMealOf } = useMealOptions();
 
 // Keep the last record so the content stays visible while the modal fades out
 const shown = ref(null);
@@ -51,6 +53,18 @@ watch(() => props.registrant, (value) => value && (shown.value = value), { immed
                 <div>
                     <dt class="text-neutral-400">{{ t('registrants.participation') }}</dt>
                     <dd class="mt-0.5">{{ t(`admin.registrants.participationType.${shown.participation}`) }}</dd>
+                </div>
+                <div>
+                    <dt class="text-neutral-400">{{ t('meals.yourMeal') }}</dt>
+                    <dd class="mt-0.5" :class="{ 'text-neutral-500': !shown.meal }">{{ mealOf(shown) || t('meals.notChosen') }}</dd>
+                </div>
+                <div>
+                    <dt class="text-neutral-400">{{ t('meals.companion') }}</dt>
+                    <dd v-if="shown.companion_name" class="mt-0.5">
+                        {{ shown.companion_name }}
+                        <span class="block text-xs text-neutral-400">{{ companionMealOf(shown) }}</span>
+                    </dd>
+                    <dd v-else class="mt-0.5 text-neutral-500">{{ t('meals.noCompanion') }}</dd>
                 </div>
                 <div>
                     <dt class="text-neutral-400">{{ t('registrants.registeredAt') }}</dt>

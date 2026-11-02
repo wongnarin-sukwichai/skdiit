@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Affiliation;
+use App\Models\MealOption;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -15,7 +16,8 @@ use Inertia\Response;
  * "My account" (every backend role, own record only): name, academic title, phone, affiliation (registrants)
  * and password. The email is the sign-in name and the papers' contact, so only admin can change it.
  * The password itself changes through AuthController::changePassword (shared with "My details").
- * update() also serves "My details" on the public site (PUT /my-details), so attendees can fix their own details.
+ * update() also serves "My details" on the public site (PUT /my-details), so attendees can fix their own details,
+ * their meal and their companion.
  */
 class AccountController extends Controller
 {
@@ -47,16 +49,22 @@ class AccountController extends Controller
             // Registrants chose an affiliation at sign-up; staff accounts have none
             'affiliation' => $user->role === 'user' ? ['required', Rule::in(Affiliation::codes())] : ['prohibited'],
             'affiliation_other' => $user->role === 'user' ? ['nullable', 'required_if:affiliation,'.Affiliation::OTHER, 'string', 'max:255'] : ['prohibited'],
+            // Registrants: own meal and the companion; sent by "My details" only, so other forms leave them as they are
+            ...($user->role === 'user' && $request->has('meal') ? MealOption::rules() : []),
         ], [
             'required' => 'validation.required',
             'required_if' => 'validation.required',
             'affiliation.in' => 'validation.required',
             'max' => 'validation.too_long',
+            ...MealOption::MESSAGES,
         ]);
 
         // The typed name only counts with "Other"; picking a list entry clears it
         if (isset($data['affiliation'])) {
             $data['affiliation_other'] = $data['affiliation'] === Affiliation::OTHER ? trim($data['affiliation_other']) : null;
+        }
+        if (isset($data['meal'])) {
+            $data = [...collect($data)->except('companion')->all(), ...MealOption::columns($data)];
         }
 
         $user->update($data);

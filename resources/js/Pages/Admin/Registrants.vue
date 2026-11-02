@@ -13,11 +13,13 @@ import RegistrantStatus from '@/Components/Admin/Registrants/RegistrantStatus.vu
 import RegistrantDetailModal from '@/Components/Admin/Registrants/RegistrantDetailModal.vue';
 import RegistrantFormModal from '@/Components/Admin/Registrants/RegistrantFormModal.vue';
 import AuthorRequests from '@/Components/Admin/Registrants/AuthorRequests.vue';
+import MealSummary from '@/Components/Admin/Registrants/MealSummary.vue';
 import { useI18n } from '@/i18n';
 import { useRegistrantTable } from '@/composables/useRegistrantTable';
 import { useModules } from '@/composables/useModules';
 import { useToast } from '@/composables/useToast';
 import { useAffiliations } from '@/composables/useAffiliations';
+import { useMealOptions } from '@/composables/useMealOptions';
 
 // Registrants of the current conference year (RegistrantController::index)
 const props = defineProps({
@@ -28,6 +30,7 @@ const props = defineProps({
 const { t, tr, formatDate, formatNumber } = useI18n();
 const { toast } = useToast();
 const { affiliationOf } = useAffiliations();
+const { mealOf, companionMealOf } = useMealOptions();
 const inertiaPage = usePage();
 const me = computed(() => inertiaPage.props.auth.user);
 const year = computed(() => inertiaPage.props.site.year);
@@ -68,8 +71,9 @@ if (['active', 'unverified', 'suspended'].includes(query.get('account'))) {
 const tabs = [
     { key: 'list', icon: 'users' },
     { key: 'requests', icon: 'file-arrow-up' },
+    { key: 'meals', icon: 'utensils' },
 ];
-const tab = ref(query.get('tab') === 'requests' ? 'requests' : 'list');
+const tab = ref(tabs.some((item) => item.key === query.get('tab')) ? query.get('tab') : 'list');
 const pendingRequests = computed(() => props.requests.filter((r) => r.status === 'pending').length);
 
 // Status filter: attend-only, author without a paper, then each paper status (App\Enums\SubmissionStatus)
@@ -196,6 +200,7 @@ async function exportExcel() {
     const headers = [
         t('registrants.no'), t('registrants.name'), t('registrants.email'), t('admin.accounts.phone'), t('registrants.affiliation'),
         t('registrants.participation'), t('registrants.paper'),
+        t('meals.yourMeal'), t('meals.companionName'), t('meals.companionMeal'),
         t('registrants.status'), t('admin.registrants.account'),
         t('registrants.registeredAt'),
     ];
@@ -207,6 +212,9 @@ async function exportExcel() {
         affiliationOf(r),
         t(`admin.registrants.participationType.${r.participation}`),
         r.paper ? `${r.paper.code} ${tr(r.paper.title)}` : '',
+        mealOf(r),
+        r.companion_name ?? '',
+        companionMealOf(r),
         statusText(r),
         t(`admin.registrants.${accountState(r)}`),
         formatDate(r.registeredAt, { dateStyle: 'medium', timeStyle: 'short' }),
@@ -270,6 +278,7 @@ const plainBadge = 'inline-flex items-center rounded-full border px-3 py-0.5 tex
 
             <Transition name="fade" mode="out-in">
             <AuthorRequests v-if="tab === 'requests'" key="requests" :requests="requests" :can-edit="canEdit" />
+            <MealSummary v-else-if="tab === 'meals'" key="meals" :registrants="registrants" />
 
             <div v-else key="list">
             <div class="mb-4 flex flex-wrap items-center justify-between gap-3">

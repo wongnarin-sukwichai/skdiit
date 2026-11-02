@@ -99,6 +99,8 @@ import {
     faStar,
     faBullhorn,
     faCodeBranch,
+    faUtensils,
+    faUserGroup,
 } from '@fortawesome/free-solid-svg-icons';
 import { faFileLines as farFileLines, faUser as farUser } from '@fortawesome/free-regular-svg-icons';
 
@@ -120,6 +122,7 @@ library.add(
     faGavel,
     faBook, faFileExcel, faNewspaper, faPersonChalkboard,
     faInbox, faFilePowerpoint, faStar, faBullhorn, faCodeBranch,
+    faUtensils, faUserGroup,
     farFileLines, farUser,
 );
 

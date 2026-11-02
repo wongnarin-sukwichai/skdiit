@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Mail\LoginPassword;
 use App\Models\Affiliation;
 use App\Models\AuthorRequest;
+use App\Models\MealOption;
 use App\Models\Submission;
 use App\Models\User;
 use App\Support\WorkflowMail;
@@ -46,7 +47,7 @@ class RegistrantController extends Controller
 
         return Inertia::render('Admin/Registrants', [
             'registrants' => $registrants->map(fn (User $user) => [
-                ...$user->only('id', 'name', 'email', 'phone', 'affiliation', 'affiliation_other', 'participation'),
+                ...$user->only('id', 'name', 'email', 'phone', 'affiliation', 'affiliation_other', 'participation', ...User::MEAL_FIELDS),
                 'paper' => ($paper = $user->submissions->first()) ? [
                     'id' => $paper->id,
                     'code' => $paper->code,
@@ -156,15 +157,18 @@ class RegistrantController extends Controller
             'affiliation' => ['required', Rule::in(Affiliation::codes())],
             'affiliation_other' => ['nullable', 'required_if:affiliation,'.Affiliation::OTHER, 'string', 'max:255'],
             'participation' => ['required', Rule::in(['attend', 'attend_submit'])],
+            ...MealOption::rules(required: false),
         ], [
             ...self::ACCOUNT_MESSAGES,
             'required_if' => 'validation.required',
             'affiliation.in' => 'validation.required',
             'participation.in' => 'validation.required',
+            ...MealOption::MESSAGES,
         ]);
 
         return [
-            ...$data,
+            ...collect($data)->only('name', 'phone', 'affiliation', 'participation')->all(),
+            ...MealOption::columns($data),
             'email' => strtolower($data['email']),
             'affiliation_other' => $data['affiliation'] === Affiliation::OTHER ? trim($data['affiliation_other']) : null,
         ];

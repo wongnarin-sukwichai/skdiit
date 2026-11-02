@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\AcademicTitle;
 use App\Models\Affiliation;
+use App\Models\MealOption;
 use App\Models\ReviewCriterion;
 use App\Models\SiteDocument;
 use App\Models\User;
@@ -17,7 +18,8 @@ use Inertia\Response;
 /**
  * System settings (admin only): submission rules (opening date, deadline, file upload limit, the journal's
  * decision deadline and site, the slides cut-off),
- * academic titles (AcademicTitleController), affiliations (AffiliationController) and review criteria (ReviewCriterionController).
+ * academic titles (AcademicTitleController), affiliations (AffiliationController), meals (MealOptionController)
+ * and review criteria (ReviewCriterionController).
  * Accounts live in Staff / Reviewers, track names in Tracks.
  */
 class SettingsController extends Controller
@@ -73,6 +75,11 @@ class SettingsController extends Controller
             ]),
             'typedAffiliations' => User::where('affiliation', Affiliation::OTHER)->whereNotNull('affiliation_other')
                 ->selectRaw('affiliation_other as name, count(*) as users')->groupBy('affiliation_other')->orderByDesc('users')->get(),
+            // Meal preferences with how many registrants and companions chose each (those cannot be deleted)
+            'mealList' => MealOption::ordered()->get()->map(fn (MealOption $meal) => [
+                ...$meal->only('id', 'code', 'name_en', 'name_th'),
+                'users' => $meal->usersCount(),
+            ]),
         ]);
     }
 

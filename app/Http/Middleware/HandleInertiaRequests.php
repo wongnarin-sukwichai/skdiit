@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Models\AcademicTitle;
 use App\Models\Affiliation;
+use App\Models\MealOption;
 use App\Models\AuthorRequest;
 use App\Models\Submission;
 use App\Models\User;
@@ -42,7 +43,7 @@ class HandleInertiaRequests extends Middleware
             ...parent::share($request),
             'auth' => [
                 'user' => $user ? [
-                    ...$user->only('id', 'name', 'email', 'role', 'affiliation', 'affiliation_other', 'phone', 'participation', 'registered_year', 'created_at'),
+                    ...$user->only('id', 'name', 'email', 'role', 'affiliation', 'affiliation_other', 'phone', 'participation', 'registered_year', 'created_at', ...User::MEAL_FIELDS),
                     'accessRole' => $user->accessRole(),
                     // Attend-only registrants: their request to submit papers { status, at, note, canAsk } (My details)
                     'authorRequest' => AuthorRequest::forRegistrant($user),
@@ -56,6 +57,8 @@ class HandleInertiaRequests extends Middleware
             'site' => fn () => [...SiteContent::all(), 'year' => Submission::conferenceYear()],
             // Affiliation list for the sign-up form and labels (useAffiliations); 'other' is added on the client
             'affiliations' => fn () => Affiliation::ordered()->get()->map->toClient(),
+            // Meal preferences for the sign-up form, "My details" and labels (useMealOptions); 'other' is added on the client
+            'mealOptions' => fn () => MealOption::ordered()->get()->map->toClient(),
             // Backend: academic titles for pickers and name prefixes (useAcademicTitles)
             'academicTitles' => fn () => $user?->modules() ? AcademicTitle::ordered()->get()->map->toClient() : [],
             // Testing phase: demo logins shown in the login modal (config/demo.php)

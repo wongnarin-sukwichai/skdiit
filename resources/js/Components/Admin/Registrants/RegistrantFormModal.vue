@@ -3,8 +3,11 @@ import { computed, watch } from 'vue';
 import { useForm } from '@inertiajs/vue3';
 import Modal from '@/Components/Modal.vue';
 import FormField from '@/Components/FormField.vue';
+import AffiliationField from '@/Components/AffiliationField.vue';
+import MealFields from '@/Components/MealFields.vue';
 import { useI18n } from '@/i18n';
-import { OTHER_AFFILIATION, useAffiliations } from '@/composables/useAffiliations';
+import { OTHER_AFFILIATION } from '@/composables/useAffiliations';
+import { mealFormFields, mealPayload } from '@/composables/useMealOptions';
 
 /**
  * Add or edit a registrant (RegistrantController store/update; same rules as signing up).
@@ -17,9 +20,8 @@ const props = defineProps({
 });
 const emit = defineEmits(['close']);
 
-const { t, tr } = useI18n();
-const { affiliations } = useAffiliations();
-const form = useForm({ name: '', email: '', phone: '', affiliation: '', affiliation_other: '', participation: 'attend' });
+const { t } = useI18n();
+const form = useForm({ name: '', email: '', phone: '', affiliation: '', affiliation_other: '', participation: 'attend_submit', ...mealFormFields() });
 
 const isCreate = computed(() => !props.registrant);
 const hasPaper = computed(() => !!props.registrant?.paper);
@@ -34,7 +36,8 @@ watch(() => props.show, (open) => {
         phone: r?.phone ?? '',
         affiliation: r?.affiliation ?? '',
         affiliation_other: r?.affiliation_other ?? '',
-        participation: r?.participation ?? 'attend',
+        participation: r?.participation ?? 'attend_submit',
+        ...mealFormFields(r),
     });
     form.reset();
     form.clearErrors();
@@ -44,6 +47,7 @@ function submit() {
     const options = { preserveScroll: true, onSuccess: () => emit('close') };
     form.transform((data) => ({
         ...data,
+        ...mealPayload(data),
         name: data.name.trim(),
         email: data.email.trim().toLowerCase(),
         phone: data.phone.trim() || null,
@@ -73,16 +77,7 @@ function submit() {
                         <input v-model="form.phone" type="tel" maxlength="30" :placeholder="t('admin.accounts.optional')" :class="inputClass">
                     </FormField>
                 </div>
-                <FormField :label="t('auth.affiliation')" icon="building-columns" :error="form.errors.affiliation" v-slot="{ inputClass }">
-                    <select v-model="form.affiliation" :class="[inputClass, 'appearance-none pr-9']">
-                        <option value="" disabled>{{ t('auth.selectAffiliation') }}</option>
-                        <option v-for="a in affiliations" :key="a.code" :value="a.code" class="bg-ink-800 text-white">{{ tr(a.name) }}</option>
-                        <option :value="OTHER_AFFILIATION" class="bg-ink-800 text-white">{{ t('auth.affiliationOther') }}</option>
-                    </select>
-                </FormField>
-                <FormField v-if="form.affiliation === OTHER_AFFILIATION" :label="t('auth.affiliationOtherName')" icon="pen" :error="form.errors.affiliation_other" v-slot="{ inputClass }">
-                    <input v-model="form.affiliation_other" :placeholder="t('auth.affiliationOtherPlaceholder')" :class="inputClass" maxlength="255">
-                </FormField>
+                <AffiliationField :form="form" />
 
                 <div>
                     <span class="mb-1.5 block text-sm text-neutral-300">{{ t('registrants.participation') }}</span>
@@ -108,6 +103,8 @@ function submit() {
                         </p>
                     </Transition>
                 </div>
+
+                <MealFields :form="form" />
 
                 <p v-if="isCreate" class="rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-xs text-neutral-400">
                     <Fa icon="envelope" class="mr-1 text-gold-400" /> {{ t('admin.registrants.form.passwordNote') }}

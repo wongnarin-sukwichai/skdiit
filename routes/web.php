@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\ArticleController;
 use App\Http\Controllers\Admin\ConferenceYearController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\AffiliationController;
+use App\Http\Controllers\Admin\MealOptionController;
 use App\Http\Controllers\Admin\JournalController;
 use App\Http\Controllers\Admin\MySubmissionController;
 use App\Http\Controllers\Admin\PublicationController;
@@ -162,6 +163,12 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
         Route::put('/{affiliation}', 'update')->name('affiliations.update');
         Route::put('/{affiliation}/move', 'move')->name('affiliations.move');
         Route::delete('/{affiliation}', 'destroy')->name('affiliations.destroy');
+    });
+    Route::prefix('settings/meals')->middleware('module:settings')->controller(MealOptionController::class)->group(function () {
+        Route::post('/', 'store')->name('meals.store');
+        Route::put('/{meal}', 'update')->name('meals.update');
+        Route::put('/{meal}/move', 'move')->name('meals.move');
+        Route::delete('/{meal}', 'destroy')->name('meals.destroy');
     });
     // New conference year and the backup download (admin)
     Route::prefix('settings/year')->middleware('module:settings')->controller(ConferenceYearController::class)->group(function () {

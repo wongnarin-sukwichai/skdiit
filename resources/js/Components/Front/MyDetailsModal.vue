@@ -3,20 +3,24 @@ import { computed, ref, watch } from 'vue';
 import { useForm, usePage } from '@inertiajs/vue3';
 import Modal from '@/Components/Modal.vue';
 import FormField from '@/Components/FormField.vue';
+import AffiliationField from '@/Components/AffiliationField.vue';
+import MealFields from '@/Components/MealFields.vue';
 import { useI18n } from '@/i18n';
 import { OTHER_AFFILIATION, useAffiliations } from '@/composables/useAffiliations';
+import { mealFormFields, mealPayload, useMealOptions } from '@/composables/useMealOptions';
 
 const props = defineProps({
     show: { type: Boolean, default: false },
 });
 const emit = defineEmits(['close']);
 
-const { t, tr, formatDate } = useI18n();
+const { t, formatDate } = useI18n();
 
 // Only the signed-in account's own record (auth.user); nobody else's details are ever sent
 const user = computed(() => usePage().props.auth.user);
-const { affiliations, affiliationOf } = useAffiliations();
+const { affiliationOf } = useAffiliations();
 const affiliation = computed(() => affiliationOf(user.value));
+const { mealOf, companionMealOf } = useMealOptions();
 
 // Replace the emailed 6-digit password with one of their own (config/registration.php)
 const changing = ref(false);
@@ -30,13 +34,13 @@ watch(() => props.show, () => {
     asking.value = false;
 });
 
-// Edit my own name, phone and affiliation (AccountController::update via PUT /my-details)
+// Edit my own name, phone, affiliation, meal and companion (AccountController::update via PUT /my-details)
 const editing = ref(false);
 const saved = ref(false);
-const detailsForm = useForm({ name: '', phone: '', affiliation: '', affiliation_other: '' });
+const detailsForm = useForm({ name: '', phone: '', affiliation: '', affiliation_other: '', ...mealFormFields() });
 function startEditing() {
     const u = user.value;
-    detailsForm.defaults({ name: u.name, phone: u.phone ?? '', affiliation: u.affiliation ?? '', affiliation_other: u.affiliation_other ?? '' });
+    detailsForm.defaults({ name: u.name, phone: u.phone ?? '', affiliation: u.affiliation ?? '', affiliation_other: u.affiliation_other ?? '', ...mealFormFields(u) });
     detailsForm.reset();
     detailsForm.clearErrors();
     saved.value = false;
@@ -46,6 +50,7 @@ function startEditing() {
 function saveDetails() {
     detailsForm.transform((data) => ({
         ...data,
+        ...mealPayload(data),
         phone: data.phone.trim() || null,
         affiliation_other: data.affiliation === OTHER_AFFILIATION ? data.affiliation_other : null,
     })).put('/my-details', {
@@ -106,15 +111,8 @@ function changePassword() {
                 <FormField :label="t('admin.accounts.phone')" icon="phone" :error="detailsForm.errors.phone" v-slot="{ inputClass }">
                     <input v-model="detailsForm.phone" type="tel" maxlength="30" :placeholder="t('admin.accounts.optional')" :class="inputClass">
                 </FormField>
-                <FormField :label="t('auth.affiliation')" icon="building-columns" :error="detailsForm.errors.affiliation" v-slot="{ inputClass }">
-                    <select v-model="detailsForm.affiliation" :class="[inputClass, 'appearance-none pr-9']" required>
-                        <option v-for="a in affiliations" :key="a.code" :value="a.code" class="bg-ink-800 text-white">{{ tr(a.name) }}</option>
-                        <option :value="OTHER_AFFILIATION" class="bg-ink-800 text-white">{{ t('auth.affiliationOther') }}</option>
-                    </select>
-                </FormField>
-                <FormField v-if="detailsForm.affiliation === OTHER_AFFILIATION" :label="t('auth.affiliationOtherName')" icon="pen" :error="detailsForm.errors.affiliation_other" v-slot="{ inputClass }">
-                    <input v-model="detailsForm.affiliation_other" :placeholder="t('auth.affiliationOtherPlaceholder')" :class="inputClass" maxlength="255" required>
-                </FormField>
+                <AffiliationField :form="detailsForm" required />
+                <MealFields :form="detailsForm" />
                 <p class="text-xs text-neutral-400"><Fa icon="circle-info" class="mr-1 text-gold-400" />{{ t('auth.emailFixed') }}</p>
                 <div class="flex justify-end gap-2">
                     <button type="button" class="rounded-lg border border-white/20 px-4 py-2.5 text-sm transition hover:border-gold-400" @click="editing = false">{{ t('common.cancel') }}</button>
@@ -142,6 +140,18 @@ function changePassword() {
                 <div>
                     <dt class="text-neutral-400">{{ t('registrants.participation') }}</dt>
                     <dd class="mt-0.5">{{ t(`admin.role.${user.accessRole}`) }}</dd>
+                </div>
+                <div v-if="user.role === 'user'">
+                    <dt class="text-neutral-400">{{ t('meals.yourMeal') }}</dt>
+                    <dd class="mt-0.5" :class="{ 'text-amber-400': !user.meal }">{{ mealOf(user) || t('meals.notChosen') }}</dd>
+                </div>
+                <div v-if="user.role === 'user'">
+                    <dt class="text-neutral-400">{{ t('meals.companion') }}</dt>
+                    <dd v-if="user.companion_name" class="mt-0.5">
+                        {{ user.companion_name }}
+                        <span class="block text-xs text-neutral-400">{{ companionMealOf(user) }}</span>
+                    </dd>
+                    <dd v-else class="mt-0.5 text-neutral-500">{{ t('meals.noCompanion') }}</dd>
                 </div>
                 <div v-if="user.created_at">
                     <dt class="text-neutral-400">{{ t('registrants.registeredAt') }}</dt>
