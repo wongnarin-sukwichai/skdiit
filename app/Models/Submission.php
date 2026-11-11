@@ -26,6 +26,8 @@ class Submission extends Model
             'camera_ready_at' => 'datetime',
             'slides_at' => 'datetime',
             'presentation_at' => 'datetime',
+            'journal_answer_due' => 'date',
+            'journal_reminded_at' => 'datetime',
         ];
     }
 
@@ -73,6 +75,12 @@ class Submission extends Model
     public function track(): BelongsTo
     {
         return $this->belongsTo(Track::class);
+    }
+
+    /** The partner journal the paper was offered to (first gate), kept after the author's answer. */
+    public function journal(): BelongsTo
+    {
+        return $this->belongsTo(Journal::class);
     }
 
     public function authors(): HasMany
@@ -284,39 +292,41 @@ class Submission extends Model
         };
     }
 
-    /** First-gate tabs of Selection, in order: still waiting, waiting past the journal deadline, sent to the journal or the conference, all. */
-    public const GATE_TABS = ['waiting', 'late', 'journal', 'conference', 'all'];
-
     /**
-     * Papers by where they stand at the first gate (Selection, 2026-10-20). journal / conference: where the first
-     * selection sent them (a paper the journal later turned down is still "journal" here).
+     * First-gate tabs of Selection (2026-11-11), in order: still waiting, waiting past the first-gate deadline,
+     * offered to a journal (the author has not answered), gone to a journal (the author accepted), conference track, all.
      */
+    public const GATE_TABS = ['waiting', 'late', 'offered', 'journal', 'conference', 'all'];
+
     public function scopeGate(Builder $query, string $tab): void
     {
-        $sentTo = fn (SubmissionStatus $status) => fn ($event) => $event
-            ->where('action', SubmissionAction::JournalScreened)->where('to_status', $status->value);
         $late = (bool) static::journalDeadline()?->isPast();
 
         match ($tab) {
             'waiting' => $query->where('status', SubmissionStatus::Submitted)->when($late, fn ($none) => $none->whereRaw('1 = 0')),
             'late' => $query->where('status', SubmissionStatus::Submitted)->when(! $late, fn ($none) => $none->whereRaw('1 = 0')),
-            'journal' => $query->whereHas('events', $sentTo(SubmissionStatus::JournalSelected)),
-            'conference' => $query->whereHas('events', $sentTo(SubmissionStatus::Screening)),
+            'offered' => $query->where('status', SubmissionStatus::JournalSelected),
+            'journal' => $query->where('status', SubmissionStatus::JournalAccepted),
+            'conference' => $query->whereIn('status', SubmissionStatus::conferenceTrack()),
             default => null,
         };
     }
 
-    /** Where the first selection sent the paper: journal | conference | null while it waits (needs scopeWithGate). */
-    public function scopeWithGate(Builder $query): void
-    {
-        $sentTo = fn (SubmissionStatus $status) => fn ($event) => $event
-            ->where('action', SubmissionAction::JournalScreened)->where('to_status', $status->value);
-        $query->withExists(['events as gate_journal' => $sentTo(SubmissionStatus::JournalSelected), 'events as gate_conference' => $sentTo(SubmissionStatus::Screening)]);
-    }
-
+    /** Where the paper stands at the first gate: journal (offered or accepted) | conference | null while it waits. */
     public function gate(): ?string
     {
-        return $this->gate_journal ? 'journal' : ($this->gate_conference ? 'conference' : null);
+        return match ($this->status) {
+            SubmissionStatus::Submitted => null,
+            SubmissionStatus::JournalSelected, SubmissionStatus::JournalAccepted => 'journal',
+            default => 'conference',
+        };
+    }
+
+    /** `declined_journal`: the author declined a journal offer, or let it lapse (shown on the conference rows). */
+    public function scopeWithDeclinedJournal(Builder $query): void
+    {
+        $query->withExists(['events as declined_journal' => fn ($event) => $event
+            ->where('action', SubmissionAction::JournalOfferAnswered)->where('to_status', SubmissionStatus::Screening->value)]);
     }
 
     /**
@@ -328,13 +338,11 @@ class Submission extends Model
         $scheduled = (bool) $this->presentation_at;
 
         return match ($this->status) {
-            // Past the journal deadline and not selected: the editors' move, they pass it on to the conference (2026-10-20)
-            SubmissionStatus::Submitted => match (true) {
-                ! static::isClosed() => ['who' => 'journal', 'task' => 'journalAfterDeadline'],
-                $this->isPastJournalDeadline() => ['who' => 'editor', 'task' => 'passOn'],
-                default => ['who' => 'journal', 'task' => 'journalSelect'],
-            },
-            SubmissionStatus::JournalSelected => ['who' => 'journal', 'task' => 'journalResult'],
+            // First gate (2026-11-11): after the deadline an editor offers it to a journal or sends it to the conference
+            SubmissionStatus::Submitted => static::isClosed()
+                ? ['who' => 'editor', 'task' => 'firstGate', 'late' => $this->isPastJournalDeadline()]
+                : ['who' => 'editor', 'task' => 'journalAfterDeadline'],
+            SubmissionStatus::JournalSelected => ['who' => 'author', 'task' => 'answerJournal'],
             SubmissionStatus::Screening => ['who' => 'editor', 'task' => 'screen'],
             SubmissionStatus::InReview => match (true) {
                 ! $this->reviews_total => ['who' => 'editor', 'task' => 'assignReviewers'],
@@ -385,19 +393,17 @@ class Submission extends Model
             $due = match ($waiting['task']) {
                 'revise' => $this->revision_due_date,
                 'slides' => $this->slidesUntil(),
+                'answerJournal' => $this->journal_answer_due,
                 default => null,
             };
 
-            return ['mine' => true, 'task' => $waiting['task'], 'due' => $due?->toDateString(), 'daysLate' => $due?->isPast() ? (int) $due->diffInDays(today()) : 0];
-        }
-
-        // Selected by the journal: the author submits on the journal's site (the system cannot tell when that is done)
-        if ($this->status === SubmissionStatus::JournalSelected) {
-            return ['mine' => true, 'task' => 'submitToJournal', 'due' => null, 'daysLate' => 0];
+            return ['mine' => true, 'task' => $waiting['task'], 'due' => $due?->toDateString(), 'daysLate' => $due?->endOfDay()->isPast() ? (int) $due->diffInDays(today()) : 0];
         }
 
         return ['mine' => false, 'task' => match (true) {
             $waiting['who'] === 'none' => $waiting['task'], // done | closed
+            // Accepted a journal offer: the author works with the journal; the system calls them back for the slides
+            $this->status === SubmissionStatus::JournalAccepted => 'atJournal',
             $waiting['task'] === 'journalAfterDeadline' => 'editableUntilDeadline',
             $waiting['who'] === 'journal' => 'withJournal',
             $waiting['who'] === 'reviewer' || in_array($waiting['task'], ['assignReviewers', 'replaceReviewer'], true) => 'inReview',
@@ -529,29 +535,94 @@ class Submission extends Model
         $query->whereIn('status', SubmissionStatus::journalStage());
     }
 
-    /** The journal's first selection: after the submission deadline, when the files are final. */
-    public function canBeSelectedByJournal(): bool
-    {
-        return static::isClosed() && $this->status === SubmissionStatus::Submitted;
-    }
-
     /**
-     * Who may pass a waiting paper on to the conference track (client decision 2026-10-20): admin once submissions
-     * close; editors, who coordinate with the journal, only after the journal's selection deadline; never the journal.
+     * The first gate is open for this paper: after the submission deadline (the files are final), while it waits or
+     * while its journal offer is unanswered (the offer may be moved to another journal, or to the conference).
      */
-    public function canBePassedOnBy(User $user): bool
+    public function isAtFirstGate(): bool
     {
-        if (! $this->canBeSelectedByJournal()) {
-            return false;
-        }
-
-        return $user->isAdmin() || ($user->accessRole() === 'editor' && (bool) static::journalDeadline()?->isPast());
+        return static::isClosed() && in_array($this->status, [SubmissionStatus::Submitted, SubmissionStatus::JournalSelected], true);
     }
 
-    /** Still waiting for the journal's first selection although its deadline has passed (admin moves these by hand). */
+    /** Admin, editors and the journal role decide the first gate alike (client request 2026-11-11). */
+    public function canBeRoutedBy(User $user): bool
+    {
+        return $this->isAtFirstGate() && $user->moduleAccess('selection') === 'full';
+    }
+
+    /** Still waiting for the first gate although its deadline (Settings, a warning only) has passed. */
     public function isPastJournalDeadline(): bool
     {
         return $this->status === SubmissionStatus::Submitted && (bool) static::journalDeadline()?->isPast();
+    }
+
+    /** Days the author has to answer a journal offer (Settings). */
+    public static function journalAnswerDays(): int
+    {
+        return max(1, (int) Setting::get('journal_answer_days'));
+    }
+
+    /**
+     * First gate: offer the paper to a journal (the author answers by the due date), or send it to the conference
+     * track. The track is set at the same time; a changed track is logged as its own entry.
+     */
+    public function route(User $by, ?int $trackId, ?Journal $journal, ?string $comment = null): void
+    {
+        if ($trackId && $trackId !== $this->track_id) {
+            $fromTrack = $this->track;
+            $this->track_id = $trackId;
+            $this->save();
+            $this->log(SubmissionAction::TrackChanged, $by, null, null, ['from' => $fromTrack?->toClient()['name'], 'to' => $this->load('track')->track->toClient()['name']]);
+        }
+
+        $from = $this->status;
+        if ($journal) {
+            $this->forceFill([
+                'status' => SubmissionStatus::JournalSelected,
+                'journal_id' => $journal->id,
+                'journal_answer_due' => today()->addDays(static::journalAnswerDays()),
+                'journal_reminded_at' => null,
+            ])->save();
+            $this->log(SubmissionAction::JournalScreened, $by, $from, $comment, [
+                'journal_id' => $journal->id, 'journal' => $journal->name, 'due' => $this->journal_answer_due->toDateString(),
+            ]);
+
+            return;
+        }
+
+        // A withdrawn offer keeps no journal; an answered one keeps it for the record
+        $this->forceFill(['status' => SubmissionStatus::Screening, 'journal_id' => null, 'journal_answer_due' => null])->save();
+        $this->log(SubmissionAction::JournalScreened, $by, $from, $comment);
+    }
+
+    /** The author's answer to the journal offer: accept (goes to the journal), decline or expired (conference track). */
+    public function answerJournalOffer(string $answer, ?User $by): void
+    {
+        $from = $this->status;
+        $this->forceFill(['status' => $answer === 'accept' ? SubmissionStatus::JournalAccepted : SubmissionStatus::Screening])->save();
+        $this->log(SubmissionAction::JournalOfferAnswered, $by, $from, null, ['answer' => $answer, 'journal' => $this->journal?->name]);
+    }
+
+    /** Offers not answered by their due date go to the conference track (run on page loads and by the scheduler). */
+    public static function expireJournalOffers(): int
+    {
+        $expired = static::where('status', SubmissionStatus::JournalSelected)->whereDate('journal_answer_due', '<', today())->with('journal')->get();
+        $expired->each->answerJournalOffer('expired', null);
+
+        return $expired->count();
+    }
+
+    /** Remind authors whose offer is due within two days (once per offer; scheduler only, it sends email). */
+    public static function remindJournalOffers(): int
+    {
+        $due = static::where('status', SubmissionStatus::JournalSelected)->whereNull('journal_reminded_at')
+            ->whereDate('journal_answer_due', '>=', today())->whereDate('journal_answer_due', '<=', today()->addDays(2))->with('journal')->get();
+        $due->each(function (Submission $submission) {
+            $submission->forceFill(['journal_reminded_at' => now()])->save();
+            $submission->log(SubmissionAction::JournalOfferReminded, null, null, null, ['journal' => $submission->journal?->name, 'due' => $submission->journal_answer_due->toDateString()]);
+        });
+
+        return $due->count();
     }
 
     /** Last moment the presenter may upload or replace slides: the talk, or a few days before it (Settings). */
@@ -600,6 +671,9 @@ class Submission extends Model
             'submittedAt' => $this->created_at->toIso8601String(),
             'updatedAt' => $this->updated_at->toIso8601String(),
             'authors' => $this->authors->map->only('name', 'affiliation', 'email')->values(),
+            // First gate: the journal offered (name, link, terms) and the last day to answer
+            'journal' => $this->journal?->toClient(),
+            'journalAnswerDue' => $this->journal_answer_due?->toDateString(),
         ];
 
         if ($full) {

@@ -5,11 +5,12 @@
 @source "../**/*.js";
 @source "../**/*.vue";
 
+/* Site font: Mornamchi, its @font-face rules are in resources/views/app.blade.php (so /fonts/... is the Laravel server) */
 /* Admin dark mode is toggled with the .dark class on <html> */
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-    --font-sans: 'Anuphan', ui-sans-serif, system-ui, sans-serif;
+    --font-sans: 'Mornamchi', ui-sans-serif, system-ui, sans-serif;
 
     /* SKDIIT brand gold */
     --color-gold-50: #fffbea;
@@ -101,3 +102,37 @@ body { background: var(--color-ink-950); }
 .front-bg ::-webkit-scrollbar { width: 8px; height: 8px; }
 .dark ::-webkit-scrollbar-thumb,
 .front-bg ::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 8px; }
+
+/* Indeterminate progress bar (a gold strip sliding across), e.g. while the sign-up email is being sent */
+.loading-bar::after {
+    content: '';
+    position: absolute;
+    inset-block: 0;
+    width: 40%;
+    background: var(--color-gold-400);
+    animation: loading-bar 1.1s ease-in-out infinite;
+}
+@keyframes loading-bar {
+    from { left: -40%; }
+    to { left: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .loading-bar::after { animation: none; left: 0; width: 100%; opacity: .6; }
+}
+
+/* Toasts (FlashToast): slide in from the right, a bar counting down to the close, paused on hover */
+.toast-enter-active { transition: opacity .25s ease, transform .3s cubic-bezier(.2, .9, .3, 1.2); }
+.toast-leave-active { transition: opacity .2s ease, transform .2s ease; }
+.toast-enter-from { opacity: 0; transform: translateX(24px); }
+.toast-leave-to { opacity: 0; transform: translateX(12px) scale(.97); }
+.toast-move { transition: transform .25s ease; }
+.toast-timer { animation-name: toast-timer; animation-timing-function: linear; animation-fill-mode: forwards; }
+.toast:hover .toast-timer { animation-play-state: paused; }
+@keyframes toast-timer {
+    from { transform: scaleX(1); }
+    to { transform: scaleX(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .toast-enter-active, .toast-leave-active { transition: opacity .2s ease; }
+    .toast-enter-from, .toast-leave-to { transform: none; }
+}

@@ -26,3 +26,14 @@ Artisan::command('sample:review {--remove}', function () {
     }
     (new \Database\Seeders\ReviewSampleSeeder)->setCommand($this)->run();
 })->purpose('Add (or --remove) one sample paper in peer review');
+
+// Journal offers (first gate, 2026-11-11): remind authors two days before the due date, and send unanswered offers to
+// the conference track. Pages also expire lapsed offers when they load, so this only adds the reminder emails on time.
+// Production: run `php artisan schedule:run` every minute from cron (Windows: Task Scheduler).
+Artisan::command('journal:offers', function () {
+    $reminded = \App\Models\Submission::remindJournalOffers();
+    $expired = \App\Models\Submission::expireJournalOffers();
+    $this->info("Reminded {$reminded}, expired {$expired} journal offers.");
+})->purpose('Remind authors about journal offers and expire the unanswered ones');
+
+\Illuminate\Support\Facades\Schedule::command('journal:offers')->hourly();

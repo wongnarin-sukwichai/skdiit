@@ -68,7 +68,7 @@ class SubmissionController extends Controller
 
     public function show(Request $request, Submission $submission): Response
     {
-        $submission->load('track', 'authors', 'user');
+        $submission->load('track', 'authors', 'user', 'journal');
 
         return Inertia::render('Admin/Submissions/Show', [
             'submission' => $submission->toClient(full: true),
@@ -91,7 +91,7 @@ class SubmissionController extends Controller
             'canDecide' => $submission->canBeDecided(),
             'canStartRound' => $submission->canStartReviewRound(),
             'canSchedule' => $submission->status->canBeScheduled(),
-            'journal' => JournalController::panel($request->user(), $submission),
+            'journal' => SelectionController::panel($request->user(), $submission),
             'reviewerOptions' => $submission->canAssignReviewers()
                 ? ReviewerAssignmentController::availableReviewers($submission)->map(fn (User $reviewer) => [
                     ...$reviewer->only('id', 'name', 'email'),
@@ -188,7 +188,7 @@ class SubmissionController extends Controller
         return back()->with('success', 'submissions.trackChanged');
     }
 
-    /** Download the paper: its author, submission managers, the journal (journal stage), or a reviewer assigned to it. */
+    /** Download the paper: its author, submission managers, the journal role, or a reviewer assigned to it. */
     public function file(Request $request, Submission $submission): StreamedResponse
     {
         abort_unless(self::canReadPaper($request->user(), $submission), 404);
@@ -234,7 +234,7 @@ class SubmissionController extends Controller
         $user = $request->user();
         $submission = $file->submission;
         $isReviewerOnly = $submission->user_id !== $user->id && ! $user->moduleAccess('submissions')
-            && ! ($user->moduleAccess('journal') && $submission->isJournalStage());
+            && ! $user->moduleAccess('selection');
         abort_unless(self::canReadPaper($user, $submission) && (! $isReviewerOnly || in_array($file->kind, ['manuscript', 'response'], true)), 404);
 
         return $request->boolean('inline') && $file->isPdf()
@@ -259,12 +259,12 @@ class SubmissionController extends Controller
         return Storage::download($submission->slides_path, $submission->slides_name);
     }
 
-    /** The paper's files: its author, submission managers, the journal while the paper is with it, or an assigned reviewer. */
+    /** The paper's files: its author, submission managers, the journal role (every paper), or an assigned reviewer. */
     public static function canReadPaper(User $user, Submission $submission): bool
     {
         return $submission->user_id === $user->id
             || $user->moduleAccess('submissions')
-            || ($user->moduleAccess('journal') && $submission->isJournalStage())
+            || $user->moduleAccess('selection') // admin, editors and the journal role see every paper at the first gate
             || $submission->reviews()->where('reviewer_id', $user->id)->exists();
     }
 }

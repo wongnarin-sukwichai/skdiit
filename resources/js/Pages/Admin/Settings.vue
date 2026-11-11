@@ -7,6 +7,7 @@ import SubmissionTab from '@/Components/Admin/Settings/SubmissionTab.vue';
 import AcademicTitlesTab from '@/Components/Admin/Settings/AcademicTitlesTab.vue';
 import AffiliationsTab from '@/Components/Admin/Settings/AffiliationsTab.vue';
 import MealsTab from '@/Components/Admin/Settings/MealsTab.vue';
+import JournalsTab from '@/Components/Admin/Settings/JournalsTab.vue';
 import ReviewCriteriaTab from '@/Components/Admin/Settings/ReviewCriteriaTab.vue';
 import ConferenceTab from '@/Components/Admin/Settings/ConferenceTab.vue';
 import WebsiteTab from '@/Components/Admin/Settings/WebsiteTab.vue';
@@ -21,6 +22,7 @@ defineProps({
     affiliationList: { type: Array, required: true }, // not "affiliations": that name is the shared sign-up list
     typedAffiliations: { type: Array, required: true },
     mealList: { type: Array, required: true }, // not "mealOptions": that name is the shared sign-up list
+    journalList: { type: Array, required: true }, // partner journals offered at the first gate
     reviewCriteria: { type: Array, required: true }, // scoring criteria with how many evaluations used each
     siteDocuments: { type: Array, required: true }, // files on the public Documents page
     yearSummary: { type: Object, required: true }, // the current conference year (ConferenceYearController::summary)
@@ -35,6 +37,7 @@ const tabs = [
     { key: 'academicTitles', icon: 'user-tie' },
     { key: 'affiliations', icon: 'building-columns' },
     { key: 'meals', icon: 'utensils' },
+    { key: 'journals', icon: 'newspaper' },
     { key: 'reviewCriteria', icon: 'list-check' },
     { key: 'submission', icon: 'file-arrow-up' },
     { key: 'year', icon: 'database' },
@@ -76,6 +79,7 @@ const tab = ref('conference');
                 <AcademicTitlesTab v-else-if="tab === 'academicTitles'" :titles="academicTitles" />
                 <ReviewCriteriaTab v-else-if="tab === 'reviewCriteria'" :criteria="reviewCriteria" />
                 <MealsTab v-else-if="tab === 'meals'" :meals="mealList" />
+                <JournalsTab v-else-if="tab === 'journals'" :journals="journalList" />
                 <AffiliationsTab v-else :affiliations="affiliationList" :typed="typedAffiliations" />
             </div>
         </Transition>

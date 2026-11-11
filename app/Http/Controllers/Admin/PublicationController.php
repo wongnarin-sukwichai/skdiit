@@ -9,7 +9,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
 /**
- * After acceptance (editors and admin): presentation slots. The journal's decisions live in JournalController.
+ * After acceptance (editors and admin): presentation slots. The first gate lives in SelectionController.
  */
 class PublicationController extends Controller
 {

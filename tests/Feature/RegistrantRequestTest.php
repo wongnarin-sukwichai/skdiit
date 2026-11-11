@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Models\AuthorRequest;
 use App\Models\Setting;
 use App\Models\Submission;
 use App\Models\User;
@@ -11,7 +10,7 @@ use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
-/** Registrants page (real data) and requests to submit papers (inside a rolled-back transaction). */
+/** Registrants page (real data, inside a rolled-back transaction). The request to submit papers was removed 2026-11-11. */
 class RegistrantRequestTest extends TestCase
 {
     use DatabaseTransactions;
@@ -66,42 +65,4 @@ class RegistrantRequestTest extends TestCase
         $this->actingAs($admin)->post("/admin/registrants/{$editor->id}/suspend")->assertNotFound();
     }
 
-    public function test_request_to_submit_papers(): void
-    {
-        $admin = $this->user('admin');
-        $attendee = $this->user('user');
-        $author = $this->user('user', 'attend_submit');
-        Setting::put('submission_deadline', now()->addMonth()->toDateString());
-
-        // Shared with My details
-        $this->actingAs($attendee)->get('/')->assertInertia(fn ($page) => $page->where('auth.user.authorRequest.canAsk', true)->where('auth.user.authorRequest.status', null));
-        $this->actingAs($author)->get('/')->assertInertia(fn ($page) => $page->where('auth.user.authorRequest', null));
-
-        // Only attend-only registrants ask, once at a time
-        $this->actingAs($author)->post('/author-request')->assertForbidden();
-        $this->actingAs($attendee)->post('/author-request', ['reason' => 'I have a paper'])->assertSessionHasNoErrors();
-        $this->actingAs($attendee)->post('/author-request')->assertStatus(409);
-        $request = AuthorRequest::where('user_id', $attendee->id)->firstOrFail();
-        $this->actingAs($attendee)->get('/')->assertInertia(fn ($page) => $page->where('auth.user.authorRequest.status', 'pending')->where('auth.user.authorRequest.canAsk', false));
-        $this->actingAs($admin)->get('/admin/registrants')->assertInertia(fn ($page) => $page->where('requests.0.id', $request->id)->where('requests.0.status', 'pending'));
-
-        // Declined: the note reaches the registrant, who may ask again
-        $this->actingAs($admin)->post("/admin/registrants/requests/{$request->id}/reject", ['note' => 'Not this year'])->assertSessionHasNoErrors();
-        $this->assertSame('attend', $attendee->fresh()->participation);
-        $this->actingAs($attendee)->get('/')->assertInertia(fn ($page) => $page->where('auth.user.authorRequest.status', 'rejected')->where('auth.user.authorRequest.note', 'Not this year')->where('auth.user.authorRequest.canAsk', true));
-        $this->actingAs($admin)->post("/admin/registrants/requests/{$request->id}/approve")->assertStatus(409);
-
-        // Asked again and approved: now an author with My submissions
-        $this->actingAs($attendee)->post('/author-request')->assertSessionHasNoErrors();
-        $again = AuthorRequest::where('user_id', $attendee->id)->pending()->firstOrFail();
-        $this->actingAs($admin)->post("/admin/registrants/requests/{$again->id}/approve")->assertSessionHasNoErrors();
-        $this->assertSame('attend_submit', $attendee->fresh()->participation);
-        $this->assertSame('approved', $again->fresh()->status);
-        $this->actingAs($attendee->fresh())->get('/admin/my-submissions')->assertOk();
-
-        // No requests once submissions have closed
-        $other = $this->user('user');
-        Setting::put('submission_deadline', now()->subDay()->toDateString());
-        $this->actingAs($other)->post('/author-request')->assertForbidden();
-    }
 }

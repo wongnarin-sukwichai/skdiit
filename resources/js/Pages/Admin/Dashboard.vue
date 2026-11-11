@@ -39,16 +39,16 @@ const queueLink = (queue) => `/admin/submissions?queue=${queue}`;
 const data = computed(() => {
     const mock = dashboardData[role.value] ?? {};
     if (props.mine) return props.mine;
-    // Journal: what to select and what waits for its final answer (real)
+    // Journal role: papers to route at the first gate, offers waiting for the author (real)
     if (props.journal) {
         const k = props.journal.kpis;
-        const link = (tab) => `/admin/journal?tab=${tab}`;
+        const link = (tab) => `/admin/selection?tab=${tab}`;
         return {
             kpis: k,
             tasks: [
                 { key: 'journalSelect', icon: 'inbox', count: props.journal.isClosed ? k.journalWaiting : 0, href: link('waiting') },
-                { key: 'journalResult', icon: 'paper-plane', count: k.journalSelected, href: link('selected') },
-                { key: 'journalPastDeadline', icon: 'triangle-exclamation', count: k.journalPastDeadline, href: link('waiting') },
+                { key: 'journalOffered', icon: 'paper-plane', count: k.journalSelected, href: link('offered') },
+                { key: 'journalPastDeadline', icon: 'triangle-exclamation', count: k.journalPastDeadline, href: link('late') },
             ],
         };
     }
@@ -66,7 +66,7 @@ const data = computed(() => {
                 { key: 'revisionsBack', icon: 'rotate', count: p.queues.revised, href: queueLink('revised') },
                 { key: 'overdueReviews', icon: 'triangle-exclamation', count: p.queues.overdue, href: queueLink('overdue') },
                 { key: 'reviewerUnavailable', icon: 'user-xmark', count: p.queues.unavailable, href: queueLink('unavailable') },
-                { key: 'journalWaiting', icon: 'newspaper', count: p.journalWaiting, href: '/admin/submissions?status=submitted' },
+                { key: 'journalWaiting', icon: 'newspaper', count: p.journalWaiting, href: '/admin/selection?tab=waiting' },
                 // Coordination
                 { key: 'paperEmailsFailed', icon: 'envelope', count: paperEmailsFailed, href: '/admin/notifications?tab=emails' },
                 { key: 'reviewersNotSignedIn', icon: 'user-clock', count: p.reviewersNotSignedIn, href: '/admin/reviewers' },
@@ -83,8 +83,8 @@ const data = computed(() => {
         ...mock,
         kpis: { ...mock.kpis, waitingScreening: p.queues.screening, overdueReviews: p.overdueReviews },
         tasks: [
-            // The journal deadline has passed: admin moves the papers it did not select to the conference track
-            { key: 'journalPastDeadline', icon: 'triangle-exclamation', count: p.journalPastDeadline, href: '/admin/journal?tab=waiting' },
+            // The first-gate deadline has passed and papers still wait to be routed
+            { key: 'journalPastDeadline', icon: 'triangle-exclamation', count: p.journalPastDeadline, href: '/admin/selection?tab=late' },
             ...mock.tasks.map((task) => (real[task.key] ? { ...task, count: real[task.key][0], href: real[task.key][1] } : task)),
         ],
     };

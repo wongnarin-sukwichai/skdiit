@@ -3,7 +3,7 @@ import { watch } from 'vue';
 import { useForm } from '@inertiajs/vue3';
 import { useI18n } from '@/i18n';
 
-// File rules for uploads and the journal's submission site (the dates are set on the Schedule tab's timeline)
+// File rules for uploads and the days an author has to answer a journal offer (the dates are set on the Schedule tab's timeline)
 const props = defineProps({
     // { maxMb, serverMaxMb, ... }
     settings: { type: Object, required: true },
@@ -11,7 +11,7 @@ const props = defineProps({
 
 const { t } = useI18n();
 
-const toInput = (s) => ({ max_mb: s.maxMb, journal_url: s.journalUrl ?? '' });
+const toInput = (s) => ({ max_mb: s.maxMb, journal_answer_days: s.journalAnswerDays });
 const form = useForm(toInput(props.settings));
 watch(() => props.settings, (value) => {
     form.defaults(toInput(value));
@@ -19,8 +19,7 @@ watch(() => props.settings, (value) => {
 });
 
 function submit() {
-    form.transform((data) => ({ ...data, journal_url: data.journal_url.trim() || null }))
-        .put('/admin/settings/submission', { preserveScroll: true, preserveState: true });
+    form.put('/admin/settings/submission', { preserveScroll: true, preserveState: true });
 }
 
 const input = 'rounded-lg border bg-neutral-50 px-3 py-2.5 text-sm outline-none transition focus:border-gold-400 focus:ring-2 focus:ring-gold-400/20 dark:bg-ink-800 dark:scheme-dark';
@@ -59,10 +58,13 @@ const border = (error) => (error ? 'border-red-500/70' : 'border-neutral-300 dar
         </div>
 
         <div>
-            <label for="journal-url" class="mb-1.5 block text-sm font-medium">{{ t('admin.settings.submission.journalUrl') }}</label>
-            <input id="journal-url" v-model="form.journal_url" type="url" maxlength="500" placeholder="https://" :class="[input, 'w-full', border(form.errors.journal_url)]">
-            <p v-if="form.errors.journal_url" class="mt-1 text-xs text-red-500 dark:text-red-400">{{ t(form.errors.journal_url) }}</p>
-            <p class="mt-2 text-xs text-neutral-500 dark:text-neutral-400">{{ t('admin.settings.submission.journalUrlHint') }}</p>
+            <label for="journal-answer-days" class="mb-1.5 block text-sm font-medium">{{ t('admin.settings.submission.answerDays') }}</label>
+            <div class="flex items-center gap-3">
+                <input id="journal-answer-days" v-model.number="form.journal_answer_days" type="number" min="1" max="60" :class="[input, 'w-32', border(form.errors.journal_answer_days)]" required>
+                <span class="text-sm text-neutral-500 dark:text-neutral-400">{{ t('admin.settings.submission.days') }}</span>
+            </div>
+            <p v-if="form.errors.journal_answer_days" class="mt-1 text-xs text-red-500 dark:text-red-400">{{ t(form.errors.journal_answer_days) }}</p>
+            <p class="mt-2 text-xs text-neutral-500 dark:text-neutral-400">{{ t('admin.settings.submission.answerDaysHint') }}</p>
         </div>
 
         <button

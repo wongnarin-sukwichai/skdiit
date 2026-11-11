@@ -8,11 +8,9 @@ import RowMenu from '@/Components/Admin/RowMenu.vue';
 import ConfirmModal from '@/Components/Admin/ConfirmModal.vue';
 import OneTimePasswordModal from '@/Components/Admin/OneTimePasswordModal.vue';
 import Pagination from '@/Components/Pagination.vue';
-import CheckMark from '@/Components/CheckMark.vue';
 import RegistrantStatus from '@/Components/Admin/Registrants/RegistrantStatus.vue';
 import RegistrantDetailModal from '@/Components/Admin/Registrants/RegistrantDetailModal.vue';
 import RegistrantFormModal from '@/Components/Admin/Registrants/RegistrantFormModal.vue';
-import AuthorRequests from '@/Components/Admin/Registrants/AuthorRequests.vue';
 import MealSummary from '@/Components/Admin/Registrants/MealSummary.vue';
 import { useI18n } from '@/i18n';
 import { useRegistrantTable } from '@/composables/useRegistrantTable';
@@ -24,7 +22,6 @@ import { useMealOptions } from '@/composables/useMealOptions';
 // Registrants of the current conference year (RegistrantController::index)
 const props = defineProps({
     registrants: { type: Array, required: true },
-    requests: { type: Array, required: true }, // requests to submit papers, pending first
 });
 
 const { t, tr, formatDate, formatNumber } = useI18n();
@@ -54,14 +51,13 @@ const { form, perPage, page, total, lastPage, rows, filtered, search, reset } = 
     match: (row, f) => (!f.participation || row.participation === f.participation)
         && (!f.status || (f.status === 'registered' && row.participation === 'attend')
             || (f.status === 'none' && row.participation === 'attend_submit' && !row.paperStatus)
-            || (f.status === 'requested' && row.requestPending)
             || row.paperStatus === f.status)
         && (!f.account || accountState(row) === f.account)
         && (!f.from || day(row.registeredAt) >= f.from)
         && (!f.to || day(row.registeredAt) <= f.to),
 });
 
-// Opened with a filter or a tab: ?account=unverified (home page), ?tab=requests (the request email)
+// Opened with a filter or a tab: ?account=unverified (home page), ?tab=meals
 const query = new URLSearchParams(window.location.search);
 if (['active', 'unverified', 'suspended'].includes(query.get('account'))) {
     form.account = query.get('account');
@@ -70,11 +66,9 @@ if (['active', 'unverified', 'suspended'].includes(query.get('account'))) {
 
 const tabs = [
     { key: 'list', icon: 'users' },
-    { key: 'requests', icon: 'file-arrow-up' },
     { key: 'meals', icon: 'utensils' },
 ];
 const tab = ref(tabs.some((item) => item.key === query.get('tab')) ? query.get('tab') : 'list');
-const pendingRequests = computed(() => props.requests.filter((r) => r.status === 'pending').length);
 
 // Status filter: attend-only, author without a paper, then each paper status (App\Enums\SubmissionStatus)
 const paperStatuses = [
@@ -126,7 +120,7 @@ const generated = ref(null); // { name, email, password } for OneTimePasswordMod
 const shownPending = ref(null); // keeps the text while the modal fades out
 watch(pending, (value) => value && (shownPending.value = value));
 
-const confirmIcons = { impersonate: 'user-secret', sendPassword: 'paper-plane', generatePassword: 'key', makeReviewer: 'user-check', suspend: 'ban', unsuspend: 'lock-open' };
+const confirmIcons = { impersonate: 'user-secret', sendPassword: 'paper-plane', generatePassword: 'key', makeReviewer: 'user-check', suspend: 'ban', unsuspend: 'lock-open', delete: 'trash-can' };
 
 function menuItems(row) {
     return [
@@ -145,10 +139,11 @@ function menuItems(row) {
             disabled: !!row.paper,
             title: row.paper ? t('admin.registrants.makeReviewerBlocked') : undefined,
         },
-        // Registrants are never deleted, only suspended (their records stay for the conference history)
+        // Suspending keeps everything; deleting (admin) removes the account with its papers and files
         row.suspended
             ? { key: 'unsuspend', label: t('admin.registrants.action.unsuspend'), icon: 'lock-open' }
             : { key: 'suspend', label: t('admin.registrants.action.suspend'), icon: 'ban' },
+        ...(me.value.accessRole === 'admin' ? [{ key: 'delete', label: t('admin.registrants.action.delete'), icon: 'trash-can' }] : []),
     ];
 }
 
@@ -171,6 +166,8 @@ function confirmAction() {
 
     if (action === 'impersonate') {
         router.post(`/admin/impersonate/${registrant.id}`, {}, options);
+    } else if (action === 'delete') {
+        router.delete(url, options);
     } else if (action === 'generatePassword') {
         // Shown once, not emailed (ManagesAccounts::password)
         router.post(`${url}/password`, {}, { ...options, onSuccess: () => (generated.value = inertiaPage.props.flash.generatedPassword) });
@@ -183,6 +180,7 @@ const confirmTitle = (p) => t(p.action === 'impersonate' ? 'impersonation.confir
     : p.action === 'generatePassword' ? 'admin.oneTimePassword.confirmTitle' : `admin.registrants.confirm.${p.action}.title`);
 const confirmText = (p) => (p.action === 'impersonate' ? t('impersonation.confirmText', { name: p.registrant.name })
     : p.action === 'generatePassword' ? t('admin.oneTimePassword.confirmText', { name: p.registrant.name })
+    : p.action === 'delete' ? t(p.registrant.papersTotal ? 'admin.registrants.confirm.delete.withPapers' : 'admin.registrants.confirm.delete.message', { name: p.registrant.name, email: p.registrant.email, n: p.registrant.papersTotal })
     : t(`admin.registrants.confirm.${p.action}.message`, { name: p.registrant.name, email: p.registrant.email }));
 const confirmLabel = (p) => t(p.action === 'impersonate' ? 'impersonation.action'
     : p.action === 'generatePassword' ? 'admin.oneTimePassword.action' : `admin.registrants.action.${p.action}`);
@@ -236,7 +234,7 @@ async function exportExcel() {
         URL.revokeObjectURL(link.href);
         toast('admin.registrants.toast.exported', { count: formatNumber(body.length) });
     } catch {
-        toast('admin.registrants.toast.exportFailed');
+        toast('admin.registrants.toast.exportFailed', {}, 'danger');
     } finally {
         exporting.value = false;
     }
@@ -270,15 +268,11 @@ const plainBadge = 'inline-flex items-center rounded-full border px-3 py-0.5 tex
                     @click="tab = item.key"
                 >
                     <Fa :icon="item.icon" /> {{ t(`admin.registrants.tabs.${item.key}`) }}
-                    <span v-if="item.key === 'requests' && pendingRequests" class="grid min-w-5 place-items-center rounded-full bg-red-500 px-1.5 text-xs font-semibold text-white">
-                        {{ formatNumber(pendingRequests) }}
-                    </span>
                 </button>
             </nav>
 
             <Transition name="fade" mode="out-in">
-            <AuthorRequests v-if="tab === 'requests'" key="requests" :requests="requests" :can-edit="canEdit" />
-            <MealSummary v-else-if="tab === 'meals'" key="meals" :registrants="registrants" />
+            <MealSummary v-if="tab === 'meals'" key="meals" :registrants="registrants" />
 
             <div v-else key="list">
             <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -321,7 +315,6 @@ const plainBadge = 'inline-flex items-center rounded-full border px-3 py-0.5 tex
                     <select v-model="form.status" :class="[input, 'pl-3']" :aria-label="t('registrants.status')">
                         <option value="">{{ t('admin.registrants.allStatuses') }}</option>
                         <option value="registered">{{ t('admin.registrants.registered') }}</option>
-                        <option value="requested">{{ t('admin.registrants.requestPending') }}</option>
                         <option value="none">{{ t('admin.registrants.notSubmitted') }}</option>
                         <option v-for="s in paperStatuses" :key="s" :value="s">{{ t(`submissions.status.${s}`) }}</option>
                     </select>
@@ -360,8 +353,6 @@ const plainBadge = 'inline-flex items-center rounded-full border px-3 py-0.5 tex
                             <th class="px-3 py-3 font-semibold">{{ t('registrants.no') }}</th>
                             <th class="px-3 py-3 font-semibold">{{ t('registrants.name') }}</th>
                             <th class="px-3 py-3 font-semibold">{{ t('registrants.affiliation') }}</th>
-                            <th class="px-3 py-3 text-center font-semibold">{{ t('registrants.attend') }}</th>
-                            <th class="px-3 py-3 text-center font-semibold">{{ t('registrants.submit') }}</th>
                             <th class="px-3 py-3 text-center font-semibold">{{ t('registrants.status') }}</th>
                             <th class="px-3 py-3 font-semibold">{{ t('registrants.registeredAt') }}</th>
                             <th class="px-3 py-3 text-center font-semibold">{{ t('registrants.actions') }}</th>
@@ -388,16 +379,15 @@ const plainBadge = 'inline-flex items-center rounded-full border px-3 py-0.5 tex
                                         <span v-else-if="!row.verified" :class="plainBadge" class="border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-300" :title="t('admin.registrants.unverifiedHint')">
                                             <Fa icon="envelope" class="mr-1" /> {{ t('admin.registrants.unverified') }}
                                         </span>
-                                        <button v-if="row.requestPending" type="button" :class="plainBadge" class="border-gold-300 bg-gold-50 text-gold-700 dark:border-gold-400/40 dark:bg-gold-400/15 dark:text-gold-300" @click="tab = 'requests'">
-                                            <Fa icon="file-arrow-up" class="mr-1" /> {{ t('admin.registrants.requestPending') }}
-                                        </button>
                                     </div>
                                     <div class="text-xs text-neutral-500 dark:text-neutral-400">{{ row.email }}</div>
+                                    <!-- The registrant's companion (one, with their own meal) -->
+                                    <div v-if="row.companion_name" class="mt-1 flex items-center gap-1.5 text-xs text-neutral-600 dark:text-neutral-300">
+                                        <Fa icon="user-group" class="text-gold-500" />
+                                        <span class="text-neutral-500 dark:text-neutral-400">{{ t('meals.companion') }}:</span> {{ row.companion_name }}
+                                    </div>
                                 </td>
                                 <td class="px-3 py-2.5 text-neutral-600 dark:text-neutral-300">{{ affiliationOf(row) }}</td>
-                                <!-- Every registrant attends; "submit" = attend + submit (chosen at sign-up, or switched later) -->
-                                <td class="px-3 py-2.5 text-center"><CheckMark checked /></td>
-                                <td class="px-3 py-2.5 text-center"><CheckMark :checked="row.participation === 'attend_submit'" /></td>
                                 <td class="px-3 py-2.5 text-center">
                                     <RegistrantStatus :registrant="row" />
                                 </td>
@@ -417,7 +407,7 @@ const plainBadge = 'inline-flex items-center rounded-full border px-3 py-0.5 tex
                                 </td>
                             </tr>
                             <tr v-if="!rows.length">
-                                <td colspan="9" class="px-4 py-12 text-center text-neutral-500">{{ t('registrants.empty') }}</td>
+                                <td colspan="7" class="px-4 py-12 text-center text-neutral-500">{{ t('registrants.empty') }}</td>
                             </tr>
                         </tbody>
                     </Transition>
@@ -455,7 +445,7 @@ const plainBadge = 'inline-flex items-center rounded-full border px-3 py-0.5 tex
     <ConfirmModal
         :show="!!pending"
         :icon="confirmIcons[shownPending?.action]"
-        :danger="shownPending?.action === 'suspend'"
+        :danger="['suspend', 'delete'].includes(shownPending?.action)"
         :processing="busy"
         :title="shownPending ? confirmTitle(shownPending) : ''"
         :message="shownPending ? confirmText(shownPending) : ''"

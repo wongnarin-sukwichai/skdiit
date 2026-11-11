@@ -14,6 +14,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -49,8 +50,10 @@ class MySubmissionController extends Controller
 
     public function index(Request $request): Response
     {
+        Submission::expireJournalOffers();
+
         return Inertia::render('Admin/MySubmissions/Index', [
-            'submissions' => $request->user()->submissions()->with('track', 'authors')->withReviewCounts()->withHadRevision()->latest()->get()
+            'submissions' => $request->user()->submissions()->with('track', 'authors', 'journal')->withReviewCounts()->withHadRevision()->latest()->get()
                 ->map(fn (Submission $submission) => [
                     ...$submission->toClient(),
                     'canEdit' => $submission->canBeEditedByAuthor(),
@@ -97,10 +100,12 @@ class MySubmissionController extends Controller
     public function show(Request $request, Submission $submission): Response
     {
         $this->authorizeOwner($request, $submission);
+        Submission::expireJournalOffers();
+        $submission->refresh();
 
         return Inertia::render('Admin/MySubmissions/Show', [
             'submission' => [
-                ...$submission->load('track', 'authors', 'user')->toClient(full: true),
+                ...$submission->load('track', 'authors', 'user', 'journal')->toClient(full: true),
                 'canEdit' => $submission->canBeEditedByAuthor(),
             ],
             'files' => $submission->currentFiles(),
@@ -112,14 +117,29 @@ class MySubmissionController extends Controller
                     ...($event->action->hidesCommentFromAuthor() ? ['comment' => null] : []),
                 ])
                 ->values(),
-            // Selected by the journal: where to submit
-            'journalUrl' => Setting::get('journal_url'),
             // Reviewer comments of decided rounds, as "Reviewer 1", "Reviewer 2", ...
             'reviewFeedback' => $submission->reviewsForAuthor(),
             'versions' => $submission->versionsFor('author'),
             'maxMb' => (int) Setting::get('upload_max_mb'),
             ...Submission::window(),
         ]);
+    }
+
+    /** The author's answer to a journal offer (first gate, 2026-11-11): accept = go to the journal, decline = conference track. */
+    public function answerJournal(Request $request, Submission $submission): RedirectResponse
+    {
+        $this->authorizeOwner($request, $submission);
+        Submission::expireJournalOffers();
+        $submission->refresh();
+        // Already answered, lapsed, or moved by an editor meanwhile
+        if ($submission->status !== SubmissionStatus::JournalSelected) {
+            return back()->with('error', 'submissions.journalOffer.closed');
+        }
+
+        $answer = $request->validate(['answer' => ['required', Rule::in(['accept', 'decline'])]])['answer'];
+        $submission->answerJournalOffer($answer, $request->user());
+
+        return back()->with('success', "submissions.journalOffer.toast.{$answer}");
     }
 
     public function edit(Request $request, Submission $submission): Response

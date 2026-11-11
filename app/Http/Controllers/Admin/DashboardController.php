@@ -32,9 +32,10 @@ class DashboardController extends Controller
         ]);
     }
 
-    /** The journal's work: papers to select, selected papers waiting for the final answer, and those past the deadline. */
+    /** The journal role's work (first gate): papers to route, offers waiting for the author's answer, accepted offers, late ones. */
     private function journalWork(): array
     {
+        Submission::expireJournalOffers();
         $waiting = Submission::currentYear()->where('status', SubmissionStatus::Submitted)->get();
 
         return [
@@ -107,8 +108,8 @@ class DashboardController extends Controller
 
         return [
             'queues' => Submission::queueCounts(),
-            // With the journal (its first selection or final answer), and how many are past the journal deadline
-            'journalWaiting' => Submission::currentYear()->whereIn('status', [SubmissionStatus::Submitted, SubmissionStatus::JournalSelected])->count(),
+            // Waiting for the first gate once submissions close, and how many are past the first-gate deadline
+            'journalWaiting' => Submission::isClosed() ? Submission::currentYear()->where('status', SubmissionStatus::Submitted)->count() : 0,
             'journalPastDeadline' => Submission::currentYear()->where('status', SubmissionStatus::Submitted)->get()->filter->isPastJournalDeadline()->count(),
             'overdueReviews' => $overdue->count(),
             'overdue' => $overdue->map(fn (Review $review) => [

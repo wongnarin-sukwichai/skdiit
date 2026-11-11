@@ -79,7 +79,7 @@ async function copyCitation(article) {
         await navigator.clipboard.writeText(citation(article));
         toast('admin.articles.toast.copied');
     } catch {
-        toast('admin.articles.toast.copyFailed');
+        toast('admin.articles.toast.copyFailed', {}, 'danger');
     }
 }
 

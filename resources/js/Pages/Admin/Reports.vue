@@ -82,7 +82,7 @@ async function exportExcel() {
         URL.revokeObjectURL(link.href);
         toast('admin.reports.exported');
     } catch {
-        toast('admin.registrants.toast.exportFailed');
+        toast('admin.registrants.toast.exportFailed', {}, 'danger');
     } finally {
         exporting.value = false;
     }

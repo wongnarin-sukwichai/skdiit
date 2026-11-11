@@ -10,7 +10,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
 
-/** Journal workflow end to end: selection, final answer, conference track, slides (inside a rolled-back transaction). */
+/** Workflow end to end: first gate (journal offer, author answer), conference track, slides (inside a rolled-back transaction). */
 class JournalWorkflowSmokeTest extends TestCase
 {
     use DatabaseTransactions;
@@ -29,9 +29,9 @@ class JournalWorkflowSmokeTest extends TestCase
             $this->markTestSkipped('Seed the sample papers first.');
         }
         $pages = [
-            'wongnarin.s@msu.ac.th' => ['/admin', '/admin/submissions', '/admin/journal', "/admin/journal/{$paper->id}", "/admin/submissions/{$paper->id}", '/admin/settings', '/admin/staff', '/admin/reviewers', '/admin/registrants', '/admin/publication', '/admin/presentations', '/admin/reports', '/admin/activity-log', '/admin/notifications'],
+            'wongnarin.s@msu.ac.th' => ['/admin', '/admin/submissions', '/admin/selection', "/admin/selection/{$paper->id}", "/admin/submissions/{$paper->id}", '/admin/settings', '/admin/staff', '/admin/reviewers', '/admin/registrants', '/admin/publication', '/admin/presentations', '/admin/reports', '/admin/activity-log', '/admin/notifications'],
             'editor@skdiit.test' => ['/admin', '/admin/submissions', "/admin/submissions/{$paper->id}"],
-            'journal@skdiit.test' => ['/admin', '/admin/journal', '/admin/journal/'.Submission::where('code', 'SKDIIT27-0001')->value('id')],
+            'journal@skdiit.test' => ['/admin', '/admin/selection', '/admin/selection/'.Submission::where('code', 'SKDIIT27-0001')->value('id')],
             'reviewer@skdiit.test' => ['/admin', '/admin/reviews'],
             'author@skdiit.test' => ['/admin', '/admin/my-submissions', '/admin/my-submissions/'.Submission::where('code', 'SKDIIT27-0011')->value('id'), '/admin/my-submissions/'.Submission::where('code', 'SKDIIT27-0011')->value('id').'/edit'],
             'malee@skdiit.test' => ['/admin/my-submissions/'.$paper->id],
@@ -147,7 +147,8 @@ class JournalWorkflowSmokeTest extends TestCase
             'track_id' => Track::first()->id, 'title_th' => 'ท', 'title_en' => 'T', 'abstract_th' => 'a', 'abstract_en' => 'a',
             'keywords_th' => 'k', 'keywords_en' => 'k', 'file_path' => 'x', 'file_name' => 'x.pdf', 'file_size' => 1,
         ]);
-        $this->actingAs($journal)->post("/admin/journal/{$paper->id}/selection", ['decision' => 'select', 'comment' => 'secret reason']);
+        $partner = \App\Models\Journal::create(['name' => 'Mail Journal', 'url' => 'https://mail.example', 'active' => true]);
+        $this->actingAs($journal)->post("/admin/selection/{$paper->id}", ['to' => 'journal', 'track_id' => $paper->track_id, 'journal_id' => $partner->id, 'comment' => 'secret reason'])->assertSessionHasNoErrors();
         \Illuminate\Support\Facades\Mail::assertSent(\App\Mail\TemplatedMail::class, fn ($mail) => $mail->hasTo($author->email)
             && str_contains($mail->subjectLine, 'คัดเลือก '.$paper->fresh()->code) && str_contains($mail->bodyTh, $author->name) && ! str_contains($mail->bodyTh, 'secret'));
 
@@ -321,89 +322,147 @@ class JournalWorkflowSmokeTest extends TestCase
 
     public function test_journal_flow(): void
     {
+        \Illuminate\Support\Facades\Mail::fake();
         $this->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class);
-        Setting::put('submission_deadline', now()->subDay()->format('Y-m-d H:i'));
-        Setting::put('journal_url', 'https://journal.example');
+        Setting::put('submission_deadline', now()->addDay()->format('Y-m-d H:i'));
+        Setting::put('journal_answer_days', 5);
+        $partner = \App\Models\Journal::create(['name' => 'Smoke Journal', 'url' => 'https://journal.example', 'terms' => 'free', 'active' => true]);
+        $off = \App\Models\Journal::create(['name' => 'Off Journal', 'active' => false]);
 
         $journal = $this->user('journal');
         $editor = $this->user('editor');
         $admin = $this->user('admin');
         $author = $this->user('user', 'attend_submit');
-
-        $paper = $author->submissions()->create([
-            'track_id' => Track::first()->id, 'title_th' => 'ท', 'title_en' => 'T', 'abstract_th' => 'a', 'abstract_en' => 'a',
+        $newPaper = fn (string $title) => $author->submissions()->create([
+            'track_id' => Track::first()->id, 'title_th' => $title, 'title_en' => $title, 'abstract_th' => 'a', 'abstract_en' => 'a',
             'keywords_th' => 'k', 'keywords_en' => 'k', 'file_path' => 'x', 'file_name' => 'x.pdf', 'file_size' => 1,
-        ]);
-        $paper->refresh();
+        ])->fresh();
+        $paper = $newPaper('ท1');
         $this->assertSame(SubmissionStatus::Submitted, $paper->status);
+        $offer = ['to' => 'journal', 'track_id' => Track::first()->id, 'journal_id' => $partner->id, 'comment' => 'secret'];
 
-        // Journal list and page; editors have no journal menu
-        $this->actingAs($journal)->get('/admin/journal')->assertOk();
-        $this->actingAs($journal)->get("/admin/journal/{$paper->id}")->assertOk();
-        $this->actingAs($editor)->get('/admin/journal')->assertRedirect(); // editors coordinate from Selection
-        $this->actingAs($journal)->get('/admin/selection')->assertRedirect();
-        $this->actingAs($editor)->get("/admin/submissions/{$paper->id}")->assertOk();
+        // Selection is one menu for admin, editors and the journal role; the old Journal menu is gone
+        foreach ([$journal, $editor, $admin] as $user) {
+            $this->actingAs($user)->get('/admin/selection')->assertOk();
+        }
+        $this->actingAs($journal)->get('/admin/journal')->assertNotFound();
+        $this->actingAs($journal)->get("/admin/selection/{$paper->id}")->assertOk();
+        $this->actingAs($journal)->get("/admin/submissions/{$paper->id}")->assertRedirect(); // no Submissions menu
+        $this->actingAs($author)->get('/admin/selection')->assertRedirect();
         $this->actingAs($journal)->get('/admin')->assertOk();
+        $this->actingAs($editor)->get('/admin/selection/export?tab=all')->assertOk()->assertDownload();
 
-        // Editors cannot select for the journal, nor pass a paper on before the journal deadline
-        Setting::put('journal_deadline', now()->addDay()->toDateString());
-        $this->actingAs($editor)->post("/admin/journal/{$paper->id}/selection", ['decision' => 'select'])->assertForbidden();
-        $this->actingAs($editor)->post("/admin/journal/{$paper->id}/selection", ['decision' => 'decline'])->assertForbidden();
+        // Before the submission deadline nobody routes a paper
+        $this->actingAs($editor)->post("/admin/selection/{$paper->id}", $offer)->assertForbidden();
+        Setting::put('submission_deadline', now()->subDay()->format('Y-m-d H:i'));
+
+        // A switched-off journal cannot be offered; authors have no Selection module
+        $this->actingAs($editor)->post("/admin/selection/{$paper->id}", [...$offer, 'journal_id' => $off->id])->assertSessionHasErrors('journal_id');
+        $this->actingAs($author)->post("/admin/selection/{$paper->id}", $offer)->assertRedirect();
         $this->assertSame(SubmissionStatus::Submitted, $paper->fresh()->status);
 
-        // Select, then the journal rejects: conference track (editor screening)
-        $this->actingAs($journal)->post("/admin/journal/{$paper->id}/selection", ['decision' => 'select', 'comment' => 'secret'])->assertRedirect();
-        $this->assertSame(SubmissionStatus::JournalSelected, $paper->fresh()->status);
+        // The editor sets the track and offers it to a journal: the author is emailed and answers within 5 days
+        $otherTrack = Track::orderByDesc('id')->first();
+        $this->actingAs($editor)->post("/admin/selection/{$paper->id}", [...$offer, 'track_id' => $otherTrack->id])->assertSessionHasNoErrors();
+        $paper = $paper->fresh();
+        $this->assertSame(SubmissionStatus::JournalSelected, $paper->status);
+        $this->assertSame($otherTrack->id, $paper->track_id);
+        $this->assertSame(today()->addDays(5)->toDateString(), $paper->journal_answer_due->toDateString());
+        \Illuminate\Support\Facades\Mail::assertSent(\App\Mail\TemplatedMail::class, fn ($mail) => $mail->hasTo($author->email)
+            && str_contains($mail->bodyTh, 'Smoke Journal') && ! str_contains($mail->bodyTh, 'secret'));
+        $this->assertSame(['mine' => true, 'task' => 'answerJournal', 'due' => $paper->journal_answer_due->toDateString(), 'daysLate' => 0], $paper->nextForAuthor());
         $this->actingAs($author)->get("/admin/my-submissions/{$paper->id}")->assertOk()
-            ->assertInertia(fn ($page) => $page->where('journalUrl', 'https://journal.example')->where('history.0.comment', null));
-        $this->actingAs($journal)->post("/admin/journal/{$paper->id}/result", ['result' => 'rejected'])->assertRedirect();
-        $this->assertSame(SubmissionStatus::Screening, $paper->fresh()->status);
-        $this->assertTrue($paper->fresh()->canBeScreened());
+            ->assertInertia(fn ($page) => $page->where('submission.journal.url', 'https://journal.example')->where('history.0.comment', null));
+        $this->actingAs($journal)->get('/admin/selection?tab=offered')->assertOk()->assertInertia(fn ($page) => $page->where('counts.offered', fn ($n) => $n >= 1));
+        // Another author cannot answer this offer
+        $this->actingAs($this->user('user', 'attend_submit'))->post("/admin/my-submissions/{$paper->id}/journal-answer", ['answer' => 'accept'])->assertNotFound();
 
-        // Hidden from the journal now
-        $this->actingAs($journal)->get("/admin/journal/{$paper->id}")->assertNotFound();
-        $this->actingAs($journal)->get("/admin/submissions/{$paper->id}/file")->assertNotFound();
+        // The author accepts: done with the conference until the slides; nobody can route it any more
+        $this->actingAs($author)->post("/admin/my-submissions/{$paper->id}/journal-answer", ['answer' => 'accept'])->assertSessionHas('success');
+        $paper = $paper->fresh();
+        $this->assertSame(SubmissionStatus::JournalAccepted, $paper->status);
+        $this->assertSame('atJournal', $paper->nextForAuthor()['task']);
+        $this->actingAs($editor)->post("/admin/selection/{$paper->id}", [...$offer, 'to' => 'conference'])->assertForbidden();
+        $this->actingAs($author)->post("/admin/my-submissions/{$paper->id}/journal-answer", ['answer' => 'decline'])->assertSessionHas('error');
+        $this->assertFalse($paper->canUploadSlides());
+        $this->actingAs($editor)->put("/admin/submissions/{$paper->id}/presentation", ['at' => now()->addDays(10)->format('Y-m-d\TH:i'), 'room' => 'A'])->assertRedirect();
+        $this->assertTrue($paper->fresh()->canUploadSlides());
+        $this->assertSame(['who' => 'author', 'task' => 'slides'], $paper->fresh()->waitingOn());
 
-        // Screening revision goes back to screening (not to the journal)
-        $this->actingAs($editor)->post("/admin/submissions/{$paper->id}/screening", ['decision' => 'pass'])->assertRedirect();
-        $this->assertSame(SubmissionStatus::InReview, $paper->fresh()->status);
+        // The journal role offers a second paper, then changes the journal while it waits; the author declines: conference
+        $second = $newPaper('ท2');
+        $other = \App\Models\Journal::create(['name' => 'Second Journal', 'active' => true]);
+        $this->actingAs($journal)->post("/admin/selection/{$second->id}", $offer)->assertSessionHasNoErrors();
+        $this->actingAs($journal)->post("/admin/selection/{$second->id}", [...$offer, 'journal_id' => $other->id])->assertSessionHasNoErrors();
+        $this->assertSame($other->id, $second->fresh()->journal_id);
+        $this->actingAs($author)->post("/admin/my-submissions/{$second->id}/journal-answer", ['answer' => 'decline'])->assertSessionHas('success');
+        $this->assertSame(SubmissionStatus::Screening, $second->fresh()->status);
+        $this->assertTrue($second->fresh()->canBeScreened());
+        $this->assertTrue(Submission::query()->gate('conference')->whereKey($second->id)->exists());
+        $this->actingAs($editor)->post("/admin/submissions/{$second->id}/screening", ['decision' => 'pass'])->assertRedirect();
+        $this->assertSame(SubmissionStatus::InReview, $second->fresh()->status);
 
-        // Admin moves a waiting paper past the journal deadline to the conference track
-        $other = $author->submissions()->create([
-            'track_id' => Track::first()->id, 'title_th' => 'ท2', 'title_en' => 'T2', 'abstract_th' => 'a', 'abstract_en' => 'a',
-            'keywords_th' => 'k', 'keywords_en' => 'k', 'file_path' => 'x', 'file_name' => 'x.pdf', 'file_size' => 1,
-        ]);
+        // A third paper is sent straight to the conference by admin
+        $third = $newPaper('ท3');
+        $this->actingAs($admin)->post("/admin/selection/{$third->id}", ['to' => 'conference', 'track_id' => Track::first()->id])->assertSessionHasNoErrors();
+        $this->assertSame(SubmissionStatus::Screening, $third->fresh()->status);
+
+        // An unanswered offer: reminded two days before, then expires to the conference track
+        $fourth = $newPaper('ท4');
+        $this->actingAs($editor)->post("/admin/selection/{$fourth->id}", $offer)->assertSessionHasNoErrors();
+        Submission::whereKeyNot($fourth->id)->where('status', SubmissionStatus::JournalSelected)->update(['journal_reminded_at' => now()]);
+        $fourth->forceFill(['journal_answer_due' => today()->addDay()])->save();
+        $this->assertSame(1, Submission::remindJournalOffers());
+        $this->assertSame(0, Submission::remindJournalOffers()); // once per offer
+        $fourth->forceFill(['journal_answer_due' => today()->subDay()])->save();
+        $this->actingAs($author)->get('/admin/my-submissions')->assertOk(); // page loads expire lapsed offers
+        $this->assertSame(SubmissionStatus::Screening, $fourth->fresh()->status);
+        $this->assertSame('expired', $fourth->events()->where('action', 'journal_offer_answered')->first()->meta['answer']);
+
+        // Late papers (past the selection deadline) show on the dashboards
+        $late = $newPaper('ท5');
         Setting::put('journal_deadline', now()->subDay()->toDateString());
-        $this->assertTrue($other->fresh()->isPastJournalDeadline());
-        // Only admin passes a paper on to the conference track (2026-10-20); the journal only selects
-        $this->actingAs($journal)->post("/admin/journal/{$other->id}/selection", ['decision' => 'decline'])->assertForbidden();
-        $this->assertSame(SubmissionStatus::Submitted, $other->fresh()->status);
+        $this->assertTrue($late->fresh()->isPastJournalDeadline());
         $this->actingAs($admin)->get('/admin')->assertOk()->assertInertia(fn ($page) => $page->where('papers.journalPastDeadline', fn ($n) => $n >= 1));
-        $this->assertTrue(Submission::query()->gate('late')->whereKey($other->id)->exists());
-        $this->actingAs($editor)->get('/admin/selection?tab=late')->assertOk()
-            ->assertInertia(fn ($page) => $page->where('counts.late', fn ($n) => $n >= 1));
-        // After the journal deadline an editor may pass it on
-        $this->actingAs($editor)->post("/admin/journal/{$other->id}/selection", ['decision' => 'decline'])->assertRedirect();
-        $this->assertSame(SubmissionStatus::Screening, $other->fresh()->status);
+        $this->actingAs($editor)->get('/admin/selection?tab=late')->assertOk()->assertInertia(fn ($page) => $page->where('counts.late', fn ($n) => $n >= 1));
 
-        // Journal accepts a third paper: presents, slides open only with a slot
-        $third = $author->submissions()->create([
-            'track_id' => Track::first()->id, 'title_th' => 'ท3', 'title_en' => 'T3', 'abstract_th' => 'a', 'abstract_en' => 'a',
-            'keywords_th' => 'k', 'keywords_en' => 'k', 'file_path' => 'x', 'file_name' => 'x.pdf', 'file_size' => 1,
+        // Settings: the journals and the answer days (admin only); a journal with papers cannot be deleted
+        $this->actingAs($admin)->get('/admin/settings')->assertOk()->assertInertia(fn ($page) => $page->has('journalList'));
+        $this->actingAs($admin)->put('/admin/settings/submission', ['max_mb' => 10, 'journal_answer_days' => 0])->assertSessionHasErrors('journal_answer_days');
+        $this->actingAs($admin)->put('/admin/settings/submission', ['max_mb' => 10, 'journal_answer_days' => 10])->assertSessionHasNoErrors();
+        $this->assertSame(10, Submission::journalAnswerDays());
+        $this->actingAs($admin)->delete("/admin/settings/journals/{$partner->id}")->assertForbidden();
+        $this->actingAs($admin)->post('/admin/settings/journals', ['name' => 'New', 'url' => 'not a url'])->assertSessionHasErrors('url');
+        $this->actingAs($admin)->post('/admin/settings/journals', ['name' => 'New', 'url' => 'https://new.example'])->assertSessionHasNoErrors();
+        $this->actingAs($editor)->post('/admin/settings/journals', ['name' => 'Nope'])->assertRedirect();
+        $this->assertFalse(\App\Models\Journal::where('name', 'Nope')->exists());
+    }
+
+    /** Admin deletes a registrant with their papers and the papers' files; editors only view. */
+    public function test_delete_registrant(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake();
+        $this->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class);
+        $admin = $this->user('admin');
+        $editor = $this->user('editor');
+        $author = $this->user('user', 'attend_submit');
+        $author->forceFill(['registered_year' => Submission::conferenceYear()])->save();
+        \Illuminate\Support\Facades\Storage::put('submissions/smoke.pdf', 'pdf');
+        $paper = $author->submissions()->create([
+            'track_id' => Track::first()->id, 'title_th' => 'ท', 'title_en' => 'T', 'abstract_th' => 'a', 'abstract_en' => 'a',
+            'keywords_th' => 'k', 'keywords_en' => 'k', 'file_path' => 'submissions/smoke.pdf', 'file_name' => 'x.pdf', 'file_size' => 1,
         ]);
-        $this->actingAs($journal)->post("/admin/journal/{$third->id}/selection", ['decision' => 'select']);
-        $this->actingAs($journal)->post("/admin/journal/{$third->id}/result", ['result' => 'accepted']);
-        $third = $third->fresh();
-        $this->assertSame(SubmissionStatus::JournalAccepted, $third->status);
-        $this->assertFalse($third->canUploadSlides());
-        $this->assertSame('schedule', $third->waitingOn()['task']);
-        $this->actingAs($editor)->put("/admin/submissions/{$third->id}/presentation", ['at' => now()->addDays(10)->format('Y-m-d\TH:i'), 'room' => 'A'])->assertRedirect();
-        $third = $third->fresh();
-        $this->assertTrue($third->canUploadSlides());
-        $this->assertSame(['who' => 'author', 'task' => 'slides'], $third->waitingOn());
-        $this->actingAs($author)->get('/admin/my-submissions')->assertOk();
-        $this->actingAs($editor)->get('/admin/submissions')->assertOk();
-        $this->actingAs($admin)->get('/admin/settings')->assertOk();
-        $this->actingAs($admin)->put('/admin/settings/submission', ['max_mb' => 10, 'journal_url' => 'not a url'])->assertSessionHasErrors('journal_url');
+
+        $this->actingAs($admin)->get('/admin/registrants')->assertOk()
+            ->assertInertia(fn ($page) => $page->where('registrants', fn ($rows) => collect($rows)->firstWhere('id', $author->id)['papersTotal'] === 1));
+        $this->actingAs($editor)->delete("/admin/registrants/{$author->id}")->assertForbidden(); // editors only view
+        $this->assertNotNull($author->fresh());
+
+        $this->actingAs($admin)->delete("/admin/registrants/{$author->id}")->assertSessionHas('success');
+        $this->assertNull($author->fresh());
+        $this->assertNull(Submission::find($paper->id));
+        \Illuminate\Support\Facades\Storage::assertMissing('submissions/smoke.pdf');
+        // Staff accounts are not registrants
+        $this->actingAs($admin)->delete("/admin/registrants/{$editor->id}")->assertNotFound();
     }
 }

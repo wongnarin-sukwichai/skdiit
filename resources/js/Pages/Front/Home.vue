@@ -1,7 +1,6 @@
 <script setup>
 import { computed } from 'vue';
 import { Head, usePage } from '@inertiajs/vue3';
-import CheckMark from '@/Components/CheckMark.vue';
 import Pagination from '@/Components/Pagination.vue';
 import { useI18n } from '@/i18n';
 import { useRegistrantTable } from '@/composables/useRegistrantTable';
@@ -115,8 +114,6 @@ const { form, perPage, page, total, lastPage, rows, search, reset } = useRegistr
                             <th class="px-4 py-3 font-semibold">{{ t('registrants.no') }}</th>
                             <th class="px-4 py-3 font-semibold">{{ t('registrants.name') }}</th>
                             <th class="px-4 py-3 font-semibold">{{ t('registrants.affiliation') }}</th>
-                            <th class="px-4 py-3 text-center font-semibold">{{ t('registrants.attend') }}</th>
-                            <th class="px-4 py-3 text-center font-semibold">{{ t('registrants.submit') }}</th>
                             <th class="px-4 py-3 font-semibold">{{ t('registrants.registeredAt') }}</th>
                         </tr>
                     </thead>
@@ -126,12 +123,10 @@ const { form, perPage, page, total, lastPage, rows, search, reset } = useRegistr
                                 <td class="px-4 py-2.5 text-neutral-400">{{ row.no }}</td>
                                 <td class="px-4 py-2.5 whitespace-nowrap text-white">{{ row.name }}</td>
                                 <td class="px-4 py-2.5 text-neutral-200">{{ affiliationOf(row) }}</td>
-                                <td class="px-4 py-2.5 text-center"><CheckMark checked /></td>
-                                <td class="px-4 py-2.5 text-center"><CheckMark :checked="row.submitted" /></td>
                                 <td class="px-4 py-2.5 whitespace-nowrap text-neutral-300">{{ formatDate(row.registeredAt) }}</td>
                             </tr>
                             <tr v-if="!rows.length">
-                                <td colspan="6" class="px-4 py-12 text-center text-neutral-400">{{ t('registrants.empty') }}</td>
+                                <td colspan="4" class="px-4 py-12 text-center text-neutral-400">{{ t('registrants.empty') }}</td>
                             </tr>
                         </tbody>
                     </Transition>

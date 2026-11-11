@@ -6,14 +6,16 @@ use App\Http\Controllers\Admin\Concerns\ManagesAccounts;
 use App\Http\Controllers\Controller;
 use App\Mail\LoginPassword;
 use App\Models\Affiliation;
-use App\Models\AuthorRequest;
 use App\Models\MealOption;
 use App\Models\Submission;
 use App\Models\User;
 use App\Support\WorkflowMail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -22,8 +24,9 @@ use Throwable;
 
 /**
  * Registrants of the current conference year (role 'user'): admin manages them, editors can view.
- * Registrants are never deleted, only suspended. Attend-only registrants may ask to submit papers
- * (AuthorRequest); admin approves or declines on the "Submit requests" tab.
+ * Admin may delete a registrant (user request 2026-11-11): the account goes with every paper of theirs and the papers'
+ * files; suspending keeps everything. Only authors sign up (the request to submit papers was removed 2026-11-11);
+ * admin may still switch an attend-only registrant to author, who is told by email (template became_author).
  * Password, suspend and unsuspend come from ManagesAccounts.
  */
 class RegistrantController extends Controller
@@ -41,9 +44,9 @@ class RegistrantController extends Controller
 
         $registrants = User::where('role', 'user')->where('registered_year', $year)
             ->with(['submissions' => fn ($query) => $query->currentYear()->latest('id')])
+            ->withCount('submissions')
             ->latest()
             ->get();
-        $pending = AuthorRequest::pending()->where('year', $year)->pluck('user_id')->flip();
 
         return Inertia::render('Admin/Registrants', [
             'registrants' => $registrants->map(fn (User $user) => [
@@ -54,14 +57,12 @@ class RegistrantController extends Controller
                     'title' => ['en' => $paper->title_en, 'th' => $paper->title_th],
                 ] : null,
                 'paperStatus' => $user->submissions->first()?->status->value,
+                // Every paper of the account (all years): deleting the registrant deletes these too
+                'papersTotal' => $user->submissions_count,
                 'suspended' => (bool) $user->suspended_at,
                 'verified' => (bool) $user->email_verified_at,
                 'registeredAt' => $user->created_at?->toIso8601String(),
-                'requestPending' => $pending->has($user->id),
             ]),
-            // Pending first, then the latest decisions of this year
-            'requests' => AuthorRequest::with('user', 'decider')->where('year', $year)
-                ->orderByRaw("status = 'pending' desc")->latest('id')->limit(200)->get()->map->toClient(),
         ]);
     }
 
@@ -98,53 +99,45 @@ class RegistrantController extends Controller
         $user->update($data);
 
         if ($becameAuthor) {
-            $this->grantAuthor($user, $request->user());
+            WorkflowMail::account('became_author', $user, '/admin/my-submissions');
         }
 
         return back()->with('success', $becameAuthor ? 'admin.registrants.toast.participationChanged' : 'admin.registrants.toast.updated');
     }
 
     /** One role per account: a registrant without papers becomes a reviewer (and moves to the Reviewers page). */
+    /**
+     * Delete a registrant for good (admin): their papers go too (database cascade), so their stored files
+     * (every version, camera-ready, slides, reviewers' attachments) are removed first.
+     */
+    public function destroy(Request $request, User $user): RedirectResponse
+    {
+        $this->ensureManaged($user);
+        abort_if($user->is($request->user()), 403);
+
+        DB::transaction(function () use ($user) {
+            foreach ($user->submissions()->with('files', 'reviews')->get() as $paper) {
+                Storage::delete(array_values(array_filter([
+                    $paper->file_path, $paper->camera_ready_path, $paper->slides_path,
+                    ...$paper->files->pluck('path'), ...$paper->reviews->pluck('attachment_path'),
+                ])));
+                $paper->delete();
+            }
+            $user->delete();
+        });
+        Log::info('Registrant deleted', ['email' => $user->email, 'by' => $request->user()->email]);
+
+        return back()->with('success', 'admin.registrants.toast.deleted');
+    }
+
     public function makeReviewer(User $user): RedirectResponse
     {
         $this->ensureManaged($user);
         abort_if($user->submissions()->exists(), 422);
 
         $user->forceFill(['role' => 'reviewer'])->save();
-        AuthorRequest::pending()->where('user_id', $user->id)->delete();
 
         return back()->with('success', 'admin.registrants.toast.madeReviewer');
-    }
-
-    public function approve(Request $request, AuthorRequest $authorRequest): RedirectResponse
-    {
-        abort_unless($authorRequest->status === 'pending', 409);
-        $user = $authorRequest->user;
-
-        $user->update(['participation' => 'attend_submit']);
-        $this->grantAuthor($user, $request->user());
-
-        return back()->with('success', 'admin.registrants.requests.approved');
-    }
-
-    public function reject(Request $request, AuthorRequest $authorRequest): RedirectResponse
-    {
-        abort_unless($authorRequest->status === 'pending', 409);
-        $data = $request->validate(['note' => ['nullable', 'string', 'max:2000']], ['max' => 'validation.too_long']);
-
-        $authorRequest->update(['status' => 'rejected', 'decided_by' => $request->user()->id, 'decided_at' => now(), 'note' => $data['note'] ?? null]);
-        WorkflowMail::account('author_request_rejected', $authorRequest->user, '/', ['comment' => $data['note'] ?? '']);
-
-        return back()->with('success', 'admin.registrants.requests.rejected');
-    }
-
-    /** Now an author: close a pending request as approved and tell the registrant (they keep their password). */
-    private function grantAuthor(User $user, User $admin): void
-    {
-        AuthorRequest::pending()->where('user_id', $user->id)
-            ->update(['status' => 'approved', 'decided_by' => $admin->id, 'decided_at' => now()]);
-
-        WorkflowMail::account('author_request_approved', $user, '/admin/my-submissions');
     }
 
     /** Same fields and rules as signing up (AuthController::register), without the PDPA tick. */

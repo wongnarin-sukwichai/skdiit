@@ -58,6 +58,7 @@ import {
     faTrashCan,
     faImage,
     faHourglassHalf,
+    faSpinner,
     faVideo,
     faRotate,
     faUserSecret,
@@ -108,6 +109,7 @@ import { faFileLines as farFileLines, faUser as farUser } from '@fortawesome/fre
 config.autoAddCss = false;
 
 library.add(
+    faSpinner,
     faArrowRightFromBracket, faArrowRotateRight, faArrowUpRightFromSquare, faBars, faBell,
     faBuildingColumns, faCalendarDays, faChartColumn, faCheck, faChevronDown, faChevronLeft,
     faChevronRight, faCircleCheck, faClipboardCheck, faClock, faDatabase, faDownload, faEllipsis, faEnvelope, faEye,

@@ -3,15 +3,17 @@
 namespace App\Enums;
 
 /**
- * Where a paper is in the workflow (client decision 2026-10-15):
- * journal first; papers the journal does not take go through the conference track.
+ * Where a paper is in the workflow. First gate (client request 2026-11-11): after the submission deadline an editor
+ * (or the journal role) sets the track and either offers the paper to one partner journal or sends it to the
+ * conference track. The author answers the offer: accepting ends the paper's conference process until the slides,
+ * declining (or not answering in time) sends it to the conference track.
  */
 enum SubmissionStatus: string
 {
-    // Journal (first gate)
-    case Submitted = 'submitted';                  // waiting for the journal's selection (the author may edit until the deadline)
-    case JournalSelected = 'journal_selected';     // the journal picked it; the author submits on the journal's site
-    case JournalAccepted = 'journal_accepted';     // the journal accepted it: presents at the conference, no camera-ready
+    // First gate
+    case Submitted = 'submitted';                  // waiting for the first gate (the author may edit until the deadline)
+    case JournalSelected = 'journal_selected';     // offered to a journal (submissions.journal_id); waiting for the author's answer
+    case JournalAccepted = 'journal_accepted';     // the author accepted: submits on the journal's site, presents at the conference, no camera-ready
 
     // Conference track: screening
     case Screening = 'screening';                  // the journal did not take it; waiting for editor screening
@@ -26,6 +28,27 @@ enum SubmissionStatus: string
     case ReviewRejected = 'rejected';              // rejected after review (final)
     case CameraReady = 'camera_ready';             // camera-ready file received
 
+    /** Label for server-made files (Excel export); the pages use submissions.status.* in the i18n files. */
+    public function label(string $lang = 'th'): string
+    {
+        [$th, $en] = match ($this) {
+            self::Submitted => ['รอคัดเลือก', 'Awaiting selection'],
+            self::JournalSelected => ['เสนอวารสาร รอผู้ส่งตอบรับ', 'Offered to a journal: awaiting the author'],
+            self::JournalAccepted => ['ผู้ส่งตอบรับวารสาร', 'Author accepted the journal'],
+            self::Screening => ['รอคัดกรอง', 'Awaiting screening'],
+            self::Revision => ['ส่งกลับให้แก้ไข', 'Revision requested'],
+            self::Rejected => ['ไม่ผ่านการคัดกรอง', 'Rejected at screening'],
+            self::InReview => ['รอผลประเมิน', 'Awaiting peer review'],
+            self::ReviewRevision => ['ต้องแก้ไข', 'Revision requested'],
+            self::Revised => ['ส่งฉบับแก้ไขแล้ว', 'Revision received'],
+            self::Accepted => ['ผ่านการประเมิน รอฉบับสมบูรณ์', 'Accepted: awaiting camera-ready'],
+            self::ReviewRejected => ['ไม่ผ่านการประเมิน', 'Rejected after review'],
+            self::CameraReady => ['ได้รับฉบับสมบูรณ์แล้ว', 'Camera-ready received'],
+        };
+
+        return $lang === 'en' ? $en : $th;
+    }
+
     /** Papers that can be given a presentation slot. */
     public function canBeScheduled(): bool
     {
@@ -38,10 +61,16 @@ enum SubmissionStatus: string
         return in_array($this, [self::CameraReady, self::JournalAccepted], true);
     }
 
-    /** Statuses the journal works on and may see (papers in the conference track are hidden from it). */
+    /** Statuses of the first gate (before the conference track). */
     public static function journalStage(): array
     {
         return [self::Submitted, self::JournalSelected, self::JournalAccepted];
+    }
+
+    /** The conference track: every status after the first gate. */
+    public static function conferenceTrack(): array
+    {
+        return array_values(array_filter(self::cases(), fn (self $status) => ! in_array($status, self::journalStage(), true)));
     }
 
     /** Screening decision (from the editor's form) => resulting status. */

@@ -8,7 +8,7 @@ use App\Http\Controllers\Admin\ConferenceYearController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\AffiliationController;
 use App\Http\Controllers\Admin\MealOptionController;
-use App\Http\Controllers\Admin\JournalController;
+use App\Http\Controllers\Admin\PartnerJournalController;
 use App\Http\Controllers\Admin\MySubmissionController;
 use App\Http\Controllers\Admin\PublicationController;
 use App\Http\Controllers\Admin\ExcelExportController;
@@ -62,7 +62,6 @@ Route::post('/join-year', [AuthController::class, 'joinYear'])->middleware('auth
 // "My details" on the public site: own name, phone and affiliation (attendees have no backend "My account")
 Route::put('/my-details', [AccountController::class, 'update'])->middleware('auth')->name('my-details.update');
 // "My details": an attend-only registrant asks admin to let them submit papers too
-Route::post('/author-request', [AuthController::class, 'requestAuthor'])->middleware('auth')->name('author-request');
 
 // Admin "view as this user": the way back works from any page, also for accounts without backend access
 Route::post('/impersonation/stop', [ImpersonationController::class, 'stop'])->middleware('auth')->name('impersonation.stop');
@@ -85,8 +84,7 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
             Route::post('/{user}/suspend', 'suspend')->name('registrants.suspend');
             Route::post('/{user}/unsuspend', 'unsuspend')->name('registrants.unsuspend');
             Route::post('/{user}/make-reviewer', 'makeReviewer')->name('registrants.make-reviewer');
-            Route::post('/requests/{authorRequest}/approve', 'approve')->name('registrants.requests.approve');
-            Route::post('/requests/{authorRequest}/reject', 'reject')->name('registrants.requests.reject');
+            Route::delete('/{user}', 'destroy')->name('registrants.destroy');
         });
     });
     // Excel of the rows a list page shows (registrants, reports, activity log; checked in the controller)
@@ -155,7 +153,6 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
     // Design preview (2026-10-20): the author's paper journey in every status, before it goes on the author pages
     Route::get('/preview/author-journey', fn () => Inertia::render('Admin/Preview/AuthorJourney', [
         'deadline' => Submission::deadline()?->toIso8601String(),
-        'journalUrl' => Setting::get('journal_url'),
     ]))->middleware('module:settings')->name('preview.author-journey');
     Route::prefix('settings/affiliations')->middleware('module:settings')->controller(AffiliationController::class)->group(function () {
         Route::post('/', 'store')->name('affiliations.store');
@@ -163,6 +160,13 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
         Route::put('/{affiliation}', 'update')->name('affiliations.update');
         Route::put('/{affiliation}/move', 'move')->name('affiliations.move');
         Route::delete('/{affiliation}', 'destroy')->name('affiliations.destroy');
+    });
+    // Partner journals offered at the first gate
+    Route::prefix('settings/journals')->middleware('module:settings')->controller(PartnerJournalController::class)->group(function () {
+        Route::post('/', 'store')->name('journals.store');
+        Route::put('/{journal}', 'update')->name('journals.update');
+        Route::put('/{journal}/move', 'move')->name('journals.move');
+        Route::delete('/{journal}', 'destroy')->name('journals.destroy');
     });
     Route::prefix('settings/meals')->middleware('module:settings')->controller(MealOptionController::class)->group(function () {
         Route::post('/', 'store')->name('meals.store');
@@ -209,6 +213,7 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
         Route::put('/{submission}', 'update')->name('my-submissions.update');
         Route::post('/{submission}/camera-ready', 'uploadCameraReady')->name('my-submissions.camera-ready');
         Route::post('/{submission}/slides', 'uploadSlides')->name('my-submissions.slides');
+        Route::post('/{submission}/journal-answer', 'answerJournal')->name('my-submissions.journal-answer');
     });
 
     // Every manuscript version / response letter: same people as the paper file (checked in the controller)
@@ -222,18 +227,14 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
     Route::get('/submissions/{submission}/camera-ready', [SubmissionController::class, 'cameraReady'])->whereNumber('submission')->name('submissions.camera-ready');
     Route::get('/submissions/{submission}/slides', [SubmissionController::class, 'slides'])->whereNumber('submission')->name('submissions.slides');
 
-    // The journal's first gate: the journal role, and admin (who may do every journal action)
-    Route::prefix('journal')->middleware('module:journal')->controller(JournalController::class)->group(function () {
-        Route::get('/', 'index')->name('journal');
-        Route::get('/{submission}', 'show')->name('journal.show');
-        Route::post('/{submission}/result', 'result')->middleware('module:journal,full')->name('journal.result');
+    // Selection: the first gate (2026-11-11). Admin, editors and the journal role alike: offer a paper to a journal or
+    // send it to the conference track, export the list; the journal role reads a paper here (no Submissions menu)
+    Route::prefix('selection')->middleware('module:selection')->controller(SelectionController::class)->group(function () {
+        Route::get('/', 'index')->name('selection');
+        Route::get('/export', 'export')->name('selection.export');
+        Route::get('/{submission}', 'show')->whereNumber('submission')->name('selection.show');
+        Route::post('/{submission}', 'route')->whereNumber('submission')->middleware('module:selection,full')->name('selection.route');
     });
-    // Selection outside the journal module: editors, who do not have the menu, pass papers on from Submissions after the
-    // journal deadline. Who may press what is checked in JournalController::select (Submission::canBePassedOnBy)
-    Route::post('/journal/{submission}/selection', [JournalController::class, 'select'])->name('journal.select');
-
-    // Editors and admin: the first gate (journal selection, passing papers on to the conference)
-    Route::get('/selection', [SelectionController::class, 'index'])->middleware('module:selection')->name('selection');
 
     // Editors and admin: all papers
     Route::prefix('submissions')->middleware('module:submissions')->controller(SubmissionController::class)->group(function () {

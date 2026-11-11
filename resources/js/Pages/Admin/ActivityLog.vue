@@ -69,7 +69,7 @@ async function exportExcel() {
         URL.revokeObjectURL(link.href);
         toast('admin.registrants.toast.exported', { count: formatNumber(body.length) });
     } catch {
-        toast('admin.registrants.toast.exportFailed');
+        toast('admin.registrants.toast.exportFailed', {}, 'danger');
     } finally {
         exporting.value = false;
     }

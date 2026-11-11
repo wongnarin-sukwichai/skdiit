@@ -26,9 +26,11 @@ class EmailTemplate extends Model
     /** key => extra placeholders */
     public const VARS = [
         'paper_received' => [],
-        'journal_selected' => ['journal_url'],
+        'journal_selected' => ['journal', 'due'],
+        'journal_offer_reminder' => ['journal', 'due'],
+        'journal_accepted' => ['journal', 'journal_url'],
+        'journal_offer_expired' => ['journal'],
         'journal_passed_on' => [],
-        'journal_accepted' => [],
         'screening_pass' => ['comment'],
         'screening_revise' => ['comment'],
         'screening_reject' => ['comment'],
@@ -38,13 +40,11 @@ class EmailTemplate extends Model
         'presentation_scheduled' => ['date', 'room'],
         'reviewer_assigned' => ['due'],
         'review_reminder' => ['due'],
-        'author_request_new' => ['registrant', 'email', 'reason'],
-        'author_request_approved' => [],
-        'author_request_rejected' => ['comment'],
+        'became_author' => [],
     ];
 
     /** Account emails, not about a paper: no {code} or {title}. */
-    public const ACCOUNT_KEYS = ['author_request_new', 'author_request_approved', 'author_request_rejected'];
+    public const ACCOUNT_KEYS = ['became_author'];
 
     /** key => [subject_th, subject_en, body_th, body_en] */
     public const DEFAULTS = [
@@ -54,19 +54,29 @@ class EmailTemplate extends Model
             "Dear {name},\n\nWe received your paper \"{title}\" ({code}). You can edit it and replace the files until the submission deadline.",
         ],
         'journal_selected' => [
-            'Journal คัดเลือกบทความ {code}', 'The journal selected your paper {code}',
-            "เรียน {name}\n\nJournal คัดเลือกบทความ \"{title}\" ({code}) ของท่าน กรุณาส่งบทความที่เว็บไซต์ของวารสาร: {journal_url}\n\nหากวารสารไม่ตอบรับ บทความของท่านจะเข้าสู่กระบวนการ Conference ต่อ",
-            "Dear {name},\n\nThe journal selected your paper \"{title}\" ({code}). Please submit it on the journal's website: {journal_url}\n\nIf the journal does not accept it, your paper continues in the conference process.",
+            'บทความ {code} ได้รับการพิจารณาจากวารสาร', 'A journal is interested in your paper {code}',
+            "เรียน {name}\n\nบทความ \"{title}\" ({code}) ของท่านได้รับการพิจารณาจากวารสาร {journal}\n\nกรุณาแจ้งในระบบว่าท่านจะตอบรับหรือไม่ ภายในวันที่ {due}: {link}\n\n- ตอบรับ: ท่านส่งบทความต่อที่เว็บไซต์ของวารสาร (ระบบจะแสดงลิงก์ให้) และไม่ต้องผ่านการประเมินของงานประชุม ผู้จัดงานจะแจ้งอีกครั้งเมื่อถึงเวลาส่งไฟล์นำเสนอ\n- ปฏิเสธ หรือไม่ตอบภายในกำหนด: บทความจะเข้าสู่กระบวนการพิจารณาของงานประชุม (Conference) ตามปกติ",
+            "Dear {name},\n\nYour paper \"{title}\" ({code}) has been considered by the journal {journal}.\n\nPlease tell us in the system whether you accept, by {due}: {link}\n\n- Accept: you continue on the journal's website (the system shows the link) and skip the conference review. We will contact you again when the presentation file is due.\n- Decline, or no answer by the due date: your paper continues in the conference process.",
+        ],
+        'journal_offer_reminder' => [
+            'เตือน: กรุณาตอบรับหรือปฏิเสธวารสาร (บทความ {code})', 'Reminder: please answer the journal offer for {code}',
+            "เรียน {name}\n\nบทความ \"{title}\" ({code}) ได้รับการพิจารณาจากวารสาร {journal} และยังรอคำตอบจากท่าน กรุณาตอบภายในวันที่ {due}: {link}\n\nหากไม่ตอบภายในกำหนด บทความจะเข้าสู่กระบวนการพิจารณาของงานประชุม (Conference)",
+            "Dear {name},\n\nThe journal {journal} is still waiting for your answer about \"{title}\" ({code}). Please answer by {due}: {link}\n\nWithout an answer by then, your paper continues in the conference process.",
+        ],
+        'journal_accepted' => [
+            'ท่านตอบรับวารสาร {journal} แล้ว (บทความ {code})', 'You accepted the journal {journal} ({code})',
+            "เรียน {name}\n\nท่านตอบรับให้บทความ \"{title}\" ({code}) ไปตีพิมพ์กับวารสาร {journal} แล้ว กรุณาส่งบทความต่อที่เว็บไซต์ของวารสาร: {journal_url}\n\nบทความนี้ไม่ต้องผ่านการประเมินของงานประชุม ผู้จัดงานจะแจ้งอีกครั้งเมื่อถึงเวลาส่งไฟล์นำเสนอผลงานในระบบ",
+            "Dear {name},\n\nYou accepted that \"{title}\" ({code}) goes to the journal {journal}. Please submit it on the journal's website: {journal_url}\n\nThe paper skips the conference review. We will contact you again when the presentation file is due in the system.",
+        ],
+        'journal_offer_expired' => [
+            'บทความ {code} เข้าสู่กระบวนการ Conference', 'Your paper {code} moves on to the conference process',
+            "เรียน {name}\n\nระบบไม่ได้รับคำตอบเรื่องวารสาร {journal} สำหรับบทความ \"{title}\" ({code}) ภายในกำหนด บทความจึงเข้าสู่กระบวนการพิจารณาของงานประชุม (Conference) บรรณาธิการจะคัดกรองและส่งให้ผู้ทรงคุณวุฒิประเมินต่อไป",
+            "Dear {name},\n\nWe did not receive your answer about the journal {journal} for \"{title}\" ({code}) by the due date, so the paper continues in the conference process. The editors will screen it and send it to reviewers.",
         ],
         'journal_passed_on' => [
             'บทความ {code} เข้าสู่กระบวนการ Conference', 'Your paper {code} moves on to the conference process',
             "เรียน {name}\n\nบทความ \"{title}\" ({code}) ของท่านเข้าสู่กระบวนการ Conference บรรณาธิการจะคัดกรองและส่งให้ผู้ทรงคุณวุฒิประเมินต่อไป",
             "Dear {name},\n\nYour paper \"{title}\" ({code}) moves on to the conference process. The editors will screen it and send it to reviewers.",
-        ],
-        'journal_accepted' => [
-            'วารสารตอบรับบทความ {code}', 'The journal accepted your paper {code}',
-            "เรียน {name}\n\nยินดีด้วย วารสารตอบรับบทความ \"{title}\" ({code}) ของท่านแล้ว ท่านจะได้นำเสนอผลงานในงานประชุม ผู้จัดงานจะแจ้งวันเวลานำเสนอให้ทราบ",
-            "Dear {name},\n\nCongratulations: the journal accepted your paper \"{title}\" ({code}). You will present it at the conference; we will let you know your slot.",
         ],
         'screening_pass' => [
             'บทความ {code} ผ่านการคัดกรอง', 'Your paper {code} passed screening',
@@ -113,20 +123,10 @@ class EmailTemplate extends Model
             "เรียน {name}\n\nขอเตือนการประเมินบทความ \"{title}\" ({code}) ซึ่งครบกำหนดวันที่ {due} หากไม่สะดวกประเมิน กรุณาแจ้งในระบบ",
             "Dear {name},\n\nThis is a reminder about your review of \"{title}\" ({code}), due on {due}. If you cannot review it, please say so in the system.",
         ],
-        'author_request_new' => [
-            'คำขอส่งผลงานจาก {registrant}', 'Request to submit papers from {registrant}',
-            "เรียน {name}\n\n{registrant} ({email}) ลงทะเบียนเข้าร่วมงานอย่างเดียว และขอเปลี่ยนเป็นผู้ส่งผลงาน\n\n{reason}\n\nกรุณาพิจารณาที่หน้าผู้ลงทะเบียน แท็บคำขอส่งผลงาน: {link}",
-            "Dear {name},\n\n{registrant} ({email}) registered to attend only and asks to submit papers too.\n\n{reason}\n\nPlease decide on the Registrants page, Submit requests tab: {link}",
-        ],
-        'author_request_approved' => [
-            'คำขอส่งผลงานได้รับการอนุมัติ', 'You can now submit papers',
+        'became_author' => [
+            'บัญชีของท่านส่งผลงานได้แล้ว', 'You can now submit papers',
             "เรียน {name}\n\nบัญชีของท่านเปลี่ยนเป็นผู้เข้าร่วมงานและส่งผลงานแล้ว เข้าสู่ระบบด้วยรหัสผ่านเดิม แล้วส่งบทความได้ที่เมนูบทความของฉัน: {link}",
             "Dear {name},\n\nYour account can now submit papers. Sign in with your current password and submit under My submissions: {link}",
-        ],
-        'author_request_rejected' => [
-            'ผลการพิจารณาคำขอส่งผลงาน', 'Your request to submit papers',
-            "เรียน {name}\n\nขออภัย คำขอเปลี่ยนเป็นผู้ส่งผลงานของท่านไม่ได้รับการอนุมัติ ท่านยังเข้าร่วมงานได้ตามเดิม\n\n{comment}",
-            "Dear {name},\n\nSorry, your request to submit papers was not approved. You are still registered to attend.\n\n{comment}",
         ],
     ];
 

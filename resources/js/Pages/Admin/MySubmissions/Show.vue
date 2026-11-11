@@ -19,7 +19,6 @@ const props = defineProps({
     history: { type: Array, required: true }, // without staff names
     reviewFeedback: { type: Array, required: true }, // "Reviewer 1", "Reviewer 2", ...
     maxMb: { type: Number, required: true },
-    journalUrl: { type: String, default: null }, // the journal's submission site (Settings)
     deadline: { type: String, default: null },
     isOpen: { type: Boolean, required: true },
     opensAt: { type: String, default: null },
@@ -53,10 +52,10 @@ const hadRevision = computed(() => props.history.some((e) => e.action === 'resub
             :dates="dates"
             :had-revision="hadRevision"
             :message="latestDecision?.comment"
-            :links="{ edit: submission.canEdit ? `/admin/my-submissions/${submission.id}/edit` : null, journal: journalUrl }"
+            :links="{ edit: submission.canEdit ? `/admin/my-submissions/${submission.id}/edit` : null, answer: `/admin/my-submissions/${submission.id}/journal-answer` }"
         />
         <div id="publication" class="scroll-mt-24">
-            <PublicationAuthorPanel :submission="submission" :max-mb="maxMb" :journal-url="journalUrl" />
+            <PublicationAuthorPanel :submission="submission" :max-mb="maxMb" />
         </div>
 
         <ReviewerFeedback :rounds="reviewFeedback" />

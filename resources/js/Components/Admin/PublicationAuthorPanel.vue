@@ -6,19 +6,18 @@ import FileUploadForm from '@/Components/Admin/FileUploadForm.vue';
 import { useI18n } from '@/i18n';
 
 /*
- * The author's side once a paper moves on: selected by the journal (submit on its site), accepted by the journal,
+ * The author's side once a paper moves on: gone to a journal (the author accepted its offer: submit on its site),
  * or accepted in the conference track (camera-ready); then the presentation slot and the slides.
  */
 const props = defineProps({
     submission: { type: Object, required: true },
     maxMb: { type: Number, required: true },
-    journalUrl: { type: String, default: null }, // Settings: the journal's submission site
 });
 
 const { t, formatDate } = useI18n();
 const status = computed(() => props.submission.status);
 const publication = computed(() => props.submission.publication);
-const visible = computed(() => ['journal_selected', 'journal_accepted', 'accepted', 'camera_ready'].includes(status.value));
+const visible = computed(() => ['journal_accepted', 'accepted', 'camera_ready'].includes(status.value));
 const until = (iso) => formatDate(iso, { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 </script>
 
@@ -29,25 +28,21 @@ const until = (iso) => formatDate(iso, { day: 'numeric', month: 'long', year: 'n
             {{ t(status.startsWith('journal') ? 'publication.route.journal' : 'publication.title') }}
         </h2>
 
-        <!-- Selected by the journal: submit on the journal's site -->
-        <template v-if="status === 'journal_selected'">
-            <p class="text-sm text-neutral-600 dark:text-neutral-300">{{ t('publication.journal.selectedIntro') }}</p>
+        <!-- Accepted a journal offer: continue on the journal's site (answering the offer happens on the journey card) -->
+        <template v-if="status === 'journal_accepted'">
+            <p class="text-sm text-emerald-700 dark:text-emerald-300">
+                <Fa icon="circle-check" class="mr-1" /> {{ t('publication.journal.accepted', { journal: submission.journal?.name ?? '' }) }}
+            </p>
             <a
-                v-if="journalUrl"
-                :href="journalUrl"
+                v-if="submission.journal?.url"
+                :href="submission.journal.url"
                 target="_blank"
                 rel="noopener"
                 class="inline-flex items-center gap-2 rounded-lg bg-gold-400 px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-gold-300"
             >
                 <Fa icon="arrow-up-right-from-square" /> {{ t('publication.journal.goToJournal') }}
             </a>
-            <p v-else class="text-sm text-neutral-500 dark:text-neutral-400">{{ t('publication.journal.noLink') }}</p>
-            <p class="text-xs text-neutral-500 dark:text-neutral-400"><Fa icon="circle-info" class="mr-1 text-gold-500" /> {{ t('publication.journal.selectedNote') }}</p>
         </template>
-
-        <p v-else-if="status === 'journal_accepted'" class="text-sm text-emerald-700 dark:text-emerald-300">
-            <Fa icon="circle-check" class="mr-1" /> {{ t('publication.journal.accepted') }}
-        </p>
 
         <!-- Conference track: camera-ready file (replaceable) -->
         <template v-else>

@@ -20,8 +20,10 @@ enum SubmissionAction: string
     case Decided = 'decided';                     // editor's decision after review (see to_status); meta: revision due
     case ReviewRoundStarted = 'review_round_started'; // editor sent a revised paper to reviewers again; meta: round
     case CameraReadyUploaded = 'camera_ready_uploaded'; // author uploaded (or replaced) the final file
-    case JournalScreened = 'journal_screened';        // the journal's selection (see to_status: journal_selected or screening)
-    case JournalResult = 'journal_result';            // the journal's final answer (see to_status: journal_accepted or screening)
+    case JournalScreened = 'journal_screened';        // first gate: offered to a journal (to_status journal_selected; meta: journal_id, journal, due) or sent to the conference (screening)
+    case JournalResult = 'journal_result';            // before 2026-11-11: the journal's final answer (kept for old history)
+    case JournalOfferAnswered = 'journal_offer_answered'; // the author answered the offer (to_status journal_accepted / screening); meta: answer accept|decline|expired, journal
+    case JournalOfferReminded = 'journal_offer_reminded'; // the author was reminded to answer the offer; meta: journal, due
     case PresentationScheduled = 'presentation_scheduled'; // meta: at, room (null = cleared)
     case SlidesUploaded = 'slides_uploaded';          // author uploaded (or replaced) the presentation slides
 

@@ -5,7 +5,6 @@ namespace App\Support;
 use App\Enums\SubmissionAction;
 use App\Mail\TemplatedMail;
 use App\Models\EmailTemplate;
-use App\Models\Setting;
 use App\Models\SubmissionEvent;
 use App\Models\User;
 use Illuminate\Support\Carbon;
@@ -29,11 +28,14 @@ class WorkflowMail
 
         [$key, $to] = match ($event->action) {
             SubmissionAction::Submitted => ['paper_received', $author],
-            SubmissionAction::JournalScreened, SubmissionAction::JournalResult => [match ($event->to_status) {
-                'journal_selected' => 'journal_selected',
-                'journal_accepted' => 'journal_accepted',
+            // First gate: offered to a journal (the author answers), or sent to the conference track
+            SubmissionAction::JournalScreened => [$event->to_status === 'journal_selected' ? 'journal_selected' : 'journal_passed_on', $author],
+            SubmissionAction::JournalOfferAnswered => [match ($event->meta['answer'] ?? null) {
+                'accept' => 'journal_accepted',
+                'expired' => 'journal_offer_expired',
                 default => 'journal_passed_on',
             }, $author],
+            SubmissionAction::JournalOfferReminded => ['journal_offer_reminder', $author],
             SubmissionAction::Screened => [match ($event->to_status) {
                 'in_review' => 'screening_pass',
                 'screening_revision' => 'screening_revise',
@@ -65,7 +67,8 @@ class WorkflowMail
             'link' => url($toReviewer ? '/admin/reviews' : "/admin/my-submissions/{$submission->id}"),
             'comment' => $comment,
             'due' => $day($event->meta['due'] ?? $submission->revision_due_date?->toDateString()),
-            'journal_url' => (string) Setting::get('journal_url'),
+            'journal' => (string) ($event->meta['journal'] ?? $submission->journal?->name),
+            'journal_url' => (string) $submission->journal?->url,
             'date' => isset($event->meta['at']) ? $day($event->meta['at']).' '.Carbon::parse($event->meta['at'])->format('H:i') : '',
             'room' => $event->meta['room'] ?? '',
         ]);
@@ -73,7 +76,7 @@ class WorkflowMail
         static::send($to, $text['subject'], $text['body_th'], $text['body_en'], url($toReviewer ? '/admin/reviews' : "/admin/my-submissions/{$submission->id}"));
     }
 
-    /** An account email (EmailTemplate::ACCOUNT_KEYS), e.g. a request to submit papers and its answer. */
+    /** An account email (EmailTemplate::ACCOUNT_KEYS), e.g. an attend-only registrant switched to author by admin. */
     public static function account(string $key, User $to, string $path, array $vars = []): bool
     {
         $text = EmailTemplate::render($key, ['name' => $to->name, 'link' => url($path), ...$vars]);

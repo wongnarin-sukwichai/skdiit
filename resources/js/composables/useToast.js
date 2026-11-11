@@ -7,7 +7,7 @@ const current = ref(null);
 export function useToast() {
     return {
         current,
-        /** `key` is an i18n key, `params` its placeholders */
-        toast: (key, params = {}) => (current.value = { key, params, at: Date.now() }),
+        /** `key` is an i18n key, `params` its placeholders; kind: success | danger | warning | info */
+        toast: (key, params = {}, kind = 'success') => (current.value = { key, params, kind, at: Date.now() }),
     };
 }

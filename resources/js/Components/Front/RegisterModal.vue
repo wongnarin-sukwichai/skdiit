@@ -50,6 +50,8 @@ function submit() {
 }
 
 function close() {
+    // Not while the account is being created (the email is on its way)
+    if (form.processing) return;
     form.clearErrors();
     emit('close');
 }
@@ -74,7 +76,10 @@ function goToLogin() {
                     <Fa icon="right-to-bracket" /> {{ t('auth.login') }}
                 </button>
             </div>
-            <form v-else key="form" class="p-6 sm:p-8" @submit.prevent="submit">
+            <form v-else key="form" class="relative p-6 sm:p-8" :aria-busy="form.processing" @submit.prevent="submit">
+                <!-- While sending: a moving bar on top, the form fades and locks, only the button stays bright -->
+                <div v-if="form.processing" class="loading-bar absolute inset-x-0 top-0 h-1 overflow-hidden rounded-t-2xl bg-gold-400/15" aria-hidden="true" />
+                <fieldset :disabled="form.processing" :class="form.processing ? 'pointer-events-none opacity-30' : ''" class="min-w-0 transition-opacity duration-300">
                 <span class="mb-4 grid size-12 place-items-center rounded-xl bg-gold-400/15 text-lg text-gold-400">
                     <Fa icon="user-plus" />
                 </span>
@@ -112,17 +117,23 @@ function goToLogin() {
                         <Fa icon="envelope" class="mr-1 text-gold-400" /> {{ t('auth.passwordByEmail') }}
                     </p>
                 </div>
+                </fieldset>
 
                 <button
                     type="submit"
-                    class="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-gold-400 py-2.5 font-semibold text-black transition hover:bg-gold-300 disabled:opacity-60"
+                    :class="form.processing ? 'cursor-wait ring-4 ring-gold-400/30' : 'hover:bg-gold-300'"
+                    class="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-gold-400 py-2.5 font-semibold text-black transition"
                     :disabled="form.processing"
                 >
-                    <Fa icon="user-plus" />
-                    {{ t('auth.register') }}
+                    <Fa :icon="form.processing ? 'spinner' : 'user-plus'" :spin="form.processing" />
+                    {{ form.processing ? t('auth.registering') : t('auth.register') }}
                 </button>
+                <!-- Sending the password email takes a few seconds: say so, so nobody presses again -->
+                <Transition name="fade">
+                    <p v-if="form.processing" class="mt-3 text-center text-sm text-gold-300" role="status">{{ t('auth.sendingWait') }}</p>
+                </Transition>
 
-                <p class="mt-5 text-center text-sm text-neutral-400">
+                <p :class="form.processing ? 'pointer-events-none opacity-30' : ''" class="mt-5 text-center text-sm text-neutral-400 transition-opacity">
                     {{ t('auth.haveAccount') }}
                     <button type="button" class="font-medium text-gold-400 hover:underline" @click="emit('switch')">
                         {{ t('auth.login') }}

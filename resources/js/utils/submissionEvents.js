@@ -17,6 +17,8 @@ export const eventIcons = {
     review_round_started: 'user-check',
     journal_screened: 'newspaper',
     journal_result: 'newspaper',
+    journal_offer_answered: 'reply',
+    journal_offer_reminded: 'bell',
     camera_ready_uploaded: 'file-circle-check',
     presentation_scheduled: 'person-chalkboard',
     slides_uploaded: 'file-powerpoint',
@@ -25,9 +27,15 @@ export const eventIcons = {
 // Labelled by their outcome (to_status)
 const BY_OUTCOME = ['screened', 'decided', 'journal_screened', 'journal_result'];
 
-/** Screening, decision and journal entries are labelled by their outcome; the rest fill their meta into the text. */
+/**
+ * Screening, decision and first-gate entries are labelled by their outcome (the journal offered fills in its name),
+ * the author's answer to a journal offer by the answer; the rest fill their meta into the text.
+ */
 export function eventTitle(t, event) {
+    if (event.action === 'journal_offer_answered') {
+        return t(`submissions.history.journal_offer_answered.${event.meta?.answer ?? 'decline'}`, { journal: event.meta?.journal ?? '' });
+    }
     return BY_OUTCOME.includes(event.action) && event.toStatus
-        ? t(`submissions.history.${event.action}.${event.toStatus}`)
+        ? t(`submissions.history.${event.action}.${event.toStatus}`, { journal: '', ...(event.meta ?? {}) })
         : t(`submissions.history.${event.action}`, event.meta ?? {});
 }

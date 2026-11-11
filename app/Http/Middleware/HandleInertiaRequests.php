@@ -5,7 +5,6 @@ namespace App\Http\Middleware;
 use App\Models\AcademicTitle;
 use App\Models\Affiliation;
 use App\Models\MealOption;
-use App\Models\AuthorRequest;
 use App\Models\Submission;
 use App\Models\User;
 use App\Support\Impersonation;
@@ -45,8 +44,6 @@ class HandleInertiaRequests extends Middleware
                 'user' => $user ? [
                     ...$user->only('id', 'name', 'email', 'role', 'affiliation', 'affiliation_other', 'phone', 'participation', 'registered_year', 'created_at', ...User::MEAL_FIELDS),
                     'accessRole' => $user->accessRole(),
-                    // Attend-only registrants: their request to submit papers { status, at, note, canAsk } (My details)
-                    'authorRequest' => AuthorRequest::forRegistrant($user),
                 ] : null,
                 // Backend modules the user can open (empty for attendees and guests)
                 'modules' => $user ? $user->modules() : [],

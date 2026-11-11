@@ -92,8 +92,11 @@ function close() {
                     class="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-gold-400 py-2.5 font-semibold text-black transition hover:bg-gold-300 disabled:opacity-60"
                     :disabled="resend.processing"
                 >
-                    <Fa icon="paper-plane" /> {{ t('auth.sendPassword') }}
+                    <Fa :icon="resend.processing ? 'spinner' : 'paper-plane'" :spin="resend.processing" /> {{ resend.processing ? t('auth.sendingPassword') : t('auth.sendPassword') }}
                 </button>
+                <Transition name="fade">
+                    <p v-if="resend.processing" class="mt-2 text-center text-xs text-neutral-400" role="status">{{ t('auth.sendingWait') }}</p>
+                </Transition>
                 <button type="button" class="mt-4 w-full text-center text-sm text-neutral-400 hover:text-gold-400" @click="view = 'login'">
                     <Fa icon="chevron-left" class="mr-1 text-xs" /> {{ t('auth.backToLogin') }}
                 </button>
@@ -139,8 +142,8 @@ function close() {
                     class="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-gold-400 py-2.5 font-semibold text-black transition hover:bg-gold-300 disabled:opacity-60"
                     :disabled="form.processing"
                 >
-                    <Fa icon="right-to-bracket" />
-                    {{ t('auth.login') }}
+                    <Fa :icon="form.processing ? 'spinner' : 'right-to-bracket'" :spin="form.processing" />
+                    {{ form.processing ? t('auth.signingIn') : t('auth.login') }}
                 </button>
 
                 <!-- Testing phase only: demo logins (config/demo.php) -->

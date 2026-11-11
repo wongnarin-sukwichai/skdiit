@@ -14,7 +14,6 @@ import { useConferenceDates } from '@/composables/useConferenceDates';
 // replaces the notices on the author pages. Dates: the public rows of the timeline (assumed), the real deadline and conference day.
 const props = defineProps({
     deadline: { type: String, default: null },
-    journalUrl: { type: String, default: null },
 });
 
 const { t } = useI18n();
@@ -24,12 +23,16 @@ const planned = (key) => timelinePlan.find((p) => p.key === key);
 const dates = useConferenceDates();
 const deadline = computed(() => props.deadline ?? `${planned('submission').end}T23:59:00+07:00`);
 
-const width = ref('desktop');
+// overview: one row per scenario (click to open it in full); desktop / mobile: every scenario in full at that width
+const width = ref('overview');
+const opened = ref(null); // the scenario opened in the overview
 const at = (days, time = '10:00') => `${addDays(today, days)}T${time}:00+07:00`;
 const slot = { at: `${dates.value.conference}T10:30:00+07:00`, room: 'ห้อง 2 (SC-201)' };
 
 // One made-up paper per scenario
 const base = { submittedAt: at(-20) };
+// A partner journal for the journal scenarios
+const journal = { name: 'Journal of Applied Informatics and Technology (JIT)', url: 'https://ph01.tci-thaijo.org/index.php/jait', terms: 'ไม่จำกัดจำนวนบทความ ฟรี' };
 const scenarios = computed(() => [
     { key: 'open', submission: { ...base, status: 'submitted' }, phase: 'open' },
     { key: 'closed', submission: { ...base, status: 'submitted' } },
@@ -42,8 +45,9 @@ const scenarios = computed(() => [
     { key: 'scheduling', submission: { ...base, status: 'camera_ready', publication: { cameraReady: { at: at(-3) } } } },
     { key: 'slides', submission: { ...base, status: 'camera_ready', publication: { cameraReady: { at: at(-3) }, presentation: slot, canUploadSlides: true, slidesUntil: addDays(today, 6) } } },
     { key: 'ready', submission: { ...base, status: 'camera_ready', publication: { cameraReady: { at: at(-3) }, presentation: slot, slides: { at: at(-1) } } } },
-    { key: 'journalSelected', submission: { ...base, status: 'journal_selected' } },
-    { key: 'journalAccepted', submission: { ...base, status: 'journal_accepted', publication: { presentation: slot, canUploadSlides: true, slidesUntil: addDays(today, 6) } } },
+    { key: 'journalSelected', submission: { ...base, status: 'journal_selected', journal, journalAnswerDue: addDays(today, 5) } },
+    { key: 'journalAtJournal', submission: { ...base, status: 'journal_accepted', journal } },
+    { key: 'journalAccepted', submission: { ...base, status: 'journal_accepted', journal, publication: { presentation: slot, canUploadSlides: true, slidesUntil: addDays(today, 6) } } },
     { key: 'rejected', submission: { ...base, status: 'rejected' } },
 ]);
 </script>
@@ -60,7 +64,7 @@ const scenarios = computed(() => [
             </p>
             <div class="flex rounded-lg border border-neutral-200 p-0.5 text-xs dark:border-white/10" role="group">
                 <button
-                    v-for="mode in ['desktop', 'mobile']"
+                    v-for="mode in ['overview', 'desktop', 'mobile']"
                     :key="mode"
                     type="button"
                     :aria-pressed="width === mode"
@@ -73,7 +77,63 @@ const scenarios = computed(() => [
             </div>
         </div>
 
-        <div :class="width === 'mobile' ? 'grid justify-center gap-6 sm:grid-cols-[repeat(auto-fill,375px)]' : 'space-y-6'">
+        <!-- Overview: every scenario on one row, to compare them at a glance -->
+        <div v-if="width === 'overview'" class="overflow-x-auto rounded-xl border border-neutral-200 dark:border-white/10">
+            <table class="w-full min-w-240 text-sm">
+                <thead class="bg-neutral-50 text-left text-neutral-500 dark:bg-white/5 dark:text-neutral-400">
+                    <tr>
+                        <th class="w-10 px-4 py-3 font-medium">#</th>
+                        <th class="px-3 py-3 font-medium">{{ t('admin.preview.journey.columns.scenario') }}</th>
+                        <th class="px-3 py-3 font-medium">{{ t('admin.preview.journey.columns.journey') }}</th>
+                        <th class="w-10 px-3 py-3" />
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-neutral-200 dark:divide-white/5">
+                    <template v-for="(scenario, i) in scenarios" :key="scenario.key">
+                        <tr
+                            :class="opened === scenario.key ? 'bg-gold-50 dark:bg-gold-400/5' : 'hover:bg-neutral-50 dark:hover:bg-white/5'"
+                            class="cursor-pointer align-top transition"
+                            :aria-expanded="opened === scenario.key"
+                            @click="opened = opened === scenario.key ? null : scenario.key"
+                        >
+                            <td class="px-4 py-3 text-xs font-semibold text-neutral-500">{{ i + 1 }}</td>
+                            <td class="w-72 px-3 py-3">
+                                <p class="font-medium">{{ t(`admin.preview.journey.scenario.${scenario.key}`) }}</p>
+                                <SubmissionStatusBadge :status="scenario.submission.status" class="mt-1" />
+                            </td>
+                            <td class="px-3 py-3">
+                                <AuthorJourney
+                                    layout="row"
+                                    :submission="scenario.submission"
+                                    :window="{ deadline, phase: scenario.phase ?? 'closed' }"
+                                    :dates="dates"
+                                    :had-revision="!!scenario.hadRevision"
+                                    :today="today"
+                                />
+                            </td>
+                            <td class="px-3 py-3 text-neutral-400">
+                                <Fa icon="chevron-down" :class="opened === scenario.key ? 'rotate-180' : ''" class="transition" />
+                            </td>
+                        </tr>
+                        <tr v-if="opened === scenario.key">
+                            <td colspan="4" class="bg-neutral-50/60 px-4 py-4 dark:bg-white/2">
+                                <AuthorJourney
+                                    :submission="scenario.submission"
+                                    :window="{ deadline, phase: scenario.phase ?? 'closed' }"
+                                    :dates="dates"
+                                    :had-revision="!!scenario.hadRevision"
+                                    :message="scenario.message"
+                                    :links="{ edit: '#' }"
+                                    :today="today"
+                                />
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+
+        <div v-else :class="width === 'mobile' ? 'grid justify-center gap-6 sm:grid-cols-[repeat(auto-fill,375px)]' : 'space-y-6'">
             <section
                 v-for="(scenario, i) in scenarios"
                 :key="scenario.key"
@@ -91,7 +151,7 @@ const scenarios = computed(() => [
                     :dates="dates"
                     :had-revision="!!scenario.hadRevision"
                     :message="scenario.message"
-                    :links="{ edit: '#', journal: journalUrl ?? 'https://example.org' }"
+                    :links="{ edit: '#' }"
                     :today="today"
                 />
             </section>

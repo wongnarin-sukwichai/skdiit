@@ -5,11 +5,13 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\AcademicTitle;
 use App\Models\Affiliation;
+use App\Models\Journal;
 use App\Models\MealOption;
 use App\Models\ReviewCriterion;
 use App\Models\SiteDocument;
 use App\Models\User;
 use App\Models\Setting;
+use App\Models\Submission;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -35,7 +37,8 @@ class SettingsController extends Controller
         'deadline.after' => 'validation.deadline_after_opens',
         'journal_deadline.after' => 'validation.journal_after_deadline',
         'journal_deadline.date_format' => 'validation.date',
-        'journal_url.url' => 'validation.url',
+        'journal_answer_days.min' => 'validation.integer',
+        'journal_answer_days.max' => 'validation.integer',
         'slides_cutoff_days.min' => 'validation.integer',
         'slides_cutoff_days.max' => 'validation.integer',
     ];
@@ -49,7 +52,7 @@ class SettingsController extends Controller
                 'opens' => Setting::get('submission_opens'),
                 'deadline' => Setting::get('submission_deadline'),
                 'journalDeadline' => Setting::get('journal_deadline'),
-                'journalUrl' => Setting::get('journal_url'),
+                'journalAnswerDays' => Submission::journalAnswerDays(),
                 'slidesCutoffDays' => Setting::get('slides_cutoff_days'),
             ],
             // Every field for editing, plus how many accounts use each title (those cannot be deleted)
@@ -75,6 +78,11 @@ class SettingsController extends Controller
             ]),
             'typedAffiliations' => User::where('affiliation', Affiliation::OTHER)->whereNotNull('affiliation_other')
                 ->selectRaw('affiliation_other as name, count(*) as users')->groupBy('affiliation_other')->orderByDesc('users')->get(),
+            // Partner journals offered at the first gate, with how many papers were offered to each (those cannot be deleted)
+            'journalList' => Journal::ordered()->withCount('submissions')->get()->map(fn (Journal $journal) => [
+                ...$journal->toAdmin(),
+                'papers' => $journal->submissions_count,
+            ]),
             // Meal preferences with how many registrants and companions chose each (those cannot be deleted)
             'mealList' => MealOption::ordered()->get()->map(fn (MealOption $meal) => [
                 ...$meal->only('id', 'code', 'name_en', 'name_th'),
@@ -83,17 +91,17 @@ class SettingsController extends Controller
         ]);
     }
 
-    /** Settings › ตั้งค่า: the upload limit and the journal's submission site. */
+    /** Settings › ตั้งค่า: the upload limit and the days an author has to answer a journal offer. */
     public function updateSubmission(Request $request): RedirectResponse
     {
         $data = $request->validate([
             'max_mb' => ['required', 'integer', 'min:1', 'max:'.Setting::serverUploadLimitMb()],
-            // Shown to authors whose paper the journal selected
-            'journal_url' => ['nullable', 'url', 'max:500'],
+            // Offers not answered within this many days go to the conference track
+            'journal_answer_days' => ['required', 'integer', 'min:1', 'max:60'],
         ], self::MESSAGES);
 
         Setting::put('upload_max_mb', $data['max_mb']);
-        Setting::put('journal_url', $data['journal_url'] ?? null);
+        Setting::put('journal_answer_days', $data['journal_answer_days']);
 
         return back()->with('success', 'admin.settings.saved');
     }
