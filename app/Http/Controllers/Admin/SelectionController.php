@@ -49,6 +49,7 @@ class SelectionController extends Controller
                 'pastDeadline' => $submission->isPastJournalDeadline(),
                 'files' => collect($submission->currentFiles())->only('pdf', 'word', 'turnitin')->filter()->all(),
                 'canRoute' => $submission->canBeRoutedBy($user),
+                'canSetTrack' => $submission->trackCanBeSetBy($user),
             ]);
 
         return Inertia::render('Admin/Selection/Index', [
@@ -81,6 +82,16 @@ class SelectionController extends Controller
         $submission->route($request->user(), (int) $data['track_id'], $journal, $data['comment'] ?? null);
 
         return back()->with('success', $journal ? 'journal.toast.offered' : 'journal.toast.declined');
+    }
+
+    /** Editors and admin put the paper in a track from the Selection list (2026-11-12: authors no longer pick one). */
+    public function updateTrack(Request $request, Submission $submission): RedirectResponse
+    {
+        abort_unless($submission->trackCanBeSetBy($request->user()), 403);
+        $data = $request->validate(['track_id' => ['required', 'integer', 'exists:tracks,id']], self::MESSAGES);
+        $submission->setTrack($request->user(), (int) $data['track_id']);
+
+        return back()->with('success', 'submissions.trackChanged');
     }
 
     /** The list as an Excel file: every paper of the tab and filters (not only the page shown). */

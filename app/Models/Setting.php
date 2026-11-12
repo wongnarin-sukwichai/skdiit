@@ -24,6 +24,7 @@ class Setting extends Model
         'submission_opens' => null, // 'Y-m-d H:i' in the app timezone; null = open right away
         'submission_deadline' => null, // 'Y-m-d H:i' in the app timezone; null = no deadline
         'journal_deadline' => null, // 'Y-m-d': the journal should have made its first selection by then (a warning only)
+        'presentation_days' => null, // JSON list of 'Y-m-d' days with presentations (Presentations page); null = the conference days
         'journal_answer_days' => 7, // days an author has to accept or decline a journal offer; unanswered offers then go to the conference track
         'slides_cutoff_days' => null, // slides can be replaced until this many days before the talk; null = until the talk
     ];

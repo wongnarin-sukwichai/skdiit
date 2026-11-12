@@ -1,6 +1,7 @@
 <script setup>
 import { useI18n } from '@/i18n';
 import SubmissionStatusBadge from '@/Components/Admin/SubmissionStatusBadge.vue';
+import RevisionBadge from '@/Components/Admin/RevisionBadge.vue';
 import ImpersonateButton from '@/Components/Admin/ImpersonateButton.vue';
 import { formatFileSize } from '@/utils/format';
 
@@ -23,7 +24,8 @@ const box = 'rounded-xl border border-neutral-200 p-4 dark:border-white/10';
         <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
             <span class="font-mono font-semibold text-gold-600 dark:text-gold-400">{{ submission.code }}</span>
             <SubmissionStatusBadge :status="submission.status" />
-            <span class="text-neutral-500 dark:text-neutral-400"><Fa icon="layer-group" class="mr-1" /> {{ tr(submission.track.name) }}</span>
+            <RevisionBadge :status="submission.status" :revision-count="submission.revisionCount ?? 0" :due-date="submission.revisionDueDate" :camera-ready-approved="submission.cameraReadyApproved" :camera-ready-fix="submission.cameraReadyFix" />
+            <span class="text-neutral-500 dark:text-neutral-400"><Fa icon="layer-group" class="mr-1" /> {{ submission.track ? tr(submission.track.name) : t('submissions.noTrack') }}</span>
             <span class="text-neutral-500 dark:text-neutral-400"><Fa icon="clock" class="mr-1" /> {{ t('submissions.submittedAt') }} {{ when(submission.submittedAt) }}</span>
             <span v-if="submission.updatedAt !== submission.submittedAt" class="text-neutral-500 dark:text-neutral-400">
                 <Fa icon="pen" class="mr-1" /> {{ t('submissions.updatedAt') }} {{ when(submission.updatedAt) }}

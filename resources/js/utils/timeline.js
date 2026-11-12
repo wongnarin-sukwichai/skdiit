@@ -26,10 +26,11 @@ export function phaseState(phase, day = today()) {
  */
 export const RULES = [
     ['submission', 'start', 'notBefore', 'registration', 'start'],
-    ['journalSelect', 'start', 'after', 'submission', 'end'], // the journal selects once submissions close
-    ['journalFinal', 'end', 'notBefore', 'journalSelect', 'end'],
+    ['journalSelect', 'start', 'after', 'submission', 'end'], // papers are selected once submissions close
+    ['journalAnswer', 'start', 'notBefore', 'journalSelect', 'start'],
+    ['journalAnswer', 'end', 'notBefore', 'journalSelect', 'end'], // the last offer still gets its full answer time
     ['screening', 'start', 'after', 'submission', 'end'],
-    ['journalFinal', 'end', 'notAfter', 'screening', 'end'], // papers the journal hands back still need screening
+    ['journalAnswer', 'end', 'notAfter', 'screening', 'end'], // declined or lapsed offers still need screening
     ['review', 'start', 'notBefore', 'screening', 'start'],
     ['review', 'end', 'notBefore', 'screening', 'end'],
     ['notify', 'start', 'after', 'review', 'end'],
@@ -43,6 +44,45 @@ export const RULES = [
     ['slides', 'end', 'notAfter', 'conference', 'start'],
     ['registration', 'end', 'notAfter', 'conference', 'start'],
 ];
+
+/**
+ * Lay the enforced rows' real settings over a plan (a copy of useSchedulePlan()): submission period, paper selection,
+ * the author's answer to a journal offer, slides cut-off and the conference day. `real` marks them, `source` says
+ * whether their setting is set yet. settings = SettingsController::index `submission` (or the same keys from the
+ * dashboard): { opens, deadline, journalDeadline, journalAnswerDays, slidesCutoffDays }.
+ */
+export function withRealDates(plan, settings, conferenceDate) {
+    const row = (key) => plan.find((p) => p.key === key);
+    const s = settings ?? {};
+
+    const conference = row('conference');
+    if (conferenceDate) Object.assign(conference, { start: conferenceDate, end: conferenceDate });
+    Object.assign(conference, { real: true, source: 'set' });
+
+    const submission = row('submission');
+    if (s.opens) submission.start = s.opens.slice(0, 10);
+    if (s.deadline) submission.end = s.deadline.slice(0, 10);
+    Object.assign(submission, { real: true, source: s.opens || s.deadline ? 'set' : 'unset' });
+
+    const journal = row('journalSelect');
+    if (s.deadline) journal.start = addDays(submission.end, 1);
+    if (s.journalDeadline) journal.end = s.journalDeadline;
+    Object.assign(journal, { real: true, source: s.journalDeadline ? 'set' : 'unset' });
+
+    // Authors answer an offer within journal_answer_days of it, so the last answers come that long after selection ends
+    const answer = row('journalAnswer');
+    const answerDays = Number(s.journalAnswerDays) || 7;
+    Object.assign(answer, { start: journal.start, end: addDays(journal.end, answerDays), answerDays, real: true, source: 'set' });
+
+    // Presenters can upload once their paper has a slot, so slides open when scheduling starts
+    const slides = row('slides');
+    slides.start = row('scheduling').start;
+    const cutoff = s.slidesCutoffDays === null || s.slidesCutoffDays === undefined || s.slidesCutoffDays === '' ? null : Number(s.slidesCutoffDays);
+    if (cutoff !== null) slides.end = addDays(conference.start, -cutoff);
+    Object.assign(slides, { real: true, source: cutoff !== null ? 'set' : 'unset' });
+
+    return plan;
+}
 
 const PASSES = {
     after: (a, b) => a > b,

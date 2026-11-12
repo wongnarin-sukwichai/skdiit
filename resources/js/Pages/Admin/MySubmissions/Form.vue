@@ -12,7 +12,6 @@ import { useAffiliations } from '@/composables/useAffiliations';
 
 const props = defineProps({
     submission: { type: Object, default: null }, // null = new paper
-    tracks: { type: Array, required: true },
     maxMb: { type: Number, required: true },
     deadline: { type: String, default: null },
     isOpen: { type: Boolean, required: true },
@@ -20,7 +19,7 @@ const props = defineProps({
     phase: { type: String, required: true }, // upcoming | open | closed (Submission::window())
 });
 
-const { t, tr } = useI18n();
+const { t } = useI18n();
 const isEdit = computed(() => !!props.submission);
 // Sent back by the editor: saving resubmits the paper for screening
 const isRevision = computed(() => ['screening_revision', 'review_revision'].includes(props.submission?.status));
@@ -33,7 +32,6 @@ let nextUid = 0;
 const withUid = (author) => ({ ...author, uid: nextUid++ });
 const blankAuthor = () => withUid({ name: '', affiliation: '', email: '' });
 const form = useForm({
-    track_id: props.submission?.track_id ?? '',
     title_th: props.submission?.title_th ?? '',
     title_en: props.submission?.title_en ?? '',
     abstract_th: props.submission?.abstract_th ?? '',
@@ -78,10 +76,9 @@ function onDrop(i) {
     dragFrom.value = dragOver.value = null;
 }
 
-// Required files: all three for a new paper; PDF and Word for a revision (the last Turnitin report stays); none when editing
+// Required files: PDF and Word for a new paper and a revision, none when editing; the Turnitin report is optional (2026-11-12)
 const needs = computed(() => ({
     main: !isEdit.value || isRevision.value,
-    turnitin: !isEdit.value,
 }));
 const current = computed(() => props.submission?.files ?? {});
 // The first error among the supplementary files (supplementary_files.0, .1, ...)
@@ -120,7 +117,7 @@ const sectionTitle = 'mb-4 flex items-center gap-2 text-lg font-semibold';
             :subtitle="isEdit ? submission.code : t('submissions.form.subtitle')"
         />
         <template v-if="isRevision">
-            <RevisionNotice :status="submission.status" :comment="submission.feedback" :due-date="submission.revisionDueDate" in-form />
+            <RevisionNotice :status="submission.status" :comment="submission.feedback" :file="submission.feedbackFile" :due-date="submission.revisionDueDate" in-form />
             <ReviewerFeedback v-if="!toAnswer.length" :rounds="submission.reviewFeedback" />
         </template>
         <DeadlineNotice v-else :opens-at="opensAt" :deadline="deadline" :phase="phase" />
@@ -134,7 +131,9 @@ const sectionTitle = 'mb-4 flex items-center gap-2 text-lg font-semibold';
                 <div v-for="review in toAnswer" :key="review.id" class="mb-4 grid gap-3 md:grid-cols-2">
                     <div class="rounded-lg bg-white p-3 text-sm dark:bg-ink-900">
                         <p class="mb-1 text-xs font-semibold text-neutral-500 dark:text-neutral-400">{{ t('reviews.feedback.reviewer', { n: review.number }) }} · {{ t(`reviews.recommendation.${review.recommendation}`) }}</p>
-                        <p class="max-h-48 overflow-y-auto whitespace-pre-line text-neutral-700 dark:text-neutral-200">{{ review.comment }}</p>
+                        <p v-if="review.comment" class="max-h-48 overflow-y-auto whitespace-pre-line text-neutral-700 dark:text-neutral-200">{{ review.comment }}</p>
+                        <p v-else-if="!review.file" class="text-neutral-400 italic">{{ t('versions.noComment') }}</p>
+                        <a v-if="review.file" :href="review.file.url" class="mt-2 inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-xs transition hover:border-gold-400 dark:border-white/15 dark:bg-ink-900"><Fa icon="paperclip" class="text-gold-500" /> {{ review.file.name }}</a>
                     </div>
                     <label class="block">
                         <span class="mb-1 block text-xs font-semibold text-gold-700 dark:text-gold-300">{{ t('versions.form.answer', { n: review.number }) }} <span v-if="!form.response_file" :class="required">*</span></span>
@@ -165,35 +164,27 @@ const sectionTitle = 'mb-4 flex items-center gap-2 text-lg font-semibold';
                 </div>
             </section>
 
-            <!-- Track -->
-            <section>
-                <h2 :class="sectionTitle"><Fa icon="layer-group" class="text-gold-400" /> {{ t('submissions.fields.track') }}</h2>
-                <select v-model="form.track_id" :disabled="submission?.trackLocked" :class="[input, border(err('track_id')), 'disabled:opacity-60 sm:max-w-md']">
-                    <option value="" disabled>{{ t('submissions.form.chooseTrack') }}</option>
-                    <option v-for="track in tracks" :key="track.id" :value="track.id">{{ tr(track.name) }}</option>
-                </select>
-                <span v-if="err('track_id')" :class="errorText">{{ message(err('track_id')) }}</span>
-                <p class="mt-2 text-xs text-neutral-500 dark:text-neutral-400">{{ submission?.trackLocked ? t('submissions.form.trackLocked') : t('submissions.form.trackHint') }}</p>
-            </section>
-
-            <!-- Paper details in both languages -->
+            <!-- Paper details: English required (left), Thai optional. The editor sets the track at the first gate -->
             <section>
                 <h2 :class="sectionTitle"><Fa icon="file-lines" class="text-gold-400" /> {{ t('submissions.form.details') }}</h2>
                 <div class="grid gap-6 lg:grid-cols-2">
-                    <div v-for="lang in ['th', 'en']" :key="lang" class="space-y-4 rounded-xl border border-neutral-200 p-4 dark:border-white/10">
-                        <p class="text-xs font-semibold text-gold-600 dark:text-gold-400">{{ t(`lang.${lang}`) }}</p>
+                    <div v-for="lang in ['en', 'th']" :key="lang" class="space-y-4 rounded-xl border border-neutral-200 p-4 dark:border-white/10">
+                        <p class="text-xs font-semibold text-gold-600 dark:text-gold-400">
+                            {{ t(`lang.${lang}`) }}
+                            <span v-if="lang === 'th'" class="font-normal text-neutral-400">({{ t('submissions.form.optional') }})</span>
+                        </p>
                         <label class="block">
-                            <span :class="label">{{ t('submissions.fields.title') }} <span :class="required">*</span></span>
+                            <span :class="label">{{ t('submissions.fields.title') }} <span v-if="lang === 'en'" :class="required">*</span></span>
                             <input v-model="form[`title_${lang}`]" :class="[input, border(err(`title_${lang}`))]" maxlength="500">
                             <span v-if="err(`title_${lang}`)" :class="errorText">{{ message(err(`title_${lang}`)) }}</span>
                         </label>
                         <label class="block">
-                            <span :class="label">{{ t('submissions.fields.abstract') }} <span :class="required">*</span></span>
+                            <span :class="label">{{ t('submissions.fields.abstract') }} <span v-if="lang === 'en'" :class="required">*</span></span>
                             <textarea v-model="form[`abstract_${lang}`]" rows="8" :class="[input, border(err(`abstract_${lang}`))]" maxlength="10000" />
                             <span v-if="err(`abstract_${lang}`)" :class="errorText">{{ message(err(`abstract_${lang}`)) }}</span>
                         </label>
                         <label class="block">
-                            <span :class="label">{{ t('submissions.fields.keywords') }} <span :class="required">*</span></span>
+                            <span :class="label">{{ t('submissions.fields.keywords') }} <span v-if="lang === 'en'" :class="required">*</span></span>
                             <input v-model="form[`keywords_${lang}`]" :class="[input, border(err(`keywords_${lang}`))]" :placeholder="t(`submissions.form.keywordsPlaceholder.${lang}`)" maxlength="500">
                             <span v-if="err(`keywords_${lang}`)" :class="errorText">{{ message(err(`keywords_${lang}`)) }}</span>
                         </label>
@@ -270,7 +261,7 @@ const sectionTitle = 'mb-4 flex items-center gap-2 text-lg font-semibold';
                 <div class="grid gap-6 md:grid-cols-2">
                     <FilePick v-model="form.file" :types="['pdf']" :max-mb="maxMb" icon="file-pdf" :label="t('submissions.files.pdf')" :hint="t('submissions.files.pdfHint')" :required="needs.main" :current="current.pdf" :error="err('file')" />
                     <FilePick v-model="form.word_file" :types="['doc', 'docx']" :max-mb="maxMb" icon="file-word" :label="t('submissions.files.word')" :hint="t('submissions.files.wordHint')" :required="needs.main" :current="current.word" :error="err('word_file')" />
-                    <FilePick v-model="form.turnitin_file" :types="['pdf']" :max-mb="maxMb" icon="file-circle-check" :label="t('submissions.files.turnitin')" :hint="t(isRevision ? 'submissions.files.turnitinKeep' : 'submissions.files.turnitinHint')" :required="needs.turnitin" :current="current.turnitin" :error="err('turnitin_file')" />
+                    <FilePick v-model="form.turnitin_file" :types="['pdf']" :max-mb="maxMb" icon="file-circle-check" :label="t('submissions.files.turnitin')" :hint="t(isRevision ? 'submissions.files.turnitinKeep' : 'submissions.files.turnitinHint')" :current="current.turnitin" :error="err('turnitin_file')" />
                     <div>
                         <FilePick v-model="form.supplementary_files" multiple :types="['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'jpg', 'jpeg', 'png', 'zip']" :max-mb="maxMb" icon="paperclip" :label="t('submissions.files.supplementary')" :hint="t('submissions.files.supplementaryHint')" :error="supplementaryError" />
                         <ul v-if="current.supplementary?.length" class="mt-2 space-y-1 text-xs text-neutral-500 dark:text-neutral-400">

@@ -7,7 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * One uploaded file of a paper, by kind: manuscript (the PDF of a version), word (the same version as Word),
- * turnitin (similarity report, PDF), supplementary (any other file, optional), response (letter sent with a revision).
+ * turnitin (similarity report, PDF), supplementary (any other file, optional), response (letter sent with a revision),
+ * editor (a file the editor sends the author with a screening or post-review decision; the event's meta.file points to it).
  */
 class SubmissionFile extends Model
 {

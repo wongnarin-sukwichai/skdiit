@@ -48,7 +48,10 @@ const until = (iso) => formatDate(iso, { day: 'numeric', month: 'long', year: 'n
         <template v-else>
             <p class="text-sm text-neutral-600 dark:text-neutral-300">{{ t(publication.cameraReady ? 'publication.cameraReady.done' : 'publication.cameraReady.intro') }}</p>
             <FileLink v-if="publication.cameraReady" :file="publication.cameraReady" icon="file-circle-check" />
+            <p v-if="submission.cameraReadyApproved" class="text-sm text-emerald-600 dark:text-emerald-400"><Fa icon="circle-check" class="mr-1" />{{ t('publication.check.authorApproved') }}</p>
+            <p v-else-if="status === 'camera_ready'" class="text-sm text-sky-700 dark:text-sky-300"><Fa icon="magnifying-glass" class="mr-1" />{{ t('publication.check.authorChecking') }}</p>
             <FileUploadForm
+                v-if="!submission.cameraReadyApproved"
                 :url="`/admin/my-submissions/${submission.id}/camera-ready`"
                 :types="['pdf', 'doc', 'docx']"
                 :max-mb="maxMb"

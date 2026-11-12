@@ -49,6 +49,9 @@ class WorkflowMail
             SubmissionAction::PresentationScheduled => [$event->meta['at'] ?? null ? 'presentation_scheduled' : null, $author],
             SubmissionAction::ReviewerAssigned => ['reviewer_assigned', User::find($event->meta['reviewer_id'] ?? null)],
             SubmissionAction::ReviewReminded => ['review_reminder', User::find($event->meta['reviewer_id'] ?? null)],
+            SubmissionAction::CameraReadyApproved => ['camera_ready_approved', $author],
+            SubmissionAction::CameraReadyFixRequested => ['camera_ready_fix', $author],
+            SubmissionAction::AcceptanceCancelled => ['acceptance_cancelled', $author],
             default => [null, null],
         };
         if (! $key || ! $to) {
@@ -63,7 +66,7 @@ class WorkflowMail
         $text = EmailTemplate::render($key, [
             'name' => $to->name,
             'code' => $submission->code,
-            'title' => $submission->title_th,
+            'title' => $submission->title_th ?: $submission->title_en, // Thai is optional
             'link' => url($toReviewer ? '/admin/reviews' : "/admin/my-submissions/{$submission->id}"),
             'comment' => $comment,
             'due' => $day($event->meta['due'] ?? $submission->revision_due_date?->toDateString()),

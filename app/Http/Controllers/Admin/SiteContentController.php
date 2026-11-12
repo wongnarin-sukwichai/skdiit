@@ -25,6 +25,7 @@ class SiteContentController extends Controller
         'max' => 'validation.too_long',
         'email' => 'validation.email',
         'date_format' => 'validation.date',
+        'endDate.after_or_equal' => 'validation.end_after_start',
         'file.mimes' => 'validation.file_type',
         'file.max' => 'validation.file_size',
         'file.uploaded' => 'validation.file_size',
@@ -44,6 +45,8 @@ class SiteContentController extends Controller
             'shortName' => ['required', 'string', 'max:40'],
             ...self::bilingual('fullName', 255),
             'date' => ['required', 'date_format:Y-m-d'],
+            // A conference over several days (2026-11-12): the last day; empty = one day
+            'endDate' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date'],
             ...self::bilingual('venue', 255),
             'email' => ['required', 'email', 'max:255'],
             'phone' => ['required', 'string', 'max:50'],

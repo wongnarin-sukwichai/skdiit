@@ -5,7 +5,7 @@ import Card from '@/Components/Admin/Card.vue';
 import PageHeader from '@/Components/Admin/PageHeader.vue';
 import AuthorJourney from '@/Components/Admin/Journey/AuthorJourney.vue';
 import SubmissionStatusBadge from '@/Components/Admin/SubmissionStatusBadge.vue';
-import { timelinePlan } from '@/data/mock';
+import { useSchedulePlan } from '@/composables/useSchedulePlan';
 import { addDays, today as todayIn } from '@/utils/timeline';
 import { useI18n } from '@/i18n';
 import { useConferenceDates } from '@/composables/useConferenceDates';
@@ -19,7 +19,8 @@ const props = defineProps({
 const { t } = useI18n();
 const today = todayIn();
 
-const planned = (key) => timelinePlan.find((p) => p.key === key);
+const plan = useSchedulePlan();
+const planned = (key) => plan.value.find((p) => p.key === key);
 const dates = useConferenceDates();
 const deadline = computed(() => props.deadline ?? `${planned('submission').end}T23:59:00+07:00`);
 

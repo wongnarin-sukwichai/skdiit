@@ -43,7 +43,8 @@ export function t(key, params = {}) {
 /** Pick the active-language field from bilingual data like { en: '...', th: '...' }. */
 export function tr(value) {
     if (value == null || typeof value !== 'object') return value;
-    return value[locale.value] ?? value.en;
+    // An empty text (e.g. an optional Thai title) falls back to the other language
+    return value[locale.value] || value.en || value.th;
 }
 
 /** Format a date (string or Date) for the active language; Thai uses the Buddhist calendar. */

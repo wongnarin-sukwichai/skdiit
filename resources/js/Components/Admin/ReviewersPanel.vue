@@ -81,6 +81,17 @@ function toggle(id) {
 const input = 'rounded-lg border bg-neutral-50 px-3 py-2.5 text-sm outline-none transition focus:border-gold-400 focus:ring-2 focus:ring-gold-400/20 dark:bg-ink-800 dark:[color-scheme:dark]';
 const border = (error) => (error ? 'border-red-500/70' : 'border-neutral-300 dark:border-white/10');
 const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral-300 text-neutral-600 transition hover:border-gold-400 hover:text-gold-500 dark:border-white/15 dark:text-neutral-200';
+
+// The reviewer's file: pass it on to the author (default) or hold it back
+const sharing = ref(null);
+function toggleShare(review) {
+    sharing.value = review.id;
+    router.put(`/admin/review-files/${review.id}/to-author`, { to_author: !review.attachment.toAuthor }, {
+        preserveScroll: true,
+        preserveState: true,
+        onFinish: () => { sharing.value = null; },
+    });
+}
 </script>
 
 <template>
@@ -126,7 +137,17 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
 
                     <div class="flex gap-1.5">
                         <a v-if="review.attachment" :href="review.attachment.url" :class="iconBtn" :title="`${t('reviews.form.attachment')}: ${review.attachment.name}`"><Fa icon="paperclip" class="text-xs" /></a>
-                        <button v-if="review.comment" :class="iconBtn" :title="t('reviews.panel.showComment')" @click="toggle(review.id)">
+                        <!-- The reviewer's file goes to the author (default) unless held back here -->
+                        <button
+                            v-if="review.attachment && review.state === 'submitted'"
+                            :class="[iconBtn, review.attachment.toAuthor ? 'border-emerald-400 text-emerald-600 dark:border-emerald-500/50 dark:text-emerald-300' : '']"
+                            :title="t(review.attachment.toAuthor ? 'reviews.panel.fileToAuthorOn' : 'reviews.panel.fileToAuthorOff')"
+                            :disabled="sharing === review.id"
+                            @click="toggleShare(review)"
+                        >
+                            <Fa :icon="review.attachment.toAuthor ? 'eye' : 'eye-slash'" class="text-xs" />
+                        </button>
+                        <button v-if="review.comment || review.commentToEditor || review.scores?.length" :class="iconBtn" :title="t('reviews.panel.showComment')" @click="toggle(review.id)">
                             <Fa :icon="expanded.has(review.id) ? 'chevron-up' : 'comment'" class="text-xs" />
                         </button>
                         <!-- Reminder (sample until email is set up) -->
@@ -148,7 +169,8 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
                 <Transition name="fade">
                     <blockquote v-if="expanded.has(review.id)" class="mt-3 rounded-lg bg-neutral-50 px-3 py-2 text-sm whitespace-pre-line text-neutral-700 dark:bg-white/5 dark:text-neutral-200">
                         <ReviewScores v-if="review.scores.length" :scores="review.scores" :average="review.average" class="mb-3 whitespace-normal" />
-                        {{ review.comment }}
+                        <template v-if="review.comment">{{ review.comment }}</template>
+                        <span v-else class="text-neutral-400 italic">{{ t('versions.noComment') }}</span>
                         <span v-if="review.commentToEditor" class="mt-2 block rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 dark:border-amber-400/20 dark:bg-amber-400/5">
                             <b class="text-xs text-amber-700 dark:text-amber-300"><Fa icon="lock" class="mr-1" />{{ t('reviews.form.toEditor') }}</b>
                             <span class="block whitespace-pre-line">{{ review.commentToEditor }}</span>

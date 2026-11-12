@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Enums\SubmissionStatus;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Illuminate\Support\Facades\Storage;
 use App\Models\Setting;
@@ -71,7 +72,8 @@ class ReviewController extends Controller
         $data = $request->validate([
             ...$scoreRules,
             'recommendation' => ['required', Rule::enum(ReviewRecommendation::class)],
-            'comment' => ['required', 'string', 'max:20000'],
+            // The comment to the author is optional (2026-11-12): scores and the recommendation are what is required
+            'comment' => ['nullable', 'string', 'max:20000'],
             'comment_to_editor' => ['nullable', 'string', 'max:20000'],
             // Declared with every evaluation: no conflict of interest with this paper
             'no_conflict' => ['accepted'],
@@ -138,13 +140,33 @@ class ReviewController extends Controller
         return back()->with('success', 'reviews.unavailable.sent');
     }
 
-    /** The reviewer's attachment: for that reviewer and the editors/admin only (authors do not get it: files can carry names). */
+    /**
+     * The reviewer's attachment: that reviewer and the editors/admin, and (2026-11-12) the paper's author once the
+     * round is decided, unless an editor held it back. The author gets it renamed "Reviewer N's notes".
+     */
     public function attachment(Request $request, Review $review): StreamedResponse
     {
         $user = $request->user();
-        abort_unless($review->attachment_path && ($review->reviewer_id === $user->id || $user->moduleAccess('submissions')), 404);
+        abort_unless((bool) $review->attachment_path, 404);
+        if ($review->reviewer_id === $user->id || $user->moduleAccess('submissions')) {
+            return Storage::download($review->attachment_path, $review->attachment_name);
+        }
 
-        return Storage::download($review->attachment_path, $review->attachment_name);
+        $paper = $review->submission;
+        $decided = $paper->status === SubmissionStatus::InReview ? $review->round < $paper->review_round : $review->round <= $paper->review_round;
+        abort_unless($paper->user_id === $user->id && $review->attachment_to_author && $review->isSubmitted() && $decided, 404);
+
+        return Storage::download($review->attachment_path, Review::authorFileName($review->numberForAuthor(), $review->attachment_name));
+    }
+
+    /** Editors pass the reviewer's file on to the author (the default) or hold it back. */
+    public function attachmentToAuthor(Request $request, Review $review): RedirectResponse
+    {
+        abort_unless((bool) $review->attachment_path, 404);
+        $data = $request->validate(['to_author' => ['required', 'boolean']]);
+        $review->forceFill(['attachment_to_author' => $data['to_author']])->save();
+
+        return back()->with('success', $data['to_author'] ? 'reviews.toast.fileShared' : 'reviews.toast.fileHeld');
     }
 
     /** One score (1-5) per criterion: all required to send, any subset for a draft. */

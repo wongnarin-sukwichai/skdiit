@@ -10,12 +10,16 @@ import InternalNotes from '@/Components/Admin/InternalNotes.vue';
 import SubmissionHistory from '@/Components/Admin/SubmissionHistory.vue';
 import ReviewersPanel from '@/Components/Admin/ReviewersPanel.vue';
 import DecisionPanel from '@/Components/Admin/DecisionPanel.vue';
+import FilePick from '@/Components/Admin/FilePick.vue';
+import { ATTACHMENT_TYPES as attachmentTypes } from '@/utils/editorAttachment';
 import PublicationStaffPanel from '@/Components/Admin/PublicationStaffPanel.vue';
 import JournalPanel from '@/Components/Admin/JournalPanel.vue';
 import { useI18n } from '@/i18n';
 
 const props = defineProps({
     versions: { type: Array, required: true }, // manuscript versions with the author's answers
+    maxMb: { type: Number, required: true }, // upload limit, for the editor's attachment
+    sessionOptions: { type: Array, default: () => [] }, // presentation sessions (SubmissionController::show)
     files: { type: Object, required: true }, // current PDF, Word, Turnitin and supplementary files
     notes: { type: Array, required: true }, // internal notes (staff only)
     submission: { type: Object, required: true },
@@ -41,8 +45,8 @@ const props = defineProps({
 const { t, tr, formatDate } = useI18n();
 
 // Editors decide which track the paper belongs to
-const trackForm = useForm({ track_id: props.submission.track.id });
-watch(() => props.submission.track.id, (id) => {
+const trackForm = useForm({ track_id: props.submission.track?.id ?? '' });
+watch(() => props.submission.track?.id ?? '', (id) => {
     trackForm.defaults({ track_id: id });
     trackForm.reset();
 });
@@ -56,11 +60,12 @@ const decisions = [
     { value: 'revise', icon: 'pen', active: 'border-orange-500 bg-orange-50 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300' },
     { value: 'reject', icon: 'xmark', active: 'border-red-500 bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-300' },
 ];
-const screenForm = useForm({ decision: '', comment: '' });
+const screenForm = useForm({ decision: '', comment: '', attachment: null });
 const confirmOpen = ref(false);
 function screen() {
     screenForm.post(`/admin/submissions/${props.submission.id}/screening`, {
         preserveScroll: true,
+        forceFormData: true,
         onSuccess: () => screenForm.reset(),
         onFinish: () => (confirmOpen.value = false),
     });
@@ -136,6 +141,7 @@ const box = 'rounded-xl border border-neutral-200 p-4 dark:border-white/10';
                             class="w-full rounded-lg border border-neutral-300 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-gold-400 focus:ring-2 focus:ring-gold-400/20 dark:border-white/10 dark:bg-ink-800"
                         />
                     </label>
+                    <FilePick v-model="screenForm.attachment" :types="attachmentTypes" :max-mb="maxMb" icon="paperclip" :label="t('decision.attachment')" :hint="t('decision.attachmentHint')" :error="screenForm.errors.attachment" />
                     <p class="text-xs text-neutral-500 dark:text-neutral-400"><Fa icon="circle-info" class="mr-1 text-gold-500" /> {{ t('submissions.screening.note') }}</p>
                     <button
                         type="submit"
@@ -156,8 +162,8 @@ const box = 'rounded-xl border border-neutral-200 p-4 dark:border-white/10';
         </div>
 
         <JournalPanel :submission="submission" :journal="journal" :deadline-passed="phase === 'closed'" />
-        <DecisionPanel :submission="submission" :can-decide="canDecide" :can-start-round="canStartRound" />
-        <PublicationStaffPanel :submission="submission" :can-schedule="canSchedule" />
+        <DecisionPanel :submission="submission" :can-decide="canDecide" :can-start-round="canStartRound" :max-mb="maxMb" />
+        <PublicationStaffPanel :submission="submission" :can-schedule="canSchedule" :max-mb="maxMb" :session-options="sessionOptions" />
         <!-- Outcome so far, for staff -->
         <div v-if="submission.revisionDueDate" class="flex items-center gap-2 text-sm text-neutral-500 dark:text-neutral-400">
             <Fa icon="calendar-days" /> {{ t('decision.authorDue', { date: formatDate(submission.revisionDueDate, { day: 'numeric', month: 'long', year: 'numeric' }) }) }}

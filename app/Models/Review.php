@@ -16,6 +16,7 @@ class Review extends Model
     protected function casts(): array
     {
         return [
+            'attachment_to_author' => 'boolean',
             'due_date' => 'date',
             'recommendation' => ReviewRecommendation::class,
             'submitted_at' => 'datetime',
@@ -107,6 +108,33 @@ class Review extends Model
         );
     }
 
+    /**
+     * The reviewer's file as the author gets it (2026-11-12): sent, passed on by the editors, and renamed
+     * "Reviewer N's notes" so the original file name does not show who wrote it. null = nothing for the author.
+     */
+    public function fileForAuthor(int $number): ?array
+    {
+        if (! $this->attachment_path || ! $this->attachment_to_author || ! $this->isSubmitted()) {
+            return null;
+        }
+
+        return ['name' => static::authorFileName($number, $this->attachment_name), 'url' => "/admin/review-files/{$this->id}"];
+    }
+
+    public static function authorFileName(int $number, string $original): string
+    {
+        $ext = pathinfo($original, PATHINFO_EXTENSION);
+
+        return "ไฟล์โน้ตของผู้ประเมินคนที่ {$number}".($ext ? ".{$ext}" : '');
+    }
+
+    /** The number the author knows this reviewer by: order of the evaluations sent in its round. */
+    public function numberForAuthor(): int
+    {
+        return static::where('submission_id', $this->submission_id)->where('round', $this->round)
+            ->whereNotNull('submitted_at')->where('id', '<=', $this->id)->count();
+    }
+
     /** 'submitted' | 'closed' | 'overdue' | 'pending' */
     public function state(): string
     {
@@ -149,6 +177,8 @@ class Review extends Model
                 'name' => $this->attachment_name,
                 'size' => $this->attachment_size,
                 'url' => "/admin/review-files/{$this->id}",
+                // Goes to the author with the decision unless an editor holds it back
+                'toAuthor' => (bool) $this->attachment_to_author,
             ] : null,
             'reviewer' => $withReviewer ? $this->reviewer?->only('id', 'name', 'email') : null,
             // Staff only: the latest reminder and who sent it

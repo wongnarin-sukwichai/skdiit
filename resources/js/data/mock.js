@@ -461,17 +461,20 @@ export const activityLog = (() => {
  *   public: also listed in the important dates on the public site
  */
 export const timelinePlan = [
-    { key: 'registration', icon: 'users', who: 'all', start: '2026-09-01', end: '2027-01-15', mode: 'lock', public: true },
-    { key: 'submission', icon: 'file-arrow-up', who: 'author', start: '2026-09-01', end: '2026-11-30', mode: 'lock', public: true },
-    { key: 'journalSelect', icon: 'newspaper', who: 'journal', start: '2026-12-01', end: '2026-12-04', mode: 'warn' },
-    { key: 'journalFinal', icon: 'newspaper', who: 'journal', start: '2026-12-02', end: '2026-12-07', mode: 'lock' },
-    { key: 'screening', icon: 'magnifying-glass', who: 'editor', start: '2026-12-02', end: '2026-12-08', mode: 'warn', perItem: { days: 3, unit: 'paper' } },
-    { key: 'review', icon: 'user-check', who: 'reviewer', start: '2026-12-03', end: '2026-12-16', mode: 'warn', perItem: { days: 7, unit: 'reviewer' } },
-    { key: 'notify', icon: 'bullhorn', who: 'editor', start: '2026-12-20', end: '2026-12-20', mode: 'info', milestone: true, public: true },
-    { key: 'revision', icon: 'pen-to-square', who: 'author', start: '2026-12-21', end: '2026-12-30', mode: 'lock', perItem: { days: 7, unit: 'paper' } },
-    { key: 'finalDecision', icon: 'gavel', who: 'editor', start: '2026-12-24', end: '2027-01-03', mode: 'warn' },
-    { key: 'cameraReady', icon: 'file-circle-check', who: 'author', start: '2026-12-20', end: '2027-01-08', mode: 'lock', public: true },
-    { key: 'scheduling', icon: 'table-columns', who: 'editor', start: '2027-01-04', end: '2027-01-15', mode: 'info' },
-    { key: 'slides', icon: 'file-powerpoint', who: 'author', start: '2027-01-04', end: '2027-01-25', mode: 'lock' },
+    // Client dates (2026-11-12): submission 1 Nov–15 Dec 2026, peer review 16–28 Dec, notification 4 Jan 2027,
+    // camera-ready 4–11 Jan, conference 27–28 Jan. The rows in between are fitted around them.
+    { key: 'registration', icon: 'users', who: 'all', start: '2026-11-01', end: '2027-01-15', mode: 'lock', public: true },
+    { key: 'submission', icon: 'file-arrow-up', who: 'author', start: '2026-11-01', end: '2026-12-15', mode: 'lock', public: true },
+    { key: 'journalSelect', icon: 'newspaper', who: 'selection', start: '2026-12-16', end: '2026-12-20', mode: 'warn' },
+    // Offers made during selection: each author has journal_answer_days to answer (ScheduleTab works the end out)
+    { key: 'journalAnswer', icon: 'reply', who: 'author', start: '2026-12-16', end: '2026-12-27', mode: 'info' },
+    { key: 'screening', icon: 'magnifying-glass', who: 'editor', start: '2026-12-16', end: '2026-12-27', mode: 'warn', perItem: { days: 3, unit: 'paper' } },
+    { key: 'review', icon: 'user-check', who: 'reviewer', start: '2026-12-16', end: '2026-12-28', mode: 'warn', perItem: { days: 7, unit: 'reviewer' }, public: true },
+    { key: 'notify', icon: 'bullhorn', who: 'editor', start: '2027-01-04', end: '2027-01-04', mode: 'info', milestone: true, public: true },
+    { key: 'revision', icon: 'pen-to-square', who: 'author', start: '2027-01-04', end: '2027-01-10', mode: 'lock', perItem: { days: 7, unit: 'paper' } },
+    { key: 'finalDecision', icon: 'gavel', who: 'editor', start: '2027-01-05', end: '2027-01-10', mode: 'warn' },
+    { key: 'cameraReady', icon: 'file-circle-check', who: 'author', start: '2027-01-04', end: '2027-01-11', mode: 'lock', public: true },
+    { key: 'scheduling', icon: 'table-columns', who: 'editor', start: '2027-01-12', end: '2027-01-20', mode: 'info' },
+    { key: 'slides', icon: 'file-powerpoint', who: 'author', start: '2027-01-12', end: '2027-01-26', mode: 'lock' },
     { key: 'conference', icon: 'star', who: 'all', start: '2027-01-28', end: '2027-01-28', mode: 'info', milestone: true, public: true },
 ];

@@ -17,8 +17,8 @@ const { t, tr, formatDate } = useI18n();
 
 const STEPS = [
     { key: 'submit', icon: 'file-arrow-up' },
-    { key: 'review', icon: 'magnifying-glass' },
-    { key: 'revision', icon: 'pen' },
+    { key: 'screening', icon: 'magnifying-glass' },
+    { key: 'peerReview', icon: 'user-check' },
     { key: 'result', icon: 'flag' },
     { key: 'final', icon: 'file-circle-check' },
     { key: 'present', icon: 'person-chalkboard' },
@@ -26,7 +26,7 @@ const STEPS = [
 
 // The step each paper is on (journeySteps' current or failed step), and whether it ended there
 function placeOf(paper) {
-    const steps = journeySteps({ status: paper.status, editable: paper.canEdit && paper.status === 'submitted', hadRevision: paper.hadRevision });
+    const steps = journeySteps({ status: paper.status, editable: paper.canEdit && paper.status === 'submitted', hadRevision: paper.hadRevision, finalApproved: !!paper.cameraReadyApproved, finalFix: !!paper.cameraReadyFix });
     const now = steps.find((s) => ['current', 'failed'].includes(s.state)) ?? steps[steps.length - 1];
     return { key: now.key === 'journal' ? 'result' : now.key, failed: now.state === 'failed', journal: now.key === 'journal' };
 }

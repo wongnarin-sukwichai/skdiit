@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
@@ -24,6 +25,7 @@ class Submission extends Model
             'status' => SubmissionStatus::class,
             'revision_due_date' => 'date',
             'camera_ready_at' => 'datetime',
+            'camera_ready_approved_at' => 'datetime',
             'slides_at' => 'datetime',
             'presentation_at' => 'datetime',
             'journal_answer_due' => 'date',
@@ -173,6 +175,24 @@ class Submission extends Model
      * Files that come with a manuscript version: ['word' => file, 'turnitin' => file, 'supplementary' => [files]].
      * A Turnitin report left out of a revision keeps the earlier one as the current report.
      */
+    /**
+     * A file the editor sends the author with a screening or post-review decision (2026-11-12): an annotated PDF, a
+     * template, ... Kept as kind 'editor' with the version and round it answers; the event's meta points to it.
+     */
+    public function addEditorFile(?UploadedFile $file, string $stage, User $by): ?array
+    {
+        if (! $file) {
+            return null;
+        }
+        $stored = $this->files()->create([
+            'version' => $this->currentVersion(), 'kind' => 'editor', 'stage' => $stage, 'round' => (int) $this->review_round,
+            'path' => $file->store('submissions/editor'), 'name' => $file->getClientOriginalName(), 'size' => $file->getSize(),
+            'user_id' => $by->id,
+        ]);
+
+        return ['id' => $stored->id, 'name' => $stored->name, 'url' => $stored->toClient()['url']];
+    }
+
     public function addExtraFiles(array $files, int $version, string $stage, ?User $by): void
     {
         foreach ($files as $kind => $list) {
@@ -210,13 +230,17 @@ class Submission extends Model
             return [];
         }
 
+        // Numbered like the author sees them; a reviewer who left no comment and no file has nothing to answer
         return $this->reviews()->whereNotNull('submitted_at')->where('round', $this->review_round)->orderBy('id')->get()
             ->values()->map(fn (Review $review, int $i) => [
                 'id' => $review->id,
                 'number' => $i + 1,
                 'recommendation' => $review->recommendation->value,
                 'comment' => $review->comment,
-            ])->all();
+                'file' => $review->fileForAuthor($i + 1),
+            ])
+            ->filter(fn (array $review) => trim((string) $review['comment']) !== '' || $review['file'])
+            ->values()->all();
     }
 
     /**
@@ -256,6 +280,13 @@ class Submission extends Model
                     'number' => $response->review_id ? ($numbers[$response->review_id] ?? null) : null,
                     'reviewer' => $viewer === 'staff' ? $response->review?->reviewer?->name : null,
                     'comment' => $response->review?->comment,
+                    // The reviewer's notes file next to the answer, to check the revision against it
+                    'file' => match (true) {
+                        ! $response->review?->attachment_path => null,
+                        $viewer === 'staff' => ['name' => $response->review->attachment_name, 'url' => "/admin/review-files/{$response->review->id}"],
+                        $viewer === 'author' => $response->review->fileForAuthor($numbers[$response->review_id] ?? 1),
+                        default => null,
+                    },
                     'body' => $response->body,
                 ])->values(),
             ];
@@ -270,7 +301,8 @@ class Submission extends Model
      *   screening      waiting for screening
      *   needReviewers  in review with nobody assigned this round
      *   readyToDecide  in review and every reviewer of this round has sent their evaluation
-     *   revised        the author sent a revision
+     *   revised        the author sent a revision after review (a revision after screening waits in "screening",
+     *                  marked "revision N" by RevisionBadge)
      *   overdue        a reviewer of this round is past the due date
      *   unavailable    a reviewer of this round said they cannot review (replace them)
      */
@@ -290,6 +322,75 @@ class Submission extends Model
                 ->whereHas('reviews', fn ($review) => $open($review)->whereNotNull('unavailable_at')),
             default => null,
         };
+    }
+
+    /**
+     * Tabs of Submissions (2026-11-12): where each conference-track paper stands, one tab per paper. A paper sent back
+     * for revision stays in the tab it was sent back from (its status column says the author is revising) and comes
+     * back to the matching "revised" tab:
+     *   screening         new papers to screen, and those sent back at screening (author revising)
+     *   revisedScreening  revisions sent back after screening, to screen again (and if sent back again)
+     *   findReviewers     passed screening: nobody assigned this round, a reviewer late, or one who cannot review
+     *   reviewing         reviewers at work
+     *   decide            every review in, or a revision sent back after review: accept, revise, reject or review again
+     *                     (sent back after review stays here while the author revises)
+     *   awaitingFinal     accepted: waiting for the camera-ready file, or received and waiting for the editors' check
+     *   cameraReady       camera-ready checked (approved): nothing left to do
+     * Rejected papers are only under "all".
+     */
+    public const STAGES = ['screening', 'revisedScreening', 'findReviewers', 'reviewing', 'decide', 'awaitingFinal', 'cameraReady'];
+
+    /** Old work-queue links (?queue=) open the matching tab. */
+    public const STAGE_OF_QUEUE = ['screening' => 'screening', 'needReviewers' => 'findReviewers', 'overdue' => 'findReviewers', 'unavailable' => 'findReviewers', 'readyToDecide' => 'decide', 'revised' => 'decide'];
+
+    public function scopeStage(Builder $query, string $stage): void
+    {
+        // Revisions the author sent back from screening / from review (the event keeps the status it left)
+        $back = fn (SubmissionStatus $from) => fn ($event) => $event->where('action', SubmissionAction::Resubmitted)->where('from_status', $from->value);
+        $round = fn ($review) => $review->whereColumn('reviews.round', 'submissions.review_round');
+        $open = fn ($review) => $round($review)->whereNull('submitted_at');
+        $needsReviewers = fn ($q) => $q->whereDoesntHave('reviews', $round)
+            ->orWhereHas('reviews', fn ($review) => $open($review)->where(fn ($late) => $late->whereDate('due_date', '<', today())->orWhereNotNull('unavailable_at')));
+        $screeningSide = [SubmissionStatus::Screening, SubmissionStatus::Revision];
+
+        match ($stage) {
+            'screening' => $query->whereIn('status', $screeningSide)->whereDoesntHave('events', $back(SubmissionStatus::Revision)),
+            'revisedScreening' => $query->whereIn('status', $screeningSide)->whereHas('events', $back(SubmissionStatus::Revision)),
+            'findReviewers' => $query->where('status', SubmissionStatus::InReview)->where($needsReviewers),
+            // Reviewers still at work (nobody missing, late or unavailable)
+            'reviewing' => $query->where('status', SubmissionStatus::InReview)->whereNot($needsReviewers)->whereHas('reviews', $open),
+            // Waiting for the editors' decision: every review of the round in, or a revision sent back after review;
+            // sent back for revision after review stays here while the author revises
+            'decide' => $query->where(fn ($q) => $q
+                ->where(fn ($q) => $q->where('status', SubmissionStatus::InReview)->whereHas('reviews', $round)->whereDoesntHave('reviews', $open))
+                ->orWhereIn('status', [SubmissionStatus::Revised, SubmissionStatus::ReviewRevision])),
+            // Accepted: waiting for the camera-ready file (or its fixes), or received and waiting for the editors' check
+            'awaitingFinal' => $query->where(fn ($q) => $q->where('status', SubmissionStatus::Accepted)
+                ->orWhere(fn ($q) => $q->where('status', SubmissionStatus::CameraReady)->whereNull('camera_ready_approved_at'))),
+            // Camera-ready checked: nothing left to do here
+            'cameraReady' => $query->where('status', SubmissionStatus::CameraReady)->whereNotNull('camera_ready_approved_at'),
+            default => null,
+        };
+    }
+
+    /**
+     * Each tab's number: the papers waiting for the editors ('count', gold), and every paper in the tab ('total').
+     * Authors revising and reviewers at work are not the editors' move; camera-ready waits for the author.
+     */
+    public static function stageCounts(): array
+    {
+        $in = fn (string $stage) => static::query()->currentYear()->stage($stage);
+        $editorsMove = [
+            'screening' => fn () => $in('screening')->where('status', SubmissionStatus::Screening)->count(),
+            'revisedScreening' => fn () => $in('revisedScreening')->where('status', SubmissionStatus::Screening)->count(),
+            'findReviewers' => fn () => $in('findReviewers')->count(),
+            'reviewing' => fn () => 0, // the reviewers' move
+            'decide' => fn () => $in('decide')->where('status', '!=', SubmissionStatus::ReviewRevision)->count(),
+            'awaitingFinal' => fn () => $in('awaitingFinal')->where('status', SubmissionStatus::CameraReady)->count(),
+            'cameraReady' => fn () => 0,
+        ];
+
+        return collect(self::STAGES)->mapWithKeys(fn (string $stage) => [$stage => ['count' => $editorsMove[$stage](), 'total' => $in($stage)->count()]])->all();
     }
 
     /**
@@ -353,7 +454,13 @@ class Submission extends Model
             SubmissionStatus::Revision, SubmissionStatus::ReviewRevision => ['who' => 'author', 'task' => 'revise'],
             SubmissionStatus::Revised => ['who' => 'editor', 'task' => 'decideRevision'],
             SubmissionStatus::Accepted => ['who' => 'author', 'task' => 'cameraReady'],
-            SubmissionStatus::CameraReady, SubmissionStatus::JournalAccepted => match (true) {
+            SubmissionStatus::CameraReady => match (true) {
+                ! $this->camera_ready_approved_at => ['who' => 'editor', 'task' => 'checkCameraReady'],
+                ! $scheduled => ['who' => 'editor', 'task' => 'schedule'],
+                ! $this->slides_path => ['who' => 'author', 'task' => 'slides'],
+                default => ['who' => 'none', 'task' => 'done'],
+            },
+            SubmissionStatus::JournalAccepted => match (true) {
                 ! $scheduled => ['who' => 'editor', 'task' => 'schedule'],
                 ! $this->slides_path => ['who' => 'author', 'task' => 'slides'],
                 default => ['who' => 'none', 'task' => 'done'],
@@ -363,6 +470,32 @@ class Submission extends Model
     }
 
     /** `had_revision`: the author has sent a revision before (the author's journey keeps the revision step). */
+    /**
+     * Papers that can be given a presentation slot (2026-11-12): camera-ready approved by the editors,
+     * or gone to a journal (they still present at the conference).
+     */
+    public function canBeScheduled(): bool
+    {
+        return ($this->status === SubmissionStatus::CameraReady && $this->camera_ready_approved_at) || $this->status === SubmissionStatus::JournalAccepted;
+    }
+
+    public function scopeSchedulable(Builder $query): void
+    {
+        $query->where(fn ($q) => $q->where(fn ($q) => $q->where('status', SubmissionStatus::CameraReady)->whereNotNull('camera_ready_approved_at'))
+            ->orWhere('status', SubmissionStatus::JournalAccepted));
+    }
+
+    public function presentationSession(): BelongsTo
+    {
+        return $this->belongsTo(PresentationSession::class);
+    }
+
+    /** How many revisions the author has sent back (revision_count), for the "revision N" badge. */
+    public function scopeWithRevisionCount(Builder $query): void
+    {
+        $query->withCount(['events as revision_count' => fn ($event) => $event->where('action', SubmissionAction::Resubmitted)]);
+    }
+
     public function scopeWithHadRevision(Builder $query): void
     {
         $query->withExists(['events as had_revision' => fn ($event) => $event->where('action', SubmissionAction::Resubmitted)]);
@@ -496,18 +629,12 @@ class Submission extends Model
                     'number' => $i + 1,
                     'recommendation' => $review->recommendation->value,
                     'comment' => $review->comment,
+                    'file' => $review->fileForAuthor($i + 1),
                 ]),
             ])
             ->sortKeysDesc()
             ->values()
             ->all();
-    }
-
-    /** The author's track choice is only initial: it locks once an editor has moved the paper, or when revising. */
-    public function authorCanChangeTrack(): bool
-    {
-        return $this->status === SubmissionStatus::Submitted
-            && ! $this->events()->where('action', SubmissionAction::TrackChanged)->exists();
     }
 
     /** Editor screening: papers the journal did not take (always after the deadline), one decision per round. */
@@ -544,6 +671,30 @@ class Submission extends Model
         return static::isClosed() && in_array($this->status, [SubmissionStatus::Submitted, SubmissionStatus::JournalSelected], true);
     }
 
+    /**
+     * Put the paper in a track; a change is logged (the first placement too, "from" then empty).
+     * Authors never pick one (2026-11-12): editors set it on Selection, at the first-gate decision or on the paper page.
+     */
+    public function setTrack(User $by, int $trackId): bool
+    {
+        if ($trackId === $this->track_id) {
+            return false;
+        }
+        $fromTrack = $this->track;
+        $this->track_id = $trackId;
+        $this->save();
+        $this->log(SubmissionAction::TrackChanged, $by, null, null, ['from' => $fromTrack?->toClient()['name'], 'to' => $this->load('track')->track->toClient()['name']]);
+
+        return true;
+    }
+
+    /** Editors and admin set the track on Selection while the paper is at the first gate, also before submissions close. */
+    public function trackCanBeSetBy(User $user): bool
+    {
+        return in_array($this->status, [SubmissionStatus::Submitted, SubmissionStatus::JournalSelected], true)
+            && $user->moduleAccess('submissions') === 'full';
+    }
+
     /** Admin, editors and the journal role decide the first gate alike (client request 2026-11-11). */
     public function canBeRoutedBy(User $user): bool
     {
@@ -568,11 +719,8 @@ class Submission extends Model
      */
     public function route(User $by, ?int $trackId, ?Journal $journal, ?string $comment = null): void
     {
-        if ($trackId && $trackId !== $this->track_id) {
-            $fromTrack = $this->track;
-            $this->track_id = $trackId;
-            $this->save();
-            $this->log(SubmissionAction::TrackChanged, $by, null, null, ['from' => $fromTrack?->toClient()['name'], 'to' => $this->load('track')->track->toClient()['name']]);
+        if ($trackId) {
+            $this->setTrack($by, $trackId);
         }
 
         $from = $this->status;
@@ -668,6 +816,9 @@ class Submission extends Model
             'status' => $this->status->value,
             'reviewRound' => $this->review_round,
             'revisionDueDate' => $this->revision_due_date?->toDateString(),
+            // Camera-ready check (2026-11-12): approved, or sent back for fixes (accepted with a file already sent)
+            'cameraReadyApproved' => $this->camera_ready_approved_at?->toIso8601String(),
+            'cameraReadyFix' => $this->status === SubmissionStatus::Accepted && $this->camera_ready_path !== null,
             'submittedAt' => $this->created_at->toIso8601String(),
             'updatedAt' => $this->updated_at->toIso8601String(),
             'authors' => $this->authors->map->only('name', 'affiliation', 'email')->values(),
@@ -692,6 +843,7 @@ class Submission extends Model
                     'presentation' => $this->presentation_at ? [
                         'at' => $this->presentation_at->toIso8601String(),
                         'room' => $this->presentation_room,
+                        'session' => $this->presentation_session_id,
                     ] : null,
                     'slides' => $this->slides_path ? [
                         'name' => $this->slides_name,

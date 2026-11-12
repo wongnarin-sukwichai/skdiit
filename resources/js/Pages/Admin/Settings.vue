@@ -42,7 +42,9 @@ const tabs = [
     { key: 'submission', icon: 'file-arrow-up' },
     { key: 'year', icon: 'database' },
 ];
-const tab = ref('conference');
+// ?tab=schedule (e.g. from the editor timeline) opens that tab
+const asked = new URLSearchParams(window.location.search).get('tab');
+const tab = ref(tabs.some((item) => item.key === asked) ? asked : 'conference');
 </script>
 
 <template>

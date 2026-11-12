@@ -24,14 +24,7 @@ class DatabaseSeeder extends Seeder
             ]
         );
 
-        // Demo accounts for each role (testing phase only, see config/demo.php)
-        if (config('demo.enabled')) {
-            foreach (config('demo.accounts') as $email => [$name, $role, $participation]) {
-                User::updateOrCreate(
-                    ['email' => $email],
-                    ['name' => $name, 'password' => config('demo.password'), 'role' => $role, 'affiliation' => 'msu', 'participation' => $participation]
-                );
-            }
-        }
+        // Demo accounts for each role and the test authors (testing phase only, see config/demo.php)
+        $this->call(DemoAccountSeeder::class);
     }
 }

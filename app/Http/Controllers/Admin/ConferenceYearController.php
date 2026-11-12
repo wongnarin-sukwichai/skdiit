@@ -52,7 +52,7 @@ class ConferenceYearController extends Controller
         DB::transaction(function () use ($current, $new) {
             Setting::put('conference_year', $new);
             // The new year sets its own dates
-            foreach (['submission_opens', 'submission_deadline', 'journal_deadline'] as $key) {
+            foreach (['submission_opens', 'submission_deadline', 'journal_deadline', \App\Support\SchedulePlan::KEY] as $key) {
                 Setting::put($key, null);
             }
             // "SKDIIT 2027" becomes "SKDIIT 2028" (admin checks the rest in Settings › Conference)

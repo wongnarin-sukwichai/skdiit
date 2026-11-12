@@ -5,6 +5,7 @@ import Card from '@/Components/Admin/Card.vue';
 import PageHeader from '@/Components/Admin/PageHeader.vue';
 import StatCards from '@/Components/Admin/StatCards.vue';
 import AuthorPapersBoard from '@/Components/Admin/Journey/AuthorPapersBoard.vue';
+import EditorTimelineCard from '@/Components/Admin/Journey/EditorTimelineCard.vue';
 import TrendChart from '@/Components/Admin/Charts/TrendChart.vue';
 import { useI18n } from '@/i18n';
 import { timeAgo, useNotifications } from '@/composables/useNotifications';
@@ -32,10 +33,13 @@ const props = defineProps({
 
 const { t, tr, formatDate, formatNumber } = useI18n();
 const user = computed(() => usePage().props.auth.user);
+// Admin and editors: the work along the schedule (AppSupportEditorStages)
+const editorStages = computed(() => usePage().props.editorStages);
 const role = computed(() => user.value.accessRole);
 
 // Mock data per role, with the paper parts replaced by real numbers where they exist
-const queueLink = (queue) => `/admin/submissions?queue=${queue}`;
+// Work queues open the matching Submissions tab (Submission::STAGE_OF_QUEUE)
+const queueLink = (queue) => `/admin/submissions?stage=${{ screening: 'screening', needReviewers: 'findReviewers', overdue: 'findReviewers', unavailable: 'findReviewers', readyToDecide: 'reviewing', revised: 'revisedReview' }[queue]}`;
 const data = computed(() => {
     const mock = dashboardData[role.value] ?? {};
     if (props.mine) return props.mine;
@@ -128,6 +132,11 @@ const row = 'flex items-center gap-3 rounded-lg px-3 py-2.5 transition hover:bg-
         <Card class="space-y-6">
             <PageHeader icon="gauge" :title="t('admin.dashboard.welcome', { name: user.name })" :subtitle="`${today} · ${t(`admin.dash.lead.${role}`)}`" />
             <StatCards v-if="statCards.length" :stats="data.kpis" :cards="statCards" />
+        </Card>
+
+        <!-- Admin and editor: the work along the schedule, in full (other pages show it as a slim bar) -->
+        <Card v-if="editorStages">
+            <EditorTimelineCard :data="editorStages" />
         </Card>
 
         <!-- Admin and editor: work queues -->

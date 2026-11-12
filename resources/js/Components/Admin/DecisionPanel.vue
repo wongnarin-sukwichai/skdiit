@@ -2,6 +2,8 @@
 import { computed, ref } from 'vue';
 import { router, useForm } from '@inertiajs/vue3';
 import Modal from '@/Components/Modal.vue';
+import FilePick from '@/Components/Admin/FilePick.vue';
+import { ATTACHMENT_TYPES as attachmentTypes } from '@/utils/editorAttachment';
 import { useI18n } from '@/i18n';
 
 // Editor's decision after peer review, or on a revised paper (decide directly or start a new review round)
@@ -9,6 +11,7 @@ const props = defineProps({
     submission: { type: Object, required: true },
     canDecide: { type: Boolean, required: true },
     canStartRound: { type: Boolean, required: true },
+    maxMb: { type: Number, required: true }, // upload limit, for the editor's attachment
 });
 
 const { t, formatDate } = useI18n();
@@ -22,7 +25,7 @@ const decisions = [
     { value: 'reject', icon: 'xmark', active: 'border-red-500 bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-300' },
 ];
 
-const form = useForm({ decision: '', comment: '', revision_due_date: isoDate(new Date(Date.now() + 14 * 86400000)) });
+const form = useForm({ decision: '', comment: '', attachment: null, revision_due_date: isoDate(new Date(Date.now() + 14 * 86400000)) });
 const needsDue = computed(() => form.decision === 'revise');
 
 const confirm = ref(null); // 'decision' | 'round'
@@ -31,7 +34,8 @@ function save() {
     form.transform((data) => ({ ...data, revision_due_date: needsDue.value ? data.revision_due_date : null }))
         .post(`/admin/submissions/${props.submission.id}/decision`, {
             preserveScroll: true,
-            onSuccess: () => form.reset('decision', 'comment'),
+            forceFormData: true,
+            onSuccess: () => form.reset('decision', 'comment', 'attachment'),
             onFinish: () => (confirm.value = null),
         });
 }
@@ -78,7 +82,10 @@ const border = (error) => (error ? 'border-red-500/70' : 'border-neutral-300 dar
                     class="flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-medium transition"
                     @click="form.decision = option.value"
                 >
-                    <Fa :icon="option.icon" /> {{ t(`reviews.recommendation.${option.value}`) }}
+                    <span class="flex flex-col items-center gap-0.5">
+                        <span class="flex items-center gap-2"><Fa :icon="option.icon" /> {{ t(`decision.option.${option.value}`) }}</span>
+                        <span class="text-xs font-normal opacity-80">{{ t(`decision.next.${option.value}`) }}</span>
+                    </span>
                 </button>
             </div>
             <span v-if="form.errors.decision" class="block text-xs text-red-500 dark:text-red-400">{{ t(form.errors.decision) }}</span>
@@ -95,6 +102,7 @@ const border = (error) => (error ? 'border-red-500/70' : 'border-neutral-300 dar
                 <span class="mb-1 block text-xs text-neutral-500 dark:text-neutral-400">{{ t('submissions.screening.comment') }} ({{ t('submissions.form.optional') }})</span>
                 <textarea v-model="form.comment" rows="4" maxlength="5000" :placeholder="t('decision.commentPlaceholder')" :class="[input, border(form.errors.comment), 'w-full']" />
             </label>
+            <FilePick v-model="form.attachment" :types="attachmentTypes" :max-mb="maxMb" icon="paperclip" :label="t('decision.attachment')" :hint="t('decision.attachmentHint')" :error="form.errors.attachment" />
             <p class="text-xs text-neutral-500 dark:text-neutral-400"><Fa icon="circle-info" class="mr-1 text-gold-500" /> {{ t('decision.note') }}</p>
             <button
                 type="submit"
@@ -117,7 +125,7 @@ const border = (error) => (error ? 'border-red-500/70' : 'border-neutral-300 dar
                 <template v-else>
                     <h2 class="text-xl font-semibold">{{ t('decision.confirmTitle') }}</h2>
                     <p class="mt-2 text-sm text-neutral-400">
-                        {{ t('submissions.screening.confirmText', { code: submission.code, decision: form.decision ? t(`reviews.recommendation.${form.decision}`) : '' }) }}
+                        {{ t('submissions.screening.confirmText', { code: submission.code, decision: form.decision ? t(`decision.option.${form.decision}`) : '' }) }}
                         <template v-if="needsDue"> {{ t('decision.confirmDue', { date: formatDate(form.revision_due_date, { day: 'numeric', month: 'long', year: 'numeric' }) }) }}</template>
                     </p>
                 </template>

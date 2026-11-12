@@ -5,13 +5,14 @@ import { journeySteps } from '@/utils/journey';
 
 // The author's journey in one line for lists: a dot per step and the name of the step the paper is on
 const props = defineProps({
+    finalApproved: { type: Boolean, default: false }, // the editors approved the camera-ready file
     status: { type: String, required: true },
     editable: { type: Boolean, default: false }, // a new paper still inside the submission period
 });
 
 const { t } = useI18n();
 
-const steps = computed(() => journeySteps({ status: props.status, editable: props.editable }));
+const steps = computed(() => journeySteps({ status: props.status, editable: props.editable, finalApproved: props.finalApproved }));
 const now = computed(() => steps.value.find((s) => ['current', 'failed'].includes(s.state)) ?? steps.value[steps.value.length - 1]);
 
 const dot = {

@@ -12,8 +12,10 @@ use App\Models\SiteDocument;
 use App\Models\User;
 use App\Models\Setting;
 use App\Models\Submission;
+use App\Support\SchedulePlan;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -107,8 +109,43 @@ class SettingsController extends Controller
     }
 
     /**
+     * Settings › กำหนดการ: one of the rows the system does not enforce yet (App\Support\SchedulePlan, 2026-11-12):
+     * its dates, what happens when it is late, whether authors see it, and the days each paper or reviewer gets.
+     */
+    public function updatePhase(Request $request, string $row): RedirectResponse
+    {
+        abort_unless(in_array($row, SchedulePlan::ROWS, true), 404);
+
+        $data = $request->validate([
+            'start' => ['required', 'date_format:Y-m-d'],
+            'end' => ['required', 'date_format:Y-m-d', 'after_or_equal:start'],
+            'mode' => ['required', Rule::in(['lock', 'warn', 'info'])],
+            'public' => ['boolean'],
+            'per_item_days' => ['nullable', 'integer', 'min:1', 'max:90'],
+        ], [
+            'required' => 'validation.required',
+            'date_format' => 'validation.date',
+            'end.after_or_equal' => 'validation.end_after_start',
+            'integer' => 'validation.integer',
+            'min' => 'validation.integer',
+            'max' => 'validation.integer',
+        ]);
+
+        SchedulePlan::put($row, array_filter([
+            'start' => $data['start'],
+            'end' => $data['end'],
+            'mode' => $data['mode'],
+            'public' => (bool) ($data['public'] ?? false),
+            'perItemDays' => $data['per_item_days'] ?? null,
+        ], fn ($value) => $value !== null));
+
+        return back()->with('success', 'admin.settings.saved');
+    }
+
+    /**
      * Settings › กำหนดการ: one timeline row at a time, so only the fields sent are saved
-     * (submission: opens + deadline; journal selection: journal_deadline; slides: slides_cutoff_days).
+     * (submission: opens + deadline; paper selection: journal_deadline; journal offer answer: journal_answer_days;
+     * slides: slides_cutoff_days).
      */
     public function updateDeadlines(Request $request): RedirectResponse
     {
@@ -119,12 +156,14 @@ class SettingsController extends Controller
             // The journal's first selection should be done by this day (a warning only)
             // It starts the day after submissions close, so it cannot be on or before that day
             'journal_deadline' => ['sometimes', 'nullable', 'date_format:Y-m-d', ...(Setting::get('submission_deadline') ? ['after:'.substr(Setting::get('submission_deadline'), 0, 10)] : [])],
+            // Days an author has to answer a journal offer (also on the ตั้งค่า tab)
+            'journal_answer_days' => ['sometimes', 'required', 'integer', 'min:1', 'max:60'],
             // Slides can be replaced until this many days before the talk; empty = until the talk
             'slides_cutoff_days' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:60'],
         ], self::MESSAGES);
 
         $toSetting = fn (?string $value) => $value ? str_replace('T', ' ', $value) : null;
-        $keys = ['opens' => 'submission_opens', 'deadline' => 'submission_deadline', 'journal_deadline' => 'journal_deadline', 'slides_cutoff_days' => 'slides_cutoff_days'];
+        $keys = ['opens' => 'submission_opens', 'deadline' => 'submission_deadline', 'journal_deadline' => 'journal_deadline', 'journal_answer_days' => 'journal_answer_days', 'slides_cutoff_days' => 'slides_cutoff_days'];
 
         foreach ($keys as $field => $setting) {
             if (array_key_exists($field, $data)) {

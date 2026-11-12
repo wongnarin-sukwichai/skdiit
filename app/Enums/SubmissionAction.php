@@ -20,6 +20,9 @@ enum SubmissionAction: string
     case Decided = 'decided';                     // editor's decision after review (see to_status); meta: revision due
     case ReviewRoundStarted = 'review_round_started'; // editor sent a revised paper to reviewers again; meta: round
     case CameraReadyUploaded = 'camera_ready_uploaded'; // author uploaded (or replaced) the final file
+    case CameraReadyApproved = 'camera_ready_approved'; // an editor checked the camera-ready file: into the proceedings (2026-11-12)
+    case CameraReadyFixRequested = 'camera_ready_fix_requested'; // an editor sent the camera-ready file back for fixes; meta: file
+    case AcceptanceCancelled = 'acceptance_cancelled'; // an editor withdrew the acceptance (e.g. plagiarism found, withdrawn); comment: reason
     case JournalScreened = 'journal_screened';        // first gate: offered to a journal (to_status journal_selected; meta: journal_id, journal, due) or sent to the conference (screening)
     case JournalResult = 'journal_result';            // before 2026-11-11: the journal's final answer (kept for old history)
     case JournalOfferAnswered = 'journal_offer_answered'; // the author answered the offer (to_status journal_accepted / screening); meta: answer accept|decline|expired, journal

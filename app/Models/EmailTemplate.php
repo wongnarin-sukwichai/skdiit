@@ -40,6 +40,9 @@ class EmailTemplate extends Model
         'presentation_scheduled' => ['date', 'room'],
         'reviewer_assigned' => ['due'],
         'review_reminder' => ['due'],
+        'camera_ready_approved' => ['comment'],
+        'camera_ready_fix' => ['comment'],
+        'acceptance_cancelled' => ['comment'],
         'became_author' => [],
     ];
 
@@ -122,6 +125,21 @@ class EmailTemplate extends Model
             'เตือนการประเมินบทความ {code}', 'Reminder: review of {code}',
             "เรียน {name}\n\nขอเตือนการประเมินบทความ \"{title}\" ({code}) ซึ่งครบกำหนดวันที่ {due} หากไม่สะดวกประเมิน กรุณาแจ้งในระบบ",
             "Dear {name},\n\nThis is a reminder about your review of \"{title}\" ({code}), due on {due}. If you cannot review it, please say so in the system.",
+        ],
+        'camera_ready_approved' => [
+            'ฉบับสมบูรณ์ของบทความ {code} ผ่านการตรวจแล้ว', 'Your camera-ready paper {code} has been approved',
+            "เรียน {name}\n\nบรรณาธิการตรวจไฟล์ฉบับสมบูรณ์ของบทความ \"{title}\" ({code}) แล้ว บทความจะรวมอยู่ใน Proceedings ผู้จัดงานจะแจ้งกำหนดการนำเสนอต่อไป\n\n{comment}",
+            "Dear {name},\n\nThe editors have checked the camera-ready file of \"{title}\" ({code}). It will be included in the proceedings; we will let you know your presentation slot.\n\n{comment}",
+        ],
+        'camera_ready_fix' => [
+            'บทความ {code}: ขอให้แก้ไขฉบับสมบูรณ์', 'Your paper {code}: please fix the camera-ready file',
+            "เรียน {name}\n\nบรรณาธิการขอให้แก้ไขไฟล์ฉบับสมบูรณ์ของบทความ \"{title}\" ({code}) ก่อนรวมเล่ม กรุณาแก้ไขแล้วอัปโหลดใหม่ในระบบ: {link}\n\n{comment}",
+            "Dear {name},\n\nThe editors ask you to fix the camera-ready file of \"{title}\" ({code}) before it goes into the proceedings. Please upload a new file in the system: {link}\n\n{comment}",
+        ],
+        'acceptance_cancelled' => [
+            'ยกเลิกการตอบรับบทความ {code}', 'Acceptance of your paper {code} withdrawn',
+            "เรียน {name}\n\nบรรณาธิการยกเลิกการตอบรับบทความ \"{title}\" ({code}) ด้วยเหตุผลดังนี้\n\n{comment}",
+            "Dear {name},\n\nThe editors have withdrawn the acceptance of \"{title}\" ({code}) for this reason:\n\n{comment}",
         ],
         'became_author' => [
             'บัญชีของท่านส่งผลงานได้แล้ว', 'You can now submit papers',

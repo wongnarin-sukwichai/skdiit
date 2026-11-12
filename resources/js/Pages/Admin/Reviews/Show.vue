@@ -112,8 +112,10 @@ const box = 'rounded-xl border border-neutral-200 p-4 dark:border-white/10';
                     <span class="text-xs text-neutral-500 dark:text-neutral-400">{{ t('reviews.submittedOn') }} {{ when(review.submittedAt) }}</span>
                 </div>
                 <ReviewScores v-if="review.scores.length" :scores="review.scores" :average="review.average" />
-                <p class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">{{ t('reviews.form.comment') }}</p>
-                <blockquote class="rounded-lg bg-neutral-50 px-3 py-2 text-sm whitespace-pre-line text-neutral-700 dark:bg-white/5 dark:text-neutral-200">{{ review.comment }}</blockquote>
+                <template v-if="review.comment">
+                    <p class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">{{ t('reviews.form.comment') }}</p>
+                    <blockquote class="rounded-lg bg-neutral-50 px-3 py-2 text-sm whitespace-pre-line text-neutral-700 dark:bg-white/5 dark:text-neutral-200">{{ review.comment }}</blockquote>
+                </template>
                 <template v-if="review.commentToEditor">
                     <p class="text-xs font-semibold text-neutral-500 dark:text-neutral-400"><Fa icon="lock" class="mr-1" />{{ t('reviews.form.toEditor') }}</p>
                     <blockquote class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm whitespace-pre-line text-neutral-700 dark:border-amber-400/20 dark:bg-amber-400/5 dark:text-neutral-200">{{ review.commentToEditor }}</blockquote>
@@ -187,7 +189,7 @@ const box = 'rounded-xl border border-neutral-200 p-4 dark:border-white/10';
                     </ul>
                 </div>
                 <label class="block">
-                    <span class="mb-1.5 block text-sm font-medium">{{ t('reviews.form.comment') }} <span class="text-red-500">*</span></span>
+                    <span class="mb-1.5 block text-sm font-medium">{{ t('reviews.form.comment') }} <span class="font-normal text-neutral-400">({{ t('submissions.form.optional') }})</span></span>
                     <textarea
                         v-model="form.comment"
                         rows="10"
@@ -224,6 +226,7 @@ const box = 'rounded-xl border border-neutral-200 p-4 dark:border-white/10';
                     </div>
                     <span v-if="form.errors.attachment" class="mt-1 block text-xs text-red-500 dark:text-red-400">{{ t(form.errors.attachment, { max: props.maxMb }) }}</span>
                     <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">{{ t('reviews.form.attachmentHint') }}</p>
+                    <p class="mt-1 flex gap-1.5 text-xs text-amber-700 dark:text-amber-300"><Fa icon="triangle-exclamation" class="mt-0.5 shrink-0" />{{ t('reviews.form.attachmentToAuthor') }}</p>
                 </div>
 
                 <!-- Declared with every evaluation -->
@@ -239,7 +242,7 @@ const box = 'rounded-xl border border-neutral-200 p-4 dark:border-white/10';
                     <button
                         type="submit"
                         class="flex items-center gap-2 rounded-lg bg-gold-400 px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-gold-300 disabled:opacity-40 disabled:hover:bg-gold-400"
-                        :disabled="!form.recommendation || !form.comment.trim() || !form.no_conflict || !allScored() || form.processing"
+                        :disabled="!form.recommendation || !form.no_conflict || !allScored() || form.processing"
                     >
                         <Fa icon="paper-plane" /> {{ t('reviews.form.submit') }}
                     </button>

@@ -56,6 +56,7 @@ const input = 'w-full rounded-lg border border-white/10 bg-ink-800 px-3 py-2.5 t
                 <label class="block">
                     <span class="mb-1.5 block text-sm text-neutral-300">{{ t('submissions.fields.track') }}</span>
                     <select v-model="form.track_id" :class="input" required>
+                        <option :value="null" disabled>{{ t('submissions.form.chooseTrack') }}</option>
                         <option v-for="track in tracks" :key="track.id" :value="track.id">{{ tr(track.name) }}</option>
                     </select>
                     <span v-if="form.errors.track_id" class="mt-1 block text-xs text-red-400">{{ t(form.errors.track_id) }}</span>

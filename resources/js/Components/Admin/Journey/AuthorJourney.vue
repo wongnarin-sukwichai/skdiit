@@ -21,6 +21,7 @@ const props = defineProps({
     dates: { type: Object, default: () => ({}) }, // public schedule: { notify, cameraReady, conference } (Y-m-d)
     hadRevision: { type: Boolean, default: false }, // the author sent a revision before (shows the revision step as done)
     message: { type: String, default: null }, // the editor's latest decision message, shown with a revision, acceptance or rejection
+    messageFile: { type: Object, default: null }, // { name, url } the editor attached to that decision
     links: { type: Object, default: () => ({}) }, // { edit, answer } (answer = where the journal offer is answered; none in the preview)
     today: { type: String, default: () => todayIn() },
     // full: steps + the whose-turn card; row: one line (step dots with the current step, whose turn, the card title)
@@ -31,7 +32,7 @@ const { t, formatDate } = useI18n();
 
 const s = computed(() => props.submission.status);
 const pub = computed(() => props.submission.publication ?? {});
-const presentingStatus = computed(() => ['camera_ready', 'journal_accepted'].includes(s.value));
+const presentingStatus = computed(() => (s.value === 'camera_ready' && props.submission.cameraReadyApproved) || s.value === 'journal_accepted');
 const isRejected = computed(() => REJECTED.includes(s.value));
 const isRevising = computed(() => REVISING.includes(s.value));
 const stillEditable = computed(() => s.value === 'submitted' && props.window.phase !== 'closed');
@@ -44,9 +45,9 @@ function noteFor({ key, state }) {
     const p = props;
     switch (key) {
         case 'submit': return state === 'current' && p.window.deadline ? note('editUntil', { date: date(p.window.deadline) }) : date(p.submission.submittedAt);
-        case 'review': return state === 'upcoming' && p.window.deadline ? note('afterClose', { date: date(p.window.deadline) }) : (state === 'current' ? note('inProgress') : null);
+        case 'screening': return state === 'upcoming' && p.window.deadline ? note('afterClose', { date: date(p.window.deadline) }) : (state === 'current' && !REVISING.includes(s.value) ? note('inProgress') : null);
+        case 'peerReview': return state === 'current' && s.value === 'review_revision' && p.submission.revisionDueDate ? note('within', { date: date(p.submission.revisionDueDate) }) : (state === 'current' && s.value === 'in_review' ? note('inProgress') : null);
         case 'journal': return state === 'current' && p.submission.journalAnswerDue ? note('answerBy', { date: date(p.submission.journalAnswerDue) }) : note(state === 'current' ? 'offered' : 'journalAccepted');
-        case 'revision': return state === 'current' && p.submission.revisionDueDate ? note('within', { date: date(p.submission.revisionDueDate) }) : null;
         case 'result':
             if (state === 'failed') return note('notAccepted');
             if (state === 'done') return note('accepted');
@@ -57,7 +58,7 @@ function noteFor({ key, state }) {
     }
 }
 
-const steps = computed(() => journeySteps({ status: s.value, editable: stillEditable.value, hadRevision: props.hadRevision })
+const steps = computed(() => journeySteps({ status: s.value, editable: stillEditable.value, hadRevision: props.hadRevision, finalApproved: !!props.submission.cameraReadyApproved, finalFix: !!props.submission.cameraReadyFix })
     .map((step) => ({ ...step, note: noteFor(step) })));
 
 // Days to a due date (the whole due day counts); negative = late
@@ -76,8 +77,10 @@ const card = computed(() => {
         return { tone: 'mine', icon: 'newspaper', title: 'journalOffer', params: { journal: journal.value?.name ?? '' }, due: props.submission.journalAnswerDue, answer: true };
     }
     if (s.value === 'accepted') {
-        return { tone: 'mine', icon: 'file-circle-check', title: 'cameraReady', due: props.dates.cameraReady, action: { href: '#publication', label: 'cameraReady', anchor: true } };
+        return { tone: 'mine', icon: 'file-circle-check', title: props.submission.cameraReadyFix ? 'cameraReadyFix' : 'cameraReady', due: props.dates.cameraReady, action: { href: '#publication', label: 'cameraReady', anchor: true } };
     }
+    // Camera-ready sent: the editors check it before it goes into the proceedings
+    if (s.value === 'camera_ready' && !props.submission.cameraReadyApproved) return { tone: 'wait', icon: 'magnifying-glass', title: 'cameraReadyCheck' };
     if (isRejected.value) return { tone: 'end', icon: 'circle-info', title: 'rejected', params: { date: date(props.dates.conference) } };
     if (presentingStatus.value) {
         // Accepted a journal offer: they continue on the journal's site; we call them back for the slides
@@ -199,6 +202,12 @@ const nowStep = computed(() => steps.value.find((x) => ['current', 'failed'].inc
                         }"
                         class="block text-sm"
                     >{{ t(`submissions.journey.step.${step.key}`) }}</span>
+                    <!-- A revision at this step: the author's turn (orange), or sent back and waiting to be checked (blue) -->
+                    <span
+                        v-if="step.badge"
+                        :class="step.badge === 'revising' ? 'border-orange-300 bg-orange-50 text-orange-700 dark:border-orange-500/40 dark:bg-orange-500/15 dark:text-orange-300' : 'border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-500/40 dark:bg-sky-500/15 dark:text-sky-300'"
+                        class="mt-1 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium"
+                    ><Fa :icon="step.badge === 'revising' ? 'pen' : step.badge === 'checking' ? 'magnifying-glass' : 'rotate'" class="text-[0.65rem]" />{{ t(`submissions.journey.badge.${step.badge}`) }}</span>
                     <span v-if="step.note" class="mt-0.5 block text-xs text-neutral-500 dark:text-neutral-400">{{ step.note }}</span>
                 </span>
             </li>
@@ -226,7 +235,10 @@ const nowStep = computed(() => steps.value.find((x) => ['current', 'failed'].inc
                     </a>
                     <p class="text-xs opacity-80">{{ t('submissions.journalOffer.explain') }}</p>
                 </div>
-                <blockquote v-if="message && ['revise', 'cameraReady', 'rejected'].includes(card.title)" class="mt-2 rounded-lg bg-white/70 px-3 py-2 text-sm whitespace-pre-line text-neutral-700 dark:bg-black/20 dark:text-neutral-200">
+                <a v-if="messageFile && ['revise', 'cameraReady', 'cameraReadyFix', 'rejected'].includes(card.title)" :href="messageFile.url" class="mt-2 inline-flex items-center gap-1.5 rounded-md border border-current/30 bg-white/70 px-2.5 py-1 text-xs font-medium transition hover:bg-white dark:bg-black/20">
+                    <Fa icon="paperclip" /> {{ t('decision.attachedFile') }}: {{ messageFile.name }}
+                </a>
+                <blockquote v-if="message && ['revise', 'cameraReady', 'cameraReadyFix', 'rejected'].includes(card.title)" class="mt-2 rounded-lg bg-white/70 px-3 py-2 text-sm whitespace-pre-line text-neutral-700 dark:bg-black/20 dark:text-neutral-200">
                     <span class="mb-0.5 block text-xs font-semibold opacity-70">{{ t('submissions.journey.fromEditor') }}</span>{{ message }}
                 </blockquote>
             </div>

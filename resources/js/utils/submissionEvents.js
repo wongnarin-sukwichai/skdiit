@@ -20,6 +20,9 @@ export const eventIcons = {
     journal_offer_answered: 'reply',
     journal_offer_reminded: 'bell',
     camera_ready_uploaded: 'file-circle-check',
+    camera_ready_approved: 'circle-check',
+    camera_ready_fix_requested: 'pen',
+    acceptance_cancelled: 'ban',
     presentation_scheduled: 'person-chalkboard',
     slides_uploaded: 'file-powerpoint',
 };

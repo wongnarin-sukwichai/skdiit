@@ -61,6 +61,8 @@ class DashboardController extends Controller
                 'status' => $paper->status->value,
                 'canEdit' => $paper->canBeEditedByAuthor(),
                 'hadRevision' => (bool) $paper->had_revision,
+                'cameraReadyApproved' => $paper->camera_ready_approved_at?->toIso8601String(),
+                'cameraReadyFix' => $paper->status === SubmissionStatus::Accepted && $paper->camera_ready_path !== null,
                 'next' => $paper->nextForAuthor(),
             ])
             ->sortByDesc(fn ($paper) => $paper['next']['mine'])

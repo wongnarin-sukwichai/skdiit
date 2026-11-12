@@ -6,6 +6,7 @@ import LangSwitch from '@/Components/LangSwitch.vue';
 import FlashToast from '@/Components/FlashToast.vue';
 import ImpersonationBanner from '@/Components/ImpersonationBanner.vue';
 import NotificationBell from '@/Components/Admin/NotificationBell.vue';
+import EditorTimeline from '@/Components/Admin/Journey/EditorTimeline.vue';
 import { useI18n } from '@/i18n';
 import { useTheme } from '@/composables/useTheme';
 import { useModules } from '@/composables/useModules';
@@ -157,8 +158,13 @@ function logout() {
         </aside>
 
         <main class="p-4 sm:p-6 lg:ml-80">
+            <!-- Not on the home page, which shows the same stages in full (EditorTimelineCard) -->
+            <Transition name="fade">
+                <EditorTimeline v-if="page.props.editorStages && page.component !== 'Admin/Dashboard'" :data="page.props.editorStages" class="mb-4" />
+            </Transition>
             <Transition name="fade" mode="out-in">
-                <div :key="page.url">
+                <!-- Fade on a new page only: filters, tabs, views and pagination change the query, and the page fades its own list -->
+                <div :key="path">
                     <slot />
                 </div>
             </Transition>

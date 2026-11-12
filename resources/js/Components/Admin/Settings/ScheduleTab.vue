@@ -1,17 +1,17 @@
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { computed, ref } from 'vue';
 import { Link } from '@inertiajs/vue3';
 import HorizontalTimeline from '@/Components/Admin/Timeline/HorizontalTimeline.vue';
 import TimelinePhaseModal from '@/Components/Admin/Timeline/TimelinePhaseModal.vue';
-import { timelinePlan } from '@/data/mock';
-import { addDays, checkPlan, phaseState, spanDays, toDay, today as todayIn } from '@/utils/timeline';
+import { useSchedulePlan } from '@/composables/useSchedulePlan';
+import { checkPlan, phaseState, spanDays, toDay, today as todayIn, withRealDates } from '@/utils/timeline';
 import { useI18n } from '@/i18n';
 import { useSite } from '@/composables/useSite';
 
 /*
- * The conference timeline (phase 1, 2026-10-20): assumed dates from mock.js laid out on a horizontal timeline, with the
- * rows the system enforces (submission period, journal selection, slides cut-off, conference day) taken from and saved to
- * their real settings (TimelinePhaseModal). Edits to the other rows only redraw the timeline and are not saved yet.
+ * The conference timeline on a horizontal scale. Every row saves (TimelinePhaseModal): the rows the system enforces
+ * (submission period, paper selection, the author's answer to a journal offer, slides cut-off, conference day) to their
+ * own settings, the others to App\Support\SchedulePlan (2026-11-12; dates shown to authors, not enforced yet).
  * The important dates and day programme shown on the public site are website content (WebsiteTab › ScheduleContent).
  */
 const props = defineProps({
@@ -22,47 +22,11 @@ const { t, formatDate } = useI18n();
 const site = useSite();
 const today = todayIn();
 
-const fresh = () => timelinePlan.map((p) => ({ ...p, perItem: p.perItem && { ...p.perItem } }));
+const schedule = useSchedulePlan();
+const fresh = () => schedule.value.map((p) => ({ ...p, perItem: p.perItem && { ...p.perItem } }));
 
-// Lay the real values over a plan; `real` rows save to the server, `source` says whether their setting is set yet
-function overlay(plan) {
-    const row = (key) => plan.find((p) => p.key === key);
-    const s = props.settings;
-
-    const conference = row('conference');
-    if (site.value.conference?.date) Object.assign(conference, { start: site.value.conference.date, end: site.value.conference.date });
-    Object.assign(conference, { real: true, source: 'set' });
-
-    const submission = row('submission');
-    if (s.opens) submission.start = s.opens.slice(0, 10);
-    if (s.deadline) submission.end = s.deadline.slice(0, 10);
-    Object.assign(submission, { real: true, source: s.opens || s.deadline ? 'set' : 'unset' });
-
-    const journal = row('journalSelect');
-    if (s.deadline) journal.start = addDays(submission.end, 1);
-    if (s.journalDeadline) journal.end = s.journalDeadline;
-    Object.assign(journal, { real: true, source: s.journalDeadline ? 'set' : 'unset' });
-
-    const slides = row('slides');
-    const cutoff = s.slidesCutoffDays === null || s.slidesCutoffDays === '' ? null : Number(s.slidesCutoffDays);
-    if (cutoff !== null) slides.end = addDays(conference.start, -cutoff);
-    Object.assign(slides, { real: true, source: cutoff !== null ? 'set' : 'unset' });
-
-    return plan;
-}
-
-const plan = ref(overlay(fresh()));
-const original = ref(JSON.stringify(plan.value));
-const changed = computed(() => JSON.stringify(plan.value) !== original.value);
-function reset() {
-    plan.value = overlay(fresh());
-    original.value = JSON.stringify(plan.value);
-}
-// A saved real value redraws its row and keeps the trial edits on the others
-watch(() => [props.settings, site.value.conference?.date], () => {
-    plan.value = overlay(JSON.parse(JSON.stringify(plan.value)));
-    original.value = JSON.stringify(overlay(fresh()));
-});
+// Every row is saved, so the plan is always the saved one: redraw it after each save
+const plan = computed(() => withRealDates(fresh(), props.settings, site.value.conference?.date));
 
 const label = (key) => t(`admin.timeline.phases.${key}`);
 const phases = computed(() => plan.value.map((p) => ({ ...p, label: label(p.key) })));
@@ -91,10 +55,7 @@ const next = computed(() => phases.value.filter((p) => p.start > today).sort((a,
 const editing = ref(null);
 const editingPhase = computed(() => phases.value.find((p) => p.key === editing.value) ?? null);
 const editingIssues = computed(() => issues.value.filter((i) => i.phase === editing.value));
-function apply(change) {
-    Object.assign(plan.value.find((p) => p.key === change.key), change);
-    editing.value = null;
-}
+
 </script>
 
 <template>
@@ -109,19 +70,11 @@ function apply(change) {
                     <Link href="/admin/preview/author-journey" class="flex items-center gap-2 rounded-lg border border-neutral-300 px-3 py-2 text-xs transition hover:border-gold-400 dark:border-white/15">
                         <Fa icon="eye" /> {{ t('admin.timeline.authorPreview') }}
                     </Link>
-                    <button
-                        type="button"
-                        class="flex items-center gap-2 rounded-lg border border-neutral-300 px-3 py-2 text-xs transition hover:border-gold-400 disabled:opacity-40 disabled:hover:border-neutral-300 dark:border-white/15"
-                        :disabled="!changed"
-                        @click="reset"
-                    >
-                        <Fa icon="arrow-rotate-right" /> {{ t('admin.timeline.reset') }}
-                    </button>
                 </div>
             </div>
 
             <p class="flex gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
-                <Fa icon="flask" class="mt-0.5 shrink-0" /> {{ t('admin.timeline.prototype') }}
+                <Fa icon="circle-info" class="mt-0.5 shrink-0" /> {{ t('admin.timeline.prototype') }}
             </p>
 
             <!-- Today -->
@@ -166,6 +119,6 @@ function apply(change) {
             </ul>
         </section>
 
-        <TimelinePhaseModal :phase="editingPhase" :issues="editingIssues" :settings="settings" @close="editing = null" @apply="apply" />
+        <TimelinePhaseModal :phase="editingPhase" :issues="editingIssues" :settings="settings" @close="editing = null" />
     </div>
 </template>

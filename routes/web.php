@@ -10,6 +10,7 @@ use App\Http\Controllers\Admin\AffiliationController;
 use App\Http\Controllers\Admin\MealOptionController;
 use App\Http\Controllers\Admin\PartnerJournalController;
 use App\Http\Controllers\Admin\MySubmissionController;
+use App\Http\Controllers\Admin\PresentationController;
 use App\Http\Controllers\Admin\PublicationController;
 use App\Http\Controllers\Admin\ExcelExportController;
 use App\Http\Controllers\Admin\RegistrantController;
@@ -37,7 +38,7 @@ use Inertia\Inertia;
 // Frontend (public)
 // Home: headline and the public registrant list (this year's registrants, no contact details)
 Route::get('/', fn () => Inertia::render('Front/Home', ['registrants' => fn () => User::publicRegistrants()]))->name('home');
-Route::inertia('/schedule', 'Front/Schedule')->name('schedule');
+Route::get('/schedule', fn () => \Inertia\Inertia::render('Front/Schedule', ['presentations' => \App\Http\Controllers\Admin\PresentationController::publicSchedule()]))->name('schedule');
 Route::inertia('/submission', 'Front/Submission')->name('submission');
 // Documents admin uploads (Settings › Website content), downloadable by anyone
 Route::get('/important', fn () => Inertia::render('Front/Important', ['documents' => SiteDocument::ordered()->get()->map->toClient()]))->name('important');
@@ -102,7 +103,21 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
     Route::get('/articles', [ArticleController::class, 'index'])->middleware('module:articles')->name('articles');
 
     // Conference event (mock): presentation sessions and the public schedule
-    Route::inertia('/presentations', 'Admin/Presentations')->middleware('module:presentations')->name('presentations');
+    // Presentation schedule (2026-11-12): admin keeps rooms and sessions; editors view (and assign from a paper page)
+    Route::prefix('presentations')->middleware('module:presentations')->controller(PresentationController::class)->group(function () {
+        Route::get('/', 'index')->name('presentations');
+        Route::middleware('module:presentations,full')->group(function () {
+            Route::post('/rooms', 'storeRoom')->name('presentations.rooms.store');
+            Route::put('/rooms/{room}', 'updateRoom')->name('presentations.rooms.update');
+            Route::delete('/rooms/{room}', 'destroyRoom')->name('presentations.rooms.destroy');
+            Route::post('/sessions', 'storeSession')->name('presentations.sessions.store');
+            Route::put('/sessions/{session}', 'updateSession')->name('presentations.sessions.update');
+            Route::delete('/sessions/{session}', 'destroySession')->name('presentations.sessions.destroy');
+            Route::put('/papers/{submission}/move', 'move')->name('presentations.papers.move');
+            Route::post('/days', 'storeDay')->name('presentations.days.store');
+            Route::delete('/days/{date}', 'destroyDay')->where('date', '\d{4}-\d{2}-\d{2}')->name('presentations.days.destroy');
+        });
+    });
 
     // Reviewers: admin manages them, editors can view (writes need the 'full' level)
     Route::prefix('reviewers')->controller(ReviewerController::class)->group(function () {
@@ -149,6 +164,7 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
         Route::get('/', 'index')->name('settings');
         Route::put('/submission', 'updateSubmission')->name('settings.submission');
         Route::put('/deadlines', 'updateDeadlines')->name('settings.deadlines');
+        Route::put('/schedule/{row}', 'updatePhase')->name('settings.schedule');
     });
     // Design preview (2026-10-20): the author's paper journey in every status, before it goes on the author pages
     Route::get('/preview/author-journey', fn () => Inertia::render('Admin/Preview/AuthorJourney', [
@@ -221,6 +237,7 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
 
     // Reviewer attachments: that reviewer and the editors/admin (checked in the controller)
     Route::get('/review-files/{review}', [ReviewController::class, 'attachment'])->name('reviews.attachment');
+    Route::put('/review-files/{review}/to-author', [ReviewController::class, 'attachmentToAuthor'])->middleware('module:submissions,full')->name('reviews.attachment.to-author');
 
     // Paper files: their author, submission managers or assigned reviewers (checked in the controller)
     Route::get('/submissions/{submission}/file', [SubmissionController::class, 'file'])->whereNumber('submission')->name('submissions.file');
@@ -234,6 +251,7 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
         Route::get('/export', 'export')->name('selection.export');
         Route::get('/{submission}', 'show')->whereNumber('submission')->name('selection.show');
         Route::post('/{submission}', 'route')->whereNumber('submission')->middleware('module:selection,full')->name('selection.route');
+        Route::put('/{submission}/track', 'updateTrack')->whereNumber('submission')->middleware('module:selection,full')->name('selection.track');
     });
 
     // Editors and admin: all papers
@@ -241,11 +259,14 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
         Route::get('/', 'index')->name('submissions');
         Route::get('/export/camera-ready', [SubmissionController::class, 'cameraReadyZip'])->name('submissions.export-camera-ready');
         Route::get('/{submission}', 'show')->name('submissions.show');
-        Route::put('/{submission}/presentation', [PublicationController::class, 'schedule'])->name('submissions.presentation');
+        Route::put('/{submission}/presentation', [PresentationController::class, 'assign'])->name('submissions.presentation');
         Route::put('/{submission}/track', 'updateTrack')->name('submissions.track');
         Route::post('/{submission}/screening', 'screen')->name('submissions.screen');
         Route::post('/{submission}/decision', 'decide')->name('submissions.decide');
         Route::post('/{submission}/review-round', 'startReviewRound')->name('submissions.review-round');
+        Route::post('/{submission}/camera-ready/approve', 'approveCameraReady')->name('submissions.camera-ready.approve');
+        Route::post('/{submission}/camera-ready/fix', 'requestCameraReadyFix')->name('submissions.camera-ready.fix');
+        Route::post('/{submission}/cancel-acceptance', 'cancelAcceptance')->name('submissions.cancel-acceptance');
 
         Route::post('/{submission}/reviews', [ReviewerAssignmentController::class, 'store'])->name('submissions.reviews.store');
         Route::put('/{submission}/reviews/{review}', [ReviewerAssignmentController::class, 'update'])->name('submissions.reviews.update');

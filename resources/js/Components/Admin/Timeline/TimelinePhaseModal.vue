@@ -9,21 +9,22 @@ import { addDays, spanDays } from '@/utils/timeline';
 
 /*
  * Edit one timeline row. Rows the system enforces (phase.real) save their real setting straight away:
- *   submission → opens + deadline, journalSelect → journal_deadline, slides → slides_cutoff_days (SettingsController::updateDeadlines),
+ *   submission → opens + deadline, journalSelect → journal_deadline, journalAnswer → journal_answer_days, slides → slides_cutoff_days (SettingsController::updateDeadlines),
  *   conference → the conference date (SiteContentController::updateConference).
- * Every other row is still an assumed date: "apply" only redraws the timeline (ScheduleTab keeps it in memory).
+ * Every other row saves to App\Support\SchedulePlan (SettingsController::updatePhase, 2026-11-12): shown to authors where
+ * public, not enforced by the system yet.
  */
 const props = defineProps({
     phase: { type: Object, default: null }, // { key, label, start, end, mode, milestone?, perItem?, public?, real?, source? }
     issues: { type: Array, default: () => [] }, // this phase's problems, already worded
     settings: { type: Object, required: true }, // SettingsController::index `submission`
 });
-const emit = defineEmits(['close', 'apply']);
+const emit = defineEmits(['close']);
 
 const { t, formatDate } = useI18n();
 const site = useSite();
 
-const form = reactive({ start: '', end: '', mode: 'info', days: null, public: false, opens: '', deadline: '', journalDeadline: '', cutoff: '' });
+const form = reactive({ start: '', end: '', mode: 'info', days: null, public: false, opens: '', deadline: '', journalDeadline: '', answerDays: 7, cutoff: '' });
 const errors = ref({});
 const saving = ref(false);
 
@@ -41,17 +42,21 @@ watch(() => props.phase, (phase) => {
         opens: s.opens?.replace(' ', 'T') ?? '',
         deadline: s.deadline?.replace(' ', 'T') ?? '',
         journalDeadline: s.journalDeadline ?? '',
+        answerDays: s.journalAnswerDays ?? 7,
         cutoff: s.slidesCutoffDays ?? '',
     });
 }, { immediate: true });
 
 // Slides close this many days before each paper's own talk; the timeline row shows it against the conference day
+// The last offers are made on the final selection day, so the last answers are due this many days later
+const lastAnswer = computed(() => addDays(props.phase.end, (Number(form.answerDays) || 0) - props.phase.answerDays));
 const slidesClose = computed(() => (form.cutoff === '' || form.cutoff === null ? site.value.conference.date : addDays(site.value.conference.date, -Number(form.cutoff))));
 
 function save() {
     const request = {
         submission: ['/admin/settings/deadlines', { opens: form.opens || null, deadline: form.deadline || null }],
         journalSelect: ['/admin/settings/deadlines', { journal_deadline: form.journalDeadline || null }],
+        journalAnswer: ['/admin/settings/deadlines', { journal_answer_days: form.answerDays }],
         slides: ['/admin/settings/deadlines', { slides_cutoff_days: form.cutoff === '' ? null : form.cutoff }],
         conference: ['/admin/settings/site/conference', { ...site.value.conference, date: form.start }],
     }[props.phase.key];
@@ -66,19 +71,25 @@ function save() {
     });
 }
 
-function apply() {
-    const end = props.phase.milestone ? form.start : form.end;
-    emit('apply', {
-        key: props.phase.key,
+// The other rows: dates, what happens when late, shown to authors, days per paper or reviewer
+function savePlan() {
+    saving.value = true;
+    router.put(`/admin/settings/schedule/${props.phase.key}`, {
         start: form.start,
-        end,
+        end: props.phase.milestone ? form.start : form.end,
         mode: form.mode,
         public: form.public,
-        ...(props.phase.perItem ? { perItem: { ...props.phase.perItem, days: Math.max(1, Number(form.days) || 1) } } : {}),
+        per_item_days: props.phase.perItem ? Math.max(1, Number(form.days) || 1) : null,
+    }, {
+        preserveScroll: true,
+        preserveState: true,
+        onSuccess: () => emit('close'),
+        onError: (e) => { errors.value = e; },
+        onFinish: () => { saving.value = false; },
     });
 }
 
-const submit = () => (props.phase.real ? save() : apply());
+const submit = () => (props.phase.real ? save() : savePlan());
 const error = (key) => (errors.value[key] ? t(errors.value[key]) : null);
 const clearBtn = 'mt-1.5 text-xs text-neutral-400 hover:text-red-400';
 </script>
@@ -91,12 +102,12 @@ const clearBtn = 'mt-1.5 text-xs text-neutral-400 hover:text-red-400';
             <p class="mt-1 mb-6 text-sm text-neutral-400">{{ t(`admin.timeline.who.${phase.who}`) }} · {{ t(`admin.timeline.desc.${phase.key}`) }}</p>
 
             <p
-                :class="phase.real ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-200' : 'border-amber-400/30 bg-amber-400/10 text-amber-200'"
+                :class="phase.real ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-200' : phase.saved ? 'border-sky-400/30 bg-sky-400/10 text-sky-200' : 'border-amber-400/30 bg-amber-400/10 text-amber-200'"
                 class="mb-5 flex gap-2 rounded-lg border p-3 text-xs"
             >
-                <Fa :icon="phase.real ? 'circle-check' : 'flask'" class="mt-0.5 shrink-0" />
+                <Fa :icon="phase.real ? 'circle-check' : phase.saved ? 'floppy-disk' : 'flask'" class="mt-0.5 shrink-0" />
                 <span>
-                    {{ t(phase.real ? `admin.timeline.source.${phase.key}` : 'admin.timeline.source.assumed') }}
+                    {{ t(phase.real ? `admin.timeline.source.${phase.key}` : phase.saved ? 'admin.timeline.source.saved' : 'admin.timeline.source.assumed') }}
                     <template v-if="phase.source === 'unset'">{{ t('admin.timeline.source.unset') }}</template>
                 </span>
             </p>
@@ -125,6 +136,17 @@ const clearBtn = 'mt-1.5 text-xs text-neutral-400 hover:text-red-400';
                 <p class="text-xs text-neutral-400">{{ t('admin.settings.submission.journalDeadlineHint') }}</p>
             </div>
 
+            <div v-else-if="phase.key === 'journalAnswer' && phase.real" class="space-y-4">
+                <FormField :label="t('admin.settings.submission.answerDays')" icon="hourglass-half" :error="error('journal_answer_days')" v-slot="{ inputClass }">
+                    <div class="flex items-center gap-2">
+                        <input v-model.number="form.answerDays" type="number" min="1" max="60" required :class="[inputClass, 'w-32']">
+                        <span class="text-sm text-neutral-300">{{ t('admin.settings.submission.days') }}</span>
+                    </div>
+                </FormField>
+                <p class="text-xs text-neutral-400">{{ t('admin.timeline.answerHint', { date: formatDate(lastAnswer) }) }}</p>
+                <p class="text-xs text-neutral-400">{{ t('admin.settings.submission.answerDaysHint') }}</p>
+            </div>
+
             <div v-else-if="phase.key === 'slides' && phase.real" class="space-y-4">
                 <FormField :label="t('admin.settings.submission.slidesCutoff')" icon="hourglass-half" :error="error('slides_cutoff_days')" v-slot="{ inputClass }">
                     <input v-model="form.cutoff" type="number" min="0" max="60" :placeholder="t('admin.timeline.untilTalk')" :class="inputClass">
@@ -138,12 +160,12 @@ const clearBtn = 'mt-1.5 text-xs text-neutral-400 hover:text-red-400';
                 </FormField>
             </div>
 
-            <!-- Assumed rows: a trial on the timeline only -->
+            <!-- The other rows: saved to the schedule plan -->
             <div v-else class="grid gap-4 sm:grid-cols-2">
-                <FormField :class="phase.milestone ? 'sm:col-span-2' : ''" :label="t(phase.milestone ? 'admin.timeline.date' : 'admin.timeline.start')" icon="calendar-days" v-slot="{ inputClass }">
+                <FormField :class="phase.milestone ? 'sm:col-span-2' : ''" :label="t(phase.milestone ? 'admin.timeline.date' : 'admin.timeline.start')" icon="calendar-days" :error="error('start')" v-slot="{ inputClass }">
                     <input v-model="form.start" type="date" required :class="[inputClass, 'scheme-dark']">
                 </FormField>
-                <FormField v-if="!phase.milestone" :label="t('admin.timeline.end')" icon="calendar-days" v-slot="{ inputClass }">
+                <FormField v-if="!phase.milestone" :label="t('admin.timeline.end')" icon="calendar-days" :error="error('end')" v-slot="{ inputClass }">
                     <input v-model="form.end" type="date" required :min="form.start" :class="[inputClass, 'scheme-dark']">
                 </FormField>
                 <p v-if="!phase.milestone && form.start && form.end && form.start <= form.end" class="-mt-2 text-xs text-neutral-400 sm:col-span-2">
@@ -177,7 +199,7 @@ const clearBtn = 'mt-1.5 text-xs text-neutral-400 hover:text-red-400';
             <div class="mt-6 flex justify-end gap-2">
                 <button type="button" class="rounded-lg border border-white/20 px-4 py-2.5 text-sm transition hover:border-gold-400" @click="emit('close')">{{ t('common.cancel') }}</button>
                 <button type="submit" class="flex items-center gap-2 rounded-lg bg-gold-400 px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-gold-300 disabled:opacity-60" :disabled="saving">
-                    <Fa :icon="phase.real ? 'floppy-disk' : 'check'" /> {{ phase.real ? t('common.save') : t('admin.timeline.apply') }}
+                    <Fa icon="floppy-disk" /> {{ t('common.save') }}
                 </button>
             </div>
         </form>

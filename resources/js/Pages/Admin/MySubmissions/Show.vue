@@ -29,7 +29,7 @@ const { t } = useI18n();
 
 const dates = useConferenceDates();
 // The editor's latest decision message
-const latestDecision = computed(() => props.history.find((e) => ['screened', 'decided'].includes(e.action)));
+const latestDecision = computed(() => props.history.find((e) => ['screened', 'decided', 'camera_ready_fix_requested', 'acceptance_cancelled'].includes(e.action)));
 // A revision sent before keeps the revision step on the path
 const hadRevision = computed(() => props.history.some((e) => e.action === 'resubmitted'));
 
@@ -52,6 +52,7 @@ const hadRevision = computed(() => props.history.some((e) => e.action === 'resub
             :dates="dates"
             :had-revision="hadRevision"
             :message="latestDecision?.comment"
+            :message-file="latestDecision?.meta?.file"
             :links="{ edit: submission.canEdit ? `/admin/my-submissions/${submission.id}/edit` : null, answer: `/admin/my-submissions/${submission.id}/journal-answer` }"
         />
         <div id="publication" class="scroll-mt-24">

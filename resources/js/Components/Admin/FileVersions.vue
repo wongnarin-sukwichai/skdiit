@@ -86,7 +86,8 @@ const btn = 'inline-flex items-center gap-1.5 rounded-lg border border-neutral-3
                                     <template v-if="showNames && r.reviewer"> · {{ r.reviewer }}</template>
                                 </p>
                                 <p v-if="r.comment" class="line-clamp-6 whitespace-pre-line text-neutral-600 dark:text-neutral-300" :title="r.comment">{{ r.comment }}</p>
-                                <p v-else class="text-neutral-400 italic">{{ t('versions.noComment') }}</p>
+                                <p v-else-if="!r.file" class="text-neutral-400 italic">{{ t('versions.noComment') }}</p>
+                                <a v-if="r.file" :href="r.file.url" class="mt-2 inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-xs transition hover:border-gold-400 dark:border-white/15 dark:bg-ink-900"><Fa icon="paperclip" class="text-gold-500" /> {{ r.file.name }}</a>
                             </div>
                             <div class="border-t border-gold-300 pt-2 @2xl:border-t-0 @2xl:border-l @2xl:pt-0 @2xl:pl-3 dark:border-gold-400/30">
                                 <p class="mb-1 text-xs font-semibold text-gold-700 dark:text-gold-300"><Fa icon="reply" class="mr-1" />{{ t('versions.answer') }}</p>

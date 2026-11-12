@@ -1,6 +1,6 @@
 <script setup>
 import { ref } from 'vue';
-import { Link } from '@inertiajs/vue3';
+import { Link, router } from '@inertiajs/vue3';
 import SubmissionStatusBadge from '@/Components/Admin/SubmissionStatusBadge.vue';
 import JournalDecisionModal from '@/Components/Admin/Journal/JournalDecisionModal.vue';
 import { useI18n } from '@/i18n';
@@ -11,7 +11,7 @@ import { useI18n } from '@/i18n';
  * or Conference blue). While an offer is unanswered both buttons stay open: pick another journal, or the conference.
  */
 const props = defineProps({
-    // rows: { id, code, title, authors, track, status, submittedAt, pastDeadline, gate, journal, journalAnswerDue, declinedJournal, files, canRoute }
+    // rows: { id, code, title, authors, track, status, submittedAt, pastDeadline, gate, journal, journalAnswerDue, declinedJournal, files, canRoute, canSetTrack }
     papers: { type: Array, required: true },
     showUrl: { type: String, required: true }, // paper page: /admin/submissions (editors, admin) or /admin/selection (journal role)
     deadline: { type: String, default: null }, // the submission deadline (the first gate opens after it)
@@ -24,6 +24,17 @@ const props = defineProps({
 });
 
 const { t, tr, formatDate } = useI18n();
+
+// Editors and admin put a paper in a track straight from the list (also before submissions close); saved on change
+const savingTrack = ref(null);
+function setTrack(paper, trackId) {
+    savingTrack.value = paper.id;
+    router.put(`/admin/selection/${paper.id}/track`, { track_id: Number(trackId) }, {
+        preserveScroll: true,
+        preserveState: true,
+        onFinish: () => { savingTrack.value = null; },
+    });
+}
 
 // A decision pressed in the table: the paper and the button (journal / conference)
 const deciding = ref(null);
@@ -73,7 +84,22 @@ const iconBtn = 'inline-grid size-8 place-items-center rounded-md border border-
                             <Link :href="`${showUrl}/${item.id}`" class="line-clamp-2 font-medium hover:text-gold-600 dark:hover:text-gold-400">{{ tr(item.title) }}</Link>
                             <span class="block truncate text-xs text-neutral-500 dark:text-neutral-400">{{ item.authors.map((a) => a.name).join(', ') }}</span>
                         </td>
-                        <td class="px-4 py-3 whitespace-nowrap text-neutral-600 dark:text-neutral-300">{{ tr(item.track.name) }}</td>
+                        <td class="px-4 py-3 text-neutral-600 dark:text-neutral-300">
+                            <select
+                                v-if="item.canSetTrack"
+                                :value="item.track?.id ?? ''"
+                                :disabled="savingTrack === item.id"
+                                :aria-label="t('submissions.fields.track')"
+                                :class="item.track ? 'border-neutral-300 dark:border-white/15' : 'border-amber-400 text-amber-700 dark:border-amber-400/60 dark:text-amber-300'"
+                                class="w-44 rounded-md border bg-white px-2 py-1.5 text-xs outline-none transition focus:border-gold-400 disabled:opacity-60 dark:bg-ink-800"
+                                @change="setTrack(item, $event.target.value)"
+                            >
+                                <option value="" disabled>{{ t('submissions.form.chooseTrack') }}</option>
+                                <option v-for="track in tracks" :key="track.id" :value="track.id">{{ tr(track.name) }}</option>
+                            </select>
+                            <span v-else-if="item.track" class="whitespace-nowrap">{{ tr(item.track.name) }}</span>
+                            <span v-else class="whitespace-nowrap text-neutral-400">{{ t('submissions.noTrack') }}</span>
+                        </td>
                         <td class="px-4 py-3 text-center"><SubmissionStatusBadge :status="item.status" /></td>
                         <!-- The journal offered, and where the author's answer stands -->
                         <td class="max-w-56 px-4 py-3">

@@ -78,8 +78,8 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
                             <td class="max-w-md px-4 py-3">
                                 <Link :href="`/admin/my-submissions/${item.id}`" class="line-clamp-2 font-medium hover:text-gold-600 dark:hover:text-gold-400">{{ tr(item.title) }}</Link>
                             </td>
-                            <td class="px-4 py-3 whitespace-nowrap text-neutral-600 dark:text-neutral-300">{{ tr(item.track.name) }}</td>
-                            <td class="px-4 py-3"><AuthorJourneyMini :status="item.status" :editable="item.canEdit && item.status === 'submitted'" /></td>
+                            <td class="px-4 py-3 whitespace-nowrap text-neutral-600 dark:text-neutral-300">{{ item.track ? tr(item.track.name) : t('submissions.noTrack') }}</td>
+                            <td class="px-4 py-3"><AuthorJourneyMini :status="item.status" :editable="item.canEdit && item.status === 'submitted'" :final-approved="!!item.cameraReadyApproved" /></td>
                             <td class="px-4 py-3"><AuthorNextStep :next="item.next" /></td>
                             <td class="px-4 py-3 whitespace-nowrap text-neutral-500 dark:text-neutral-400">{{ formatDate(item.submittedAt) }}</td>
                             <td class="px-4 py-3">

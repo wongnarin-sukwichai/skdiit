@@ -6,16 +6,19 @@ import PageHeader from '@/Components/Admin/PageHeader.vue';
 import DeadlineNotice from '@/Components/Admin/DeadlineNotice.vue';
 import Pagination from '@/Components/Pagination.vue';
 import SubmissionStatusBadge from '@/Components/Admin/SubmissionStatusBadge.vue';
+import RevisionBadge from '@/Components/Admin/RevisionBadge.vue';
 import WaitingOnBadge from '@/Components/Admin/WaitingOnBadge.vue';
+import ReviewerStatusList from '@/Components/Admin/ReviewerStatusList.vue';
 import { useI18n } from '@/i18n';
 
 const props = defineProps({
     submissions: { type: Object, required: true }, // Laravel paginator
     filters: { type: Object, required: true },
     tracks: { type: Array, required: true },
-    statuses: { type: Array, required: true },
+    statuses: { type: Array, required: true }, // conference-track statuses (first-gate papers live on Selection)
+    atFirstGate: { type: Number, default: 0 }, // papers matching the search that are still at the first gate
     cameraReadyCount: { type: Number, required: true },
-    queues: { type: Object, required: true }, // papers per editor work queue (Submission::queueCounts())
+    stages: { type: Object, required: true }, // per tab: { count: waiting for the editors, total } (Submission::stageCounts())
     deadline: { type: String, default: null },
     isOpen: { type: Boolean, required: true },
     opensAt: { type: String, default: null },
@@ -27,23 +30,27 @@ const { t, tr, formatDate, formatNumber } = useI18n();
 const q = ref(props.filters.q ?? '');
 const track = ref(props.filters.track ?? '');
 const status = ref(props.filters.status ?? '');
-const queue = ref(props.filters.queue ?? '');
+const stage = ref(props.filters.stage ?? '');
 
-// Work queues first, so editors see what needs them; "All" keeps the status filter
-const queueTabs = [
+// Where each paper stands (2026-11-12), one tab per paper; "All" keeps the status filter (and rejected papers)
+const stageTabs = [
     { key: '', icon: 'list' },
     { key: 'screening', icon: 'file-lines' },
-    { key: 'needReviewers', icon: 'user-check' },
-    { key: 'readyToDecide', icon: 'gavel' },
-    { key: 'revised', icon: 'rotate' },
-    { key: 'overdue', icon: 'triangle-exclamation' },
-    { key: 'unavailable', icon: 'user-xmark' },
+    { key: 'revisedScreening', icon: 'rotate' },
+    { key: 'findReviewers', icon: 'user-check' },
+    { key: 'reviewing', icon: 'clipboard-check' },
+    { key: 'decide', icon: 'gavel' },
+    { key: 'awaitingFinal', icon: 'hourglass-half' },
+    { key: 'cameraReady', icon: 'file-circle-check' },
 ];
-function pickQueue(key) {
-    queue.value = key;
+function pickStage(key) {
+    stage.value = key;
     if (key) status.value = '';
     load();
 }
+// Gold: papers waiting for the editors; grey: papers in the tab that wait for someone else
+const tabNumber = (key) => (props.stages[key].count || props.stages[key].total);
+const tabTone = (key) => (props.stages[key].count ? 'bg-gold-400 text-black' : 'bg-neutral-100 text-neutral-500 dark:bg-white/10 dark:text-neutral-400');
 
 // List (paged table) or cards grouped by track (every matching paper); the choice is remembered on this browser
 const VIEW_KEY = 'skdiit.submissions.view';
@@ -63,8 +70,8 @@ const byTrack = computed(() => props.tracks
     .filter((group) => group.papers.length));
 
 function load(params = {}) {
-    router.get('/admin/submissions', { q: q.value || undefined, track: track.value || undefined, status: status.value || undefined, queue: queue.value || undefined, view: view.value === 'tracks' ? 'tracks' : undefined, ...params }, {
-        only: ['submissions', 'filters', 'queues'],
+    router.get('/admin/submissions', { q: q.value || undefined, track: track.value || undefined, status: status.value || undefined, stage: stage.value || undefined, view: view.value === 'tracks' ? 'tracks' : undefined, ...params }, {
+        only: ['submissions', 'filters', 'stages'],
         preserveState: true,
         preserveScroll: true,
         replace: true,
@@ -78,7 +85,7 @@ function reset() {
     q.value = '';
     track.value = '';
     status.value = '';
-    queue.value = '';
+    stage.value = '';
     load();
 }
 
@@ -106,26 +113,22 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
 
         <nav class="flex gap-1 overflow-x-auto border-b border-neutral-200 dark:border-white/10" role="tablist">
             <button
-                v-for="item in queueTabs"
+                v-for="item in stageTabs"
                 :key="item.key || 'all'"
                 role="tab"
-                :aria-selected="queue === item.key"
-                :class="queue === item.key
+                :aria-selected="stage === item.key"
+                :class="stage === item.key
                     ? 'border-gold-400 text-gold-600 dark:text-gold-400'
                     : 'border-transparent text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-100'"
                 class="-mb-px flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition"
-                @click="pickQueue(item.key)"
+                @click="pickStage(item.key)"
             >
-                <Fa :icon="item.icon" :class="item.key === 'overdue' && queues.overdue ? 'text-red-500' : ''" />
-                {{ t(`submissions.queue.${item.key || 'all'}`) }}
-                <span
-                    v-if="item.key"
-                    :class="queues[item.key] ? (item.key === 'overdue' ? 'bg-red-500 text-white' : 'bg-gold-400 text-black') : 'bg-neutral-100 text-neutral-500 dark:bg-white/10 dark:text-neutral-400'"
-                    class="rounded-full px-2 py-0.5 text-xs font-semibold"
-                >{{ formatNumber(queues[item.key]) }}</span>
+                <Fa :icon="item.icon" />
+                {{ t(`submissions.stage.${item.key || 'all'}`) }}
+                <span v-if="item.key" :class="tabTone(item.key)" class="rounded-full px-2 py-0.5 text-xs font-semibold">{{ formatNumber(tabNumber(item.key)) }}</span>
             </button>
         </nav>
-        <p v-if="queue" class="-mt-3 text-sm text-neutral-500 dark:text-neutral-400"><Fa icon="circle-info" class="mr-1 text-gold-500" /> {{ t(`submissions.queue.hint.${queue}`) }}</p>
+        <p v-if="stage" class="-mt-3 text-sm text-neutral-500 dark:text-neutral-400"><Fa icon="circle-info" class="mr-1 text-gold-500" /> {{ t(`submissions.stage.hint.${stage}`) }}</p>
 
         <form class="grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_14rem_14rem_auto_auto]" @submit.prevent="load()">
             <label class="relative">
@@ -136,7 +139,7 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
                 <option value="">{{ t('submissions.manage.allTracks') }}</option>
                 <option v-for="item in tracks" :key="item.id" :value="String(item.id)">{{ tr(item.name) }}</option>
             </select>
-            <select v-model="status" :class="input" :disabled="!!queue" :title="queue ? t('submissions.queue.statusLocked') : undefined" @change="load()">
+            <select v-model="status" :class="input" :disabled="!!stage" :title="stage ? t('submissions.queue.statusLocked') : undefined" @change="load()">
                 <option value="">{{ t('submissions.manage.allStatuses') }}</option>
                 <option v-for="item in statuses" :key="item" :value="item">{{ t(`submissions.status.${item}`) }}</option>
             </select>
@@ -147,6 +150,14 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
                 <Fa icon="arrow-rotate-right" /> {{ t('registrants.reset') }}
             </button>
         </form>
+
+        <!-- The search also matches papers still at the first gate: they are on Selection -->
+        <Transition name="fade">
+            <p v-if="atFirstGate && filters.q" class="flex flex-wrap items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200">
+                <Fa icon="code-branch" /> {{ t('submissions.manage.atFirstGate', { n: formatNumber(atFirstGate) }) }}
+                <Link :href="`/admin/selection?tab=all&q=${encodeURIComponent(filters.q)}`" class="font-semibold underline">{{ t('submissions.manage.openSelection') }}</Link>
+            </p>
+        </Transition>
 
         <!-- List or cards by track -->
         <div class="flex justify-end">
@@ -167,20 +178,21 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
 
         <Transition name="fade" mode="out-in">
         <div v-if="view === 'list'" key="list" class="overflow-x-auto rounded-xl border border-neutral-200 dark:border-white/10">
-            <table class="w-full min-w-240 text-sm">
+            <table class="w-full min-w-280 text-sm">
                 <thead class="bg-neutral-50 text-left text-neutral-500 dark:bg-white/5 dark:text-neutral-400">
                     <tr>
                         <th class="px-4 py-3 font-medium">{{ t('submissions.code') }}</th>
                         <th class="px-4 py-3 font-medium">{{ t('submissions.fields.title') }}</th>
                         <th class="px-4 py-3 font-medium">{{ t('submissions.fields.track') }}</th>
                         <th class="px-4 py-3 text-center font-medium">{{ t('registrants.status') }}</th>
+                        <th class="px-4 py-3 font-medium">{{ t('submissions.reviewersColumn') }}</th>
                         <th class="px-4 py-3 font-medium">{{ t('submissions.waiting.column') }}</th>
                         <th class="px-4 py-3 font-medium">{{ t('submissions.submittedAt') }}</th>
                         <th class="px-4 py-3"><span class="sr-only">{{ t('registrants.actions') }}</span></th>
                     </tr>
                 </thead>
                 <Transition name="fade" mode="out-in">
-                    <tbody :key="`${submissions.current_page}-${submissions.total}-${filters.q}-${filters.track}-${filters.status}-${filters.queue}`" class="divide-y divide-neutral-200 dark:divide-white/5">
+                    <tbody :key="`${submissions.current_page}-${submissions.total}-${filters.q}-${filters.track}-${filters.status}-${filters.stage}`" class="divide-y divide-neutral-200 dark:divide-white/5">
                         <tr v-for="item in submissions.data" :key="item.id" class="transition hover:bg-gold-50 dark:hover:bg-gold-400/5">
                             <!-- Gold bar on the left: the editors' move -->
                             <td :class="item.waitingOn.who === 'editor' ? 'border-gold-400' : 'border-transparent'" class="border-l-4 px-4 py-3 font-mono text-xs whitespace-nowrap text-gold-600 dark:text-gold-400">{{ item.code }}</td>
@@ -190,9 +202,16 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
                                     <span v-if="item.notes" class="mr-1.5 inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 text-amber-700 dark:bg-amber-400/15 dark:text-amber-300" :title="t('notes.count', { n: item.notes })"><Fa icon="note-sticky" class="text-[0.65rem]" />{{ item.notes }}</span>{{ item.authors.map((a) => a.name).join(', ') }}
                                 </span>
                             </td>
-                            <td class="px-4 py-3 whitespace-nowrap text-neutral-600 dark:text-neutral-300">{{ tr(item.track.name) }}</td>
-                            <td class="px-4 py-3 text-center"><SubmissionStatusBadge :status="item.status" /></td>
+                            <td class="px-4 py-3 whitespace-nowrap text-neutral-600 dark:text-neutral-300">{{ item.track ? tr(item.track.name) : t('submissions.noTrack') }}</td>
+                            <td class="px-4 py-3 text-center">
+                                <span class="inline-flex flex-col items-center gap-1">
+                                    <SubmissionStatusBadge :status="item.status" />
+                                    <RevisionBadge :status="item.status" :revision-count="item.revisionCount" :due-date="item.revisionDueDate" :camera-ready-approved="item.cameraReadyApproved" :camera-ready-fix="item.cameraReadyFix" />
+                                </span>
+                            </td>
                             <!-- Whose move it is: editor, reviewer (with x/y sent) or author -->
+                            <!-- This round's reviewers: who has sent (and what), who is still reviewing -->
+                            <td class="px-4 py-3"><ReviewerStatusList :reviewers="item.reviewers" /></td>
                             <td class="px-4 py-3"><WaitingOnBadge :waiting="item.waitingOn" /></td>
                             <td class="px-4 py-3 whitespace-nowrap text-neutral-500 dark:text-neutral-400">{{ formatDate(item.submittedAt) }}</td>
                             <td class="px-4 py-3">
@@ -202,7 +221,7 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
                             </td>
                         </tr>
                         <tr v-if="!submissions.data.length">
-                            <td colspan="7" class="px-4 py-12 text-center text-neutral-500 dark:text-neutral-400">{{ t(queue ? 'submissions.queue.empty' : 'submissions.manage.empty') }}</td>
+                            <td colspan="8" class="px-4 py-12 text-center text-neutral-500 dark:text-neutral-400">{{ t(stage ? 'submissions.queue.empty' : 'submissions.manage.empty') }}</td>
                         </tr>
                     </tbody>
                 </Transition>
@@ -211,7 +230,7 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
 
         <!-- Cards by track: every matching paper, its status and whose move it is -->
         <div v-else key="tracks" class="space-y-6">
-            <p v-if="!byTrack.length" class="rounded-xl border border-dashed border-neutral-300 py-12 text-center text-sm text-neutral-500 dark:border-white/15 dark:text-neutral-400">{{ t(queue ? 'submissions.queue.empty' : 'submissions.manage.empty') }}</p>
+            <p v-if="!byTrack.length" class="rounded-xl border border-dashed border-neutral-300 py-12 text-center text-sm text-neutral-500 dark:border-white/15 dark:text-neutral-400">{{ t(stage ? 'submissions.queue.empty' : 'submissions.manage.empty') }}</p>
             <section v-for="group in byTrack" :key="group.track.id">
                 <h3 class="mb-3 flex items-center gap-2 font-semibold">
                     <Fa icon="layer-group" class="text-gold-500" /> {{ tr(group.track.name) }}
@@ -232,8 +251,10 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
                             <span class="truncate text-xs text-neutral-500 dark:text-neutral-400">{{ item.authors.map((a) => a.name).join(', ') }}</span>
                             <span class="mt-auto flex flex-wrap items-center gap-2 pt-1">
                                 <SubmissionStatusBadge :status="item.status" />
+                                <RevisionBadge :status="item.status" :revision-count="item.revisionCount" :due-date="item.revisionDueDate" :camera-ready-approved="item.cameraReadyApproved" :camera-ready-fix="item.cameraReadyFix" />
                                 <WaitingOnBadge :waiting="item.waitingOn" />
                             </span>
+                            <ReviewerStatusList v-if="item.reviewers.length" :reviewers="item.reviewers" class="border-t border-neutral-200 pt-2 dark:border-white/10" />
                         </Link>
                     </li>
                 </ul>

@@ -1,15 +1,15 @@
 import { computed } from 'vue';
-import { timelinePlan } from '@/data/mock';
+import { useSchedulePlan } from '@/composables/useSchedulePlan';
 import { useSite } from '@/composables/useSite';
 
 /**
  * Dates authors may see on their paper's journey: only timeline rows marked public (the published schedule, so they
- * read as "scheduled", not as promises), plus the conference day. Timeline phase 1: the rows are still the assumed
- * plan in mock.js; once the timeline is saved this reads the saved plan instead.
+ * read as "scheduled", not as promises), plus the conference day. Saved rows win over the default plan (useSchedulePlan).
  */
 export function useConferenceDates() {
     const site = useSite();
-    const published = (key) => timelinePlan.find((p) => p.key === key && p.public);
+    const plan = useSchedulePlan();
+    const published = (key) => plan.value.find((p) => p.key === key && p.public);
 
     return computed(() => ({
         notify: published('notify')?.start ?? null,

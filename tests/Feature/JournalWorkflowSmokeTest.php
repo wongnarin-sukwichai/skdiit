@@ -158,6 +158,9 @@ class JournalWorkflowSmokeTest extends TestCase
         $reviewer->tracks()->sync([$paper->track_id]);
         $this->actingAs($editor)->post("/admin/submissions/{$paper->id}/reviews", ['reviewer_id' => $reviewer->id, 'due_date' => now()->addWeek()->toDateString()])->assertSessionHasNoErrors();
         \Illuminate\Support\Facades\Mail::assertSent(\App\Mail\TemplatedMail::class, fn ($mail) => $mail->hasTo($reviewer->email));
+        // The Submissions list shows this round's reviewers at a glance
+        $this->actingAs($editor)->get("/admin/submissions?q={$paper->code}")->assertInertia(fn ($page) => $page
+            ->where('submissions.data.0.reviewers.0.name', $reviewer->name)->where('submissions.data.0.reviewers.0.state', 'pending'));
 
         // Back to the default text
         $this->actingAs($editor)->delete('/admin/announcements/templates/journal_selected')->assertRedirect();
@@ -175,6 +178,17 @@ class JournalWorkflowSmokeTest extends TestCase
     {
         $this->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class);
         $admin = $this->user('admin');
+
+        // Timeline rows not enforced yet are saved too (App\Support\SchedulePlan) and shared with backend pages
+        $this->actingAs($admin)->put('/admin/settings/schedule/notify', ['start' => '2027-01-06', 'end' => '2027-01-06', 'mode' => 'info', 'public' => true])->assertSessionHasNoErrors();
+        $this->actingAs($admin)->put('/admin/settings/schedule/review', ['start' => '2026-12-20', 'end' => '2026-12-10', 'mode' => 'warn'])->assertSessionHasErrors('end');
+        $this->actingAs($admin)->put('/admin/settings/schedule/submission', ['start' => '2026-12-20', 'end' => '2026-12-21', 'mode' => 'warn'])->assertNotFound();
+        $this->actingAs($this->user('editor'))->put('/admin/settings/schedule/notify', ['start' => '2027-02-01', 'end' => '2027-02-01', 'mode' => 'info']);
+        $this->assertSame('2027-01-06', \App\Support\SchedulePlan::all()['notify']['start']);
+        $this->actingAs($admin)->get('/admin/settings')->assertInertia(fn ($page) => $page->where('schedulePlan.notify.start', '2027-01-06'));
+        // The editor home lays its work along that schedule (EditorTimeline)
+        $this->actingAs($this->user('editor'))->get('/admin')->assertOk()
+            ->assertInertia(fn ($page) => $page->has('editorStages.stages.selection')->has('editorStages.queues.screening')->has('editorStages.schedule.deadline')->where('schedulePlan.notify.start', '2027-01-06'));
 
         // Important dates and the programme live in Settings (saved in date order); the old Schedule menu is gone
         $schedule = [
@@ -283,9 +297,50 @@ class JournalWorkflowSmokeTest extends TestCase
             'keywords_th' => 'k', 'keywords_en' => 'k', 'authors' => [['name' => 'A', 'affiliation' => 'MSU']],
         ];
 
-        // All three files are required for a new paper; a Word file is not accepted as the PDF
-        $this->actingAs($author)->post('/admin/my-submissions', $fields)->assertSessionHasErrors(['file', 'word_file', 'turnitin_file']);
+        // PDF and Word are required for a new paper, Turnitin is optional (2026-11-12); a Word file is not accepted as the PDF
+        $this->actingAs($author)->post('/admin/my-submissions', $fields)->assertSessionHasErrors(['file', 'word_file'])->assertSessionDoesntHaveErrors('turnitin_file');
         $this->actingAs($author)->post('/admin/my-submissions', [...$fields, 'file' => $word(), 'word_file' => $word(), 'turnitin_file' => $pdf()])->assertSessionHasErrors('file');
+
+        // English only, no track and no Turnitin report: accepted; the editor sets the track at the first gate
+        $this->actingAs($author)->post('/admin/my-submissions', [
+            'title_en' => 'English only', 'abstract_en' => 'a', 'keywords_en' => 'k', 'authors' => [['name' => 'A', 'affiliation' => 'MSU']],
+            'file' => $pdf(), 'word_file' => $word(),
+        ])->assertSessionHasNoErrors();
+        $englishOnly = $author->submissions()->latest('id')->first();
+        $this->assertNull($englishOnly->track_id);
+        $this->assertNull($englishOnly->title_th);
+        $this->actingAs($author)->get("/admin/my-submissions/{$englishOnly->id}")->assertOk();
+
+        // Editors set the track on Selection before submissions close; the journal role and authors cannot
+        $this->actingAs($this->user('editor'))->get('/admin/selection')->assertOk();
+        $this->actingAs($this->user('journal'))->put("/admin/selection/{$englishOnly->id}/track", ['track_id' => Track::first()->id])->assertForbidden();
+        $this->actingAs($author)->put("/admin/selection/{$englishOnly->id}/track", ['track_id' => Track::first()->id]); // no Selection module
+        $this->assertNull($englishOnly->fresh()->track_id);
+        $this->actingAs($this->user('editor'))->put("/admin/selection/{$englishOnly->id}/track", ['track_id' => Track::first()->id])->assertSessionHasNoErrors();
+        $this->assertSame(Track::first()->id, $englishOnly->fresh()->track_id);
+        $this->assertTrue($englishOnly->events()->where('action', 'track_changed')->exists());
+
+        // Submissions lists the conference track only: a first-gate paper is not there, a search points to Selection
+        $listEditor = $this->user('editor');
+        $this->actingAs($listEditor)->get('/admin/submissions?q=English+only')
+            ->assertInertia(fn ($page) => $page->where('submissions.total', 0)->where('atFirstGate', 1)->where('statuses', fn ($s) => ! collect($s)->contains('submitted')));
+
+        // The editor may attach a file to a screening decision; the author downloads it and sees it on the revision form
+        $englishOnly->forceFill(['status' => \App\Enums\SubmissionStatus::Screening])->save();
+        $this->actingAs($listEditor)->get('/admin/submissions?q=English+only')->assertInertia(fn ($page) => $page->where('submissions.total', 1)->where('atFirstGate', 0));
+        // Tabs by stage: a new paper to screen is in "screening"; old ?queue= links open the matching tab
+        $this->actingAs($listEditor)->get('/admin/submissions?stage=screening&q=English+only')->assertInertia(fn ($page) => $page->where('submissions.total', 1)->has('stages.reviewing.count'));
+        $this->actingAs($listEditor)->get('/admin/submissions?stage=revisedScreening&q=English+only')->assertInertia(fn ($page) => $page->where('submissions.total', 0));
+        $this->actingAs($listEditor)->get('/admin/submissions?queue=needReviewers')->assertInertia(fn ($page) => $page->where('filters.stage', 'findReviewers'));
+        $this->actingAs($this->user('editor'))->post("/admin/submissions/{$englishOnly->id}/screening", [
+            'decision' => 'revise', 'comment' => 'See the marked-up PDF', 'attachment' => $pdf('marked-up.pdf'),
+        ])->assertSessionHasNoErrors();
+        $file = $englishOnly->events()->where('action', 'screened')->latest('id')->first()->meta['file'];
+        $this->assertSame('marked-up.pdf', $file['name']);
+        $this->actingAs($author)->get($file['url'])->assertOk();
+        $this->actingAs($author)->get("/admin/my-submissions/{$englishOnly->id}/edit")
+            ->assertInertia(fn ($page) => $page->where('submission.feedbackFile.name', 'marked-up.pdf'));
+        $englishOnly->delete();
         $this->actingAs($author)->post('/admin/my-submissions', [
             ...$fields, 'file' => $pdf(), 'word_file' => $word(), 'turnitin_file' => $pdf('turnitin.pdf'), 'supplementary_files' => [$pdf('data.pdf')],
         ])->assertSessionHasNoErrors();
@@ -385,7 +440,12 @@ class JournalWorkflowSmokeTest extends TestCase
         $this->actingAs($editor)->post("/admin/selection/{$paper->id}", [...$offer, 'to' => 'conference'])->assertForbidden();
         $this->actingAs($author)->post("/admin/my-submissions/{$paper->id}/journal-answer", ['answer' => 'decline'])->assertSessionHas('error');
         $this->assertFalse($paper->canUploadSlides());
-        $this->actingAs($editor)->put("/admin/submissions/{$paper->id}/presentation", ['at' => now()->addDays(10)->format('Y-m-d\TH:i'), 'room' => 'A'])->assertRedirect();
+        // Editors put it in a presentation session (2026-11-12): its slot follows from the session and the running order
+        $room = \App\Models\PresentationRoom::create(['name_th' => 'ห้อง A', 'name_en' => 'Room A']);
+        $session = \App\Models\PresentationSession::create(['year' => Submission::conferenceYear(), 'date' => now()->addDays(10)->toDateString(), 'start_time' => '09:00', 'end_time' => '09:30', 'presentation_room_id' => $room->id, 'minutes' => 15]);
+        $this->actingAs($editor)->put("/admin/submissions/{$paper->id}/presentation", ['session_id' => $session->id])->assertSessionHasNoErrors();
+        $this->assertSame('09:00', $paper->fresh()->presentation_at->format('H:i'));
+        $this->assertSame('ห้อง A', $paper->fresh()->presentation_room);
         $this->assertTrue($paper->fresh()->canUploadSlides());
         $this->assertSame(['who' => 'author', 'task' => 'slides'], $paper->fresh()->waitingOn());
 
@@ -436,6 +496,150 @@ class JournalWorkflowSmokeTest extends TestCase
         $this->actingAs($admin)->post('/admin/settings/journals', ['name' => 'New', 'url' => 'https://new.example'])->assertSessionHasNoErrors();
         $this->actingAs($editor)->post('/admin/settings/journals', ['name' => 'Nope'])->assertRedirect();
         $this->assertFalse(\App\Models\Journal::where('name', 'Nope')->exists());
+    }
+
+    /** A reviewer's notes file reaches the author once the round is decided, renamed; editors may hold it back. */
+    public function test_reviewer_file_to_author(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake();
+        $this->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class);
+        $editor = $this->user('editor');
+        $reviewer = $this->user('reviewer');
+        $author = $this->user('user', 'attend_submit');
+        \Illuminate\Support\Facades\Storage::put('submissions/smoke.pdf', 'pdf');
+        \Illuminate\Support\Facades\Storage::put('reviews/notes.pdf', 'notes');
+        $paper = $author->submissions()->create([
+            'track_id' => Track::first()->id, 'title_th' => 'ท', 'title_en' => 'T', 'abstract_th' => 'a', 'abstract_en' => 'a',
+            'keywords_th' => 'k', 'keywords_en' => 'k', 'file_path' => 'submissions/smoke.pdf', 'file_name' => 'x.pdf', 'file_size' => 1,
+        ]);
+        $paper->forceFill(['status' => SubmissionStatus::InReview, 'review_round' => 1])->save();
+        $review = $paper->reviews()->create(['reviewer_id' => $reviewer->id, 'round' => 1, 'due_date' => now()->addWeek()]);
+        $review->forceFill(['submitted_at' => now(), 'recommendation' => 'revise', 'attachment_path' => 'reviews/notes.pdf', 'attachment_name' => 'Dr Somchai notes.pdf', 'attachment_size' => 5])->save();
+
+        // Round not decided yet: the author cannot have it; the reviewer and the editors can
+        $this->actingAs($author)->get("/admin/review-files/{$review->id}")->assertNotFound();
+        $this->actingAs($editor)->get("/admin/review-files/{$review->id}")->assertOk();
+
+        // Decided: the author downloads it as "Reviewer 1's notes", and it sits next to the answer on the revision form
+        $paper->forceFill(['status' => SubmissionStatus::ReviewRevision])->save();
+        $download = $this->actingAs($author)->get("/admin/review-files/{$review->id}")->assertOk();
+        $this->assertStringContainsString(rawurlencode('ไฟล์โน้ตของผู้ประเมินคนที่ 1.pdf'), $download->headers->get('content-disposition'));
+        $this->assertSame('ไฟล์โน้ตของผู้ประเมินคนที่ 1.pdf', $paper->reviewsToAnswer()[0]['file']['name']);
+
+        // Held back by an editor: gone for the author
+        $this->actingAs($author)->put("/admin/review-files/{$review->id}/to-author", ['to_author' => false]);
+        $this->assertTrue($review->fresh()->attachment_to_author);
+        $this->actingAs($editor)->put("/admin/review-files/{$review->id}/to-author", ['to_author' => false])->assertSessionHasNoErrors();
+        $this->actingAs($author)->get("/admin/review-files/{$review->id}")->assertNotFound();
+        $this->assertNull($paper->fresh()->reviewsForAuthor()[0]['reviews'][0]['file']);
+    }
+
+    /** Camera-ready check (step 3 of 3): fixes go back to the author, approval locks the file; acceptance can be withdrawn. */
+    public function test_camera_ready_check(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake();
+        $this->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class);
+        $editor = $this->user('editor');
+        $author = $this->user('user', 'attend_submit');
+        \Illuminate\Support\Facades\Storage::put('submissions/smoke.pdf', 'pdf');
+        $paper = $author->submissions()->create([
+            'track_id' => Track::first()->id, 'title_th' => 'ท', 'title_en' => 'T', 'abstract_th' => 'a', 'abstract_en' => 'a',
+            'keywords_th' => 'k', 'keywords_en' => 'k', 'file_path' => 'submissions/smoke.pdf', 'file_name' => 'x.pdf', 'file_size' => 1,
+        ]);
+        $paper->forceFill(['status' => SubmissionStatus::Accepted, 'review_round' => 1])->save();
+        $pdf = fn () => \Illuminate\Http\UploadedFile::fake()->create('final.pdf', 50, 'application/pdf');
+        $inTab = fn (string $stage) => Submission::currentYear()->stage($stage)->whereKey($paper->id)->exists();
+
+        // Accepted: in "awaiting camera-ready"; the author uploads; still there, now waiting for the editors' check
+        $this->assertTrue($inTab('awaitingFinal'));
+        $this->actingAs($author)->post("/admin/my-submissions/{$paper->id}/camera-ready", ['file' => $pdf()])->assertSessionHasNoErrors();
+        $this->assertSame(SubmissionStatus::CameraReady, $paper->fresh()->status);
+        $this->assertTrue($inTab('awaitingFinal'));
+        $this->assertSame(1, Submission::stageCounts()['awaitingFinal']['count'] >= 1 ? 1 : 0);
+
+        // Fixes: a message is required; back to the author (accepted), who uploads again
+        $this->actingAs($editor)->post("/admin/submissions/{$paper->id}/camera-ready/fix", [])->assertSessionHasErrors('comment');
+        $this->actingAs($editor)->post("/admin/submissions/{$paper->id}/camera-ready/fix", ['comment' => 'Use the template'])->assertSessionHasNoErrors();
+        $this->assertSame(SubmissionStatus::Accepted, $paper->fresh()->status);
+        $this->assertTrue($paper->fresh()->toClient()['cameraReadyFix']);
+        $this->actingAs($author)->post("/admin/my-submissions/{$paper->id}/camera-ready", ['file' => $pdf()])->assertSessionHasNoErrors();
+
+        // Approved: in "camera-ready", in the proceedings ZIP count, and the author can no longer replace it
+        $this->actingAs($editor)->post("/admin/submissions/{$paper->id}/camera-ready/approve", [])->assertSessionHasNoErrors();
+        $this->assertNotNull($paper->fresh()->camera_ready_approved_at);
+        $this->assertTrue($inTab('cameraReady'));
+        $this->actingAs($author)->post("/admin/my-submissions/{$paper->id}/camera-ready", ['file' => $pdf()])->assertForbidden();
+        $this->actingAs($editor)->get('/admin/submissions')->assertInertia(fn ($page) => $page->where('cameraReadyCount', fn ($n) => $n >= 1));
+        $this->assertTrue($paper->events()->where('action', 'camera_ready_approved')->exists());
+
+        // Withdrawing the acceptance needs a reason; the paper ends as rejected
+        $this->actingAs($editor)->post("/admin/submissions/{$paper->id}/cancel-acceptance", [])->assertSessionHasErrors('comment');
+        $this->actingAs($editor)->post("/admin/submissions/{$paper->id}/cancel-acceptance", ['comment' => 'Plagiarism found'])->assertSessionHasNoErrors();
+        $this->assertSame(SubmissionStatus::ReviewRejected, $paper->fresh()->status);
+        $this->assertNull($paper->fresh()->camera_ready_approved_at);
+    }
+
+    /** Presentation sessions: admin builds them; papers get their time from the running order; full and clashing are refused. */
+    public function test_presentation_sessions(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake();
+        $this->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class);
+        $admin = $this->user('admin');
+        $editor = $this->user('editor');
+        $day = now()->addDays(20)->toDateString();
+        \App\Support\SiteContent::put('conference', [...\App\Support\SiteContent::all()['conference'], 'date' => $day, 'endDate' => now()->addDays(21)->toDateString()]);
+
+        $paper = fn (string $code) => tap($this->user('user', 'attend_submit')->submissions()->create([
+            'track_id' => Track::first()->id, 'title_th' => $code, 'title_en' => $code, 'abstract_th' => 'a', 'abstract_en' => 'a',
+            'keywords_th' => 'k', 'keywords_en' => 'k', 'file_path' => 'submissions/x.pdf', 'file_name' => 'x.pdf', 'file_size' => 1,
+        ]))->forceFill(['status' => SubmissionStatus::CameraReady, 'camera_ready_approved_at' => now()]);
+        [$a, $b, $c] = [$paper('A'), $paper('B'), $paper('C')];
+        foreach ([$a, $b, $c] as $p) {
+            $p->save();
+        }
+
+        // Rooms and sessions are admin's; editors only view the page
+        $this->actingAs($editor)->post('/admin/presentations/rooms', ['name_th' => 'ห้อง', 'name_en' => 'Room'])->assertForbidden();
+        $this->assertSame(0, \App\Models\PresentationRoom::where('name_th', 'ห้อง')->count());
+        $this->actingAs($admin)->post('/admin/presentations/rooms', ['name_th' => 'ห้อง 301', 'name_en' => 'Room 301'])->assertSessionHasNoErrors();
+        $room = \App\Models\PresentationRoom::where('name_th', 'ห้อง 301')->firstOrFail();
+        $session = ['date' => $day, 'start_time' => '09:00', 'end_time' => '09:30', 'presentation_room_id' => $room->id, 'minutes' => 15];
+        $this->actingAs($admin)->post('/admin/presentations/sessions', [...$session, 'date' => now()->addDays(40)->toDateString()])->assertSessionHasErrors('date'); // not a conference day
+        $this->actingAs($admin)->post('/admin/presentations/sessions', $session)->assertSessionHasNoErrors();
+        $this->actingAs($admin)->post('/admin/presentations/sessions', [...$session, 'start_time' => '09:15', 'end_time' => '10:00'])->assertSessionHasErrors('presentation_room_id'); // same room, overlapping
+        $s = \App\Models\PresentationSession::latest('id')->firstOrFail();
+
+        // Two places (30 min / 15): A 09:00, B 09:15; C is refused; editors assign from the paper page
+        $this->actingAs($editor)->put("/admin/submissions/{$a->id}/presentation", ['session_id' => $s->id])->assertSessionHasNoErrors();
+        $this->actingAs($editor)->put("/admin/submissions/{$b->id}/presentation", ['session_id' => $s->id])->assertSessionHasNoErrors();
+        $this->actingAs($editor)->put("/admin/submissions/{$c->id}/presentation", ['session_id' => $s->id])->assertSessionHasErrors('session_id');
+        $this->assertSame(['09:00', '09:15'], [$a->fresh()->presentation_at->format('H:i'), $b->fresh()->presentation_at->format('H:i')]);
+
+        // Reorder: B first; take A out: B stays first
+        $this->actingAs($admin)->put("/admin/presentations/papers/{$b->id}/move", ['direction' => 'up']);
+        $this->assertSame('09:00', $b->fresh()->presentation_at->format('H:i'));
+        $this->actingAs($admin)->put("/admin/submissions/{$a->id}/presentation", ['session_id' => null])->assertSessionHasNoErrors();
+        $this->assertNull($a->fresh()->presentation_at);
+
+        // The session moves to 13:00: its papers follow; the public schedule shows it
+        $this->actingAs($admin)->put("/admin/presentations/sessions/{$s->id}", [...$session, 'start_time' => '13:00', 'end_time' => '13:30'])->assertSessionHasNoErrors();
+        $this->assertSame('13:00', $b->fresh()->presentation_at->format('H:i'));
+        $this->get('/schedule')->assertOk()->assertInertia(fn ($page) => $page->where('presentations', fn ($list) => collect($list)->contains(fn ($x) => $x['id'] === $s->id && $x['papers'][0]['code'] === $b->code)));
+        $this->actingAs($admin)->get('/admin/presentations')->assertOk()->assertInertia(fn ($page) => $page->where('waiting', fn ($w) => collect($w)->pluck('id')->contains($a->id)));
+
+        // A room in use cannot be deleted; deleting the session sends its papers back to the waiting list
+        $this->actingAs($admin)->delete("/admin/presentations/rooms/{$room->id}")->assertForbidden();
+        // Presentation days are kept on the page: a day with a session cannot go; any other day can be added
+        $this->actingAs($admin)->delete("/admin/presentations/days/{$day}")->assertSessionHas('error');
+        $later = now()->addDays(40)->toDateString();
+        $this->actingAs($admin)->post('/admin/presentations/days', ['date' => $later])->assertSessionHasNoErrors();
+        $this->assertContains($later, \App\Http\Controllers\Admin\PresentationController::days());
+        $this->actingAs($admin)->post('/admin/presentations/sessions', [...$session, 'date' => $later])->assertSessionHasNoErrors();
+
+        $this->actingAs($admin)->delete("/admin/presentations/sessions/{$s->id}")->assertSessionHasNoErrors();
+        $this->assertNull($b->fresh()->presentation_session_id);
+        $this->actingAs($admin)->delete("/admin/presentations/days/{$day}")->assertSessionHas('success');
+        $this->assertNotContains($day, \App\Http\Controllers\Admin\PresentationController::days());
     }
 
     /** Admin deletes a registrant with their papers and the papers' files; editors only view. */

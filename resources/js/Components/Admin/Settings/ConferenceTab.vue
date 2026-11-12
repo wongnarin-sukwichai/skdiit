@@ -9,7 +9,7 @@ import { useSite } from '@/composables/useSite';
 const { t } = useI18n();
 const site = useSite();
 
-const toForm = (c) => ({ shortName: c.shortName, fullName: { ...c.fullName }, date: c.date, venue: { ...c.venue }, email: c.email, phone: c.phone });
+const toForm = (c) => ({ shortName: c.shortName, fullName: { ...c.fullName }, date: c.date, endDate: c.endDate ?? '', venue: { ...c.venue }, email: c.email, phone: c.phone });
 const form = useForm(toForm(site.value.conference));
 watch(() => site.value.conference, (c) => {
     form.defaults(toForm(c));
@@ -40,6 +40,13 @@ const errorText = 'mt-1 block text-xs text-red-500 dark:text-red-400';
                 <span class="mb-1.5 block text-sm font-medium">{{ t('admin.conference.date') }}</span>
                 <input v-model="form.date" type="date" :class="[input, border(form.errors.date)]">
                 <span v-if="form.errors.date" :class="errorText">{{ t(form.errors.date) }}</span>
+            </label>
+            <!-- A conference over several days: the last day (empty = one day) -->
+            <label class="block">
+                <span class="mb-1.5 block text-sm font-medium">{{ t('admin.conference.endDate') }}</span>
+                <input v-model="form.endDate" type="date" :min="form.date" :class="[input, border(form.errors.endDate)]">
+                <span v-if="form.errors.endDate" :class="errorText">{{ t(form.errors.endDate) }}</span>
+                <span class="mt-1 block text-xs text-neutral-500 dark:text-neutral-400">{{ t('admin.conference.endDateHint') }}</span>
             </label>
         </div>
 

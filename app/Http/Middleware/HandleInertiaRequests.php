@@ -52,6 +52,10 @@ class HandleInertiaRequests extends Middleware
             'impersonation' => fn () => Impersonation::forClient($user),
             // Conference information and public-site texts admin edits in Settings (useSite())
             'site' => fn () => [...SiteContent::all(), 'year' => Submission::conferenceYear()],
+            // Backend, admin and editors: the work along the schedule, shown above every page (EditorTimeline)
+            'editorStages' => fn () => \App\Support\EditorStages::forClient($user),
+            // Backend: saved timeline rows not enforced yet (useSchedulePlan; the rest of the plan is on the client)
+            'schedulePlan' => fn () => $user?->modules() ? \App\Support\SchedulePlan::all() : [],
             // Affiliation list for the sign-up form and labels (useAffiliations); 'other' is added on the client
             'affiliations' => fn () => Affiliation::ordered()->get()->map->toClient(),
             // Meal preferences for the sign-up form, "My details" and labels (useMealOptions); 'other' is added on the client

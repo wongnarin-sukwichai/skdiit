@@ -59,6 +59,9 @@ const title = (event) => eventTitle(t, event);
                 <blockquote v-if="event.comment" class="mt-2 rounded-lg bg-neutral-50 px-3 py-2 text-sm whitespace-pre-line text-neutral-700 dark:bg-white/5 dark:text-neutral-200">
                     {{ event.comment }}
                 </blockquote>
+                <a v-if="event.meta?.file" :href="event.meta.file.url" class="mt-2 inline-flex items-center gap-1.5 rounded-md border border-neutral-300 px-2.5 py-1 text-xs transition hover:border-gold-400 dark:border-white/15">
+                    <Fa icon="paperclip" class="text-gold-500" /> {{ t('decision.attachedFile') }}: {{ event.meta.file.name }}
+                </a>
             </li>
         </ol>
     </section>

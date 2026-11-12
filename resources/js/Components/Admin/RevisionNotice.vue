@@ -6,6 +6,7 @@ import { useI18n } from '@/i18n';
 const props = defineProps({
     status: { type: String, required: true },
     comment: { type: String, default: null }, // the editor's latest message
+    file: { type: Object, default: null }, // { name, url } the editor attached to it
     dueDate: { type: String, default: null }, // revision due date (Y-m-d)
     inForm: { type: Boolean, default: false }, // wording for the edit form
 });
@@ -43,5 +44,6 @@ const overdue = computed(() => props.dueDate && new Date(`${props.dueDate}T23:59
             <template v-if="overdue"> · {{ t('submissions.outcome.overdue') }}</template>
         </p>
         <blockquote v-if="comment" class="mt-2 ml-7 rounded-lg bg-white/70 px-3 py-2 whitespace-pre-line text-neutral-700 dark:bg-black/20 dark:text-neutral-200">{{ comment }}</blockquote>
+        <a v-if="file" :href="file.url" class="mt-2 ml-7 inline-flex items-center gap-1.5 rounded-md border border-current/30 bg-white/70 px-2.5 py-1 text-xs font-medium transition hover:bg-white dark:bg-black/20"><Fa icon="paperclip" /> {{ t('decision.attachedFile') }}: {{ file.name }}</a>
     </div>
 </template>

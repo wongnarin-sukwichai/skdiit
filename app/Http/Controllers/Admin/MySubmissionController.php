@@ -81,7 +81,7 @@ class MySubmissionController extends Controller
         }
 
         // A new paper brings all three files: PDF, Word and the Turnitin report
-        $data = $this->validated($request, fileRequired: true, turnitinRequired: true);
+        $data = $this->validated($request, fileRequired: true, turnitinRequired: false);
 
         $submission = DB::transaction(function () use ($request, $data) {
             $stored = $this->storeFile($request);
@@ -155,16 +155,19 @@ class MySubmissionController extends Controller
                 'id' => $submission->id,
                 'code' => $submission->code,
                 'status' => $submission->status->value,
-                'trackLocked' => ! $submission->authorCanChangeTrack(),
                 // While revising: the editor's latest message, the due date and the reviewers' comments
                 'feedback' => $submission->status->awaitsAuthorRevision()
                     ? $submission->events()->whereIn('action', [SubmissionAction::Screened, SubmissionAction::Decided])->value('comment')
+                    : null,
+                // ...and the file the editor attached to it, if any
+                'feedbackFile' => $submission->status->awaitsAuthorRevision()
+                    ? $submission->events()->whereIn('action', [SubmissionAction::Screened, SubmissionAction::Decided])->first()?->meta['file'] ?? null
                     : null,
                 'revisionDueDate' => $submission->revision_due_date?->toDateString(),
                 'reviewFeedback' => $submission->status->awaitsAuthorRevision() ? $submission->reviewsForAuthor() : [],
                 // Revising after review: answer each reviewer (or attach a response letter)
                 'reviewsToAnswer' => $submission->reviewsToAnswer(),
-                ...$submission->only('track_id', 'title_th', 'title_en', 'abstract_th', 'abstract_en', 'keywords_th', 'keywords_en'),
+                ...$submission->only('title_th', 'title_en', 'abstract_th', 'abstract_en', 'keywords_th', 'keywords_en'),
                 'authors' => $submission->authors->map->only('name', 'affiliation', 'email')->values(),
                 'file' => ['name' => $submission->file_name, 'size' => $submission->file_size, 'url' => "/admin/submissions/{$submission->id}/file"],
                 'files' => $submission->currentFiles(),
@@ -189,12 +192,8 @@ class MySubmissionController extends Controller
             // A revision goes back to the editors: to screening, or to the post-review decision
             $resubmit = $from->awaitsAuthorRevision();
 
-            $fields = $data['fields'];
-            if (! $submission->authorCanChangeTrack()) {
-                unset($fields['track_id']); // the editor's placement wins
-            }
-
-            $submission->fill([...$fields, ...$file]);
+            // Authors never set the track (the editor does at the first gate, 2026-11-12)
+            $submission->fill([...$data['fields'], ...$file]);
             if ($resubmit) {
                 // Back to editor screening (the journal already passed on it), or to the post-review decision
                 $submission->status = $from === SubmissionStatus::Revision ? SubmissionStatus::Screening : SubmissionStatus::Revised;
@@ -232,11 +231,11 @@ class MySubmissionController extends Controller
             ->with('success', $submission->wasChanged('status') ? 'submissions.resubmitted' : 'admin.settings.saved');
     }
 
-    /** Accepted in the conference track: upload the camera-ready file; it can be replaced later. */
+    /** Accepted in the conference track: upload the camera-ready file; it can be replaced until the editors approve it. */
     public function uploadCameraReady(Request $request, Submission $submission): RedirectResponse
     {
         $this->authorizeOwner($request, $submission);
-        abort_unless(in_array($submission->status, [SubmissionStatus::Accepted, SubmissionStatus::CameraReady], true), 403);
+        abort_unless(in_array($submission->status, [SubmissionStatus::Accepted, SubmissionStatus::CameraReady], true) && ! $submission->camera_ready_approved_at, 403);
 
         $request->validate([
             'file' => ['required', 'file', 'mimes:pdf,doc,docx', 'max:'.((int) Setting::get('upload_max_mb') * 1024)],
@@ -305,7 +304,6 @@ class MySubmissionController extends Controller
     private function formProps(): array
     {
         return [
-            'tracks' => Track::ordered()->get()->map->toClient(),
             'maxMb' => (int) Setting::get('upload_max_mb'),
             ...Submission::window(),
         ];
@@ -365,12 +363,12 @@ class MySubmissionController extends Controller
         $max = 'max:'.((int) Setting::get('upload_max_mb') * 1024);
 
         $data = $request->validate([
-            'track_id' => ['required', 'integer', 'exists:tracks,id'],
-            'title_th' => ['required', 'string', 'max:500'],
+            // English is required; Thai is optional (international conference, 2026-11-12). No track: the editor sets it
+            'title_th' => ['nullable', 'string', 'max:500'],
             'title_en' => ['required', 'string', 'max:500'],
-            'abstract_th' => ['required', 'string', 'max:10000'],
+            'abstract_th' => ['nullable', 'string', 'max:10000'],
             'abstract_en' => ['required', 'string', 'max:10000'],
-            'keywords_th' => ['required', 'string', 'max:500'],
+            'keywords_th' => ['nullable', 'string', 'max:500'],
             'keywords_en' => ['required', 'string', 'max:500'],
             'authors' => ['required', 'array', 'min:1', 'max:30'],
             'authors.*.name' => ['required', 'string', 'max:255'],
@@ -384,7 +382,7 @@ class MySubmissionController extends Controller
         ], self::MESSAGES);
 
         return [
-            'fields' => collect($data)->only('track_id', 'title_th', 'title_en', 'abstract_th', 'abstract_en', 'keywords_th', 'keywords_en')->all(),
+            'fields' => collect($data)->only('title_th', 'title_en', 'abstract_th', 'abstract_en', 'keywords_th', 'keywords_en')->all(),
             'authors' => collect($data['authors'])->values()->map(fn (array $author, int $i) => [
                 'position' => $i + 1,
                 'name' => $author['name'],
