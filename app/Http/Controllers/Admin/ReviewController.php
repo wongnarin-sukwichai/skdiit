@@ -10,6 +10,7 @@ use App\Enums\ReviewRecommendation;
 use App\Enums\SubmissionAction;
 use App\Http\Controllers\Controller;
 use App\Models\Review;
+use App\Models\Submission;
 use App\Models\ReviewCriterion;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -25,7 +26,9 @@ class ReviewController extends Controller
 {
     public function index(Request $request): Response
     {
+        // This conference year only: a new year starts the list from zero (user decision 2026-11-13)
         $reviews = Review::where('reviewer_id', $request->user()->id)
+            ->whereHas('submission', fn ($q) => $q->currentYear())
             ->with('submission.track')
             ->orderByRaw('submitted_at IS NOT NULL') // open work first
             ->orderBy('due_date')
@@ -36,7 +39,7 @@ class ReviewController extends Controller
                 'paper' => [
                     'code' => $review->submission->code,
                     'title' => ['en' => $review->submission->title_en, 'th' => $review->submission->title_th],
-                    'track' => $review->submission->track->toClient(),
+                    'track' => $review->submission->track?->toClient(),
                 ],
             ]);
 
@@ -148,7 +151,7 @@ class ReviewController extends Controller
     {
         $user = $request->user();
         abort_unless((bool) $review->attachment_path, 404);
-        if ($review->reviewer_id === $user->id || $user->moduleAccess('submissions')) {
+        if (($review->reviewer_id === $user->id && $review->submission->year === Submission::conferenceYear()) || $user->moduleAccess('submissions')) {
             return Storage::download($review->attachment_path, $review->attachment_name);
         }
 
@@ -183,5 +186,7 @@ class ReviewController extends Controller
     private function authorizeReviewer(Request $request, Review $review): void
     {
         abort_unless($review->reviewer_id === $request->user()->id, 404);
+        // Work of an earlier conference year is closed to the reviewer
+        abort_unless($review->submission->year === Submission::conferenceYear(), 404);
     }
 }

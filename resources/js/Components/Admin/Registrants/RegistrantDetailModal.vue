@@ -51,10 +51,6 @@ watch(() => props.registrant, (value) => value && (shown.value = value), { immed
                     <dd class="mt-0.5">{{ affiliationOf(shown) }}</dd>
                 </div>
                 <div>
-                    <dt class="text-neutral-400">{{ t('registrants.participation') }}</dt>
-                    <dd class="mt-0.5">{{ t(`admin.registrants.participationType.${shown.participation}`) }}</dd>
-                </div>
-                <div>
                     <dt class="text-neutral-400">{{ t('meals.yourMeal') }}</dt>
                     <dd class="mt-0.5" :class="{ 'text-neutral-500': !shown.meal }">{{ mealOf(shown) || t('meals.notChosen') }}</dd>
                 </div>

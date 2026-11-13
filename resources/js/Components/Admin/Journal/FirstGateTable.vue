@@ -4,6 +4,7 @@ import { Link, router } from '@inertiajs/vue3';
 import SubmissionStatusBadge from '@/Components/Admin/SubmissionStatusBadge.vue';
 import JournalDecisionModal from '@/Components/Admin/Journal/JournalDecisionModal.vue';
 import { useI18n } from '@/i18n';
+import RemindAuthorButton from '@/Components/Admin/RemindAuthorButton.vue';
 
 /*
  * The first-gate table of Selection (admin, editors and the journal role alike, 2026-11-11): files to open, the
@@ -105,9 +106,13 @@ const iconBtn = 'inline-grid size-8 place-items-center rounded-md border border-
                         <td class="max-w-56 px-4 py-3">
                             <template v-if="item.journal">
                                 <span class="line-clamp-2 text-xs font-medium">{{ item.journal.name }}</span>
-                                <span v-if="item.status === 'journal_selected' && item.journalAnswerDue" class="mt-0.5 block text-xs text-amber-600 dark:text-amber-300">
+                                <span v-if="item.status === 'journal_selected' && item.journalOfferOverdue" class="mt-0.5 block text-xs font-semibold text-red-600 dark:text-red-400">
+                                    <Fa icon="triangle-exclamation" class="mr-1" />{{ t('journal.table.answerOverdue', { date: formatDate(item.journalAnswerDue) }) }}
+                                </span>
+                                <span v-else-if="item.status === 'journal_selected' && item.journalAnswerDue" class="mt-0.5 block text-xs text-amber-600 dark:text-amber-300">
                                     <Fa icon="hourglass-half" class="mr-1" />{{ t('journal.table.answerBy', { date: formatDate(item.journalAnswerDue) }) }}
                                 </span>
+                                <RemindAuthorButton v-if="item.status === 'journal_selected'" :submission="item" compact class="mt-1" />
                                 <span v-else-if="item.status === 'journal_accepted'" class="mt-0.5 block text-xs text-emerald-600 dark:text-emerald-300">
                                     <Fa icon="circle-check" class="mr-1" />{{ t('journal.table.authorAccepted') }}
                                 </span>

@@ -2,6 +2,8 @@
 import { ref, watch } from 'vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import Card from '@/Components/Admin/Card.vue';
+import RemindAuthorButton from '@/Components/Admin/RemindAuthorButton.vue';
+import CloseRevisionButton from '@/Components/Admin/CloseRevisionButton.vue';
 import PageHeader from '@/Components/Admin/PageHeader.vue';
 import Modal from '@/Components/Modal.vue';
 import SubmissionDetail from '@/Components/Admin/SubmissionDetail.vue';
@@ -15,6 +17,8 @@ import { ATTACHMENT_TYPES as attachmentTypes } from '@/utils/editorAttachment';
 import PublicationStaffPanel from '@/Components/Admin/PublicationStaffPanel.vue';
 import JournalPanel from '@/Components/Admin/JournalPanel.vue';
 import { useI18n } from '@/i18n';
+import MailPreview from '@/Components/Admin/MailPreview.vue';
+import { useMailPreview } from '@/composables/useMailPreview';
 
 const props = defineProps({
     versions: { type: Array, required: true }, // manuscript versions with the author's answers
@@ -62,6 +66,9 @@ const decisions = [
 ];
 const screenForm = useForm({ decision: '', comment: '', attachment: null });
 const confirmOpen = ref(false);
+// The email the author will get, shown in the confirm dialog (2026-11-13)
+const screenMail = useMailPreview(props.submission.id);
+watch(confirmOpen, (open) => open && screenMail.load({ step: 'screen', choice: screenForm.decision, comment: screenForm.comment }));
 function screen() {
     screenForm.post(`/admin/submissions/${props.submission.id}/screening`, {
         preserveScroll: true,
@@ -86,6 +93,11 @@ const box = 'rounded-xl border border-neutral-200 p-4 dark:border-white/10';
             </Link>
             <InternalNotes :submission-id="submission.id" :notes="notes" />
         </div>
+
+        <!-- Waiting for the author: remind them by email (2026-11-13) -->
+        <RemindAuthorButton :submission="submission">
+            <CloseRevisionButton :submission="submission" />
+        </RemindAuthorButton>
 
         <!-- Possible conflict of interest: warn only, the editor decides -->
         <div v-if="conflict" class="flex items-start gap-3 rounded-xl border border-orange-300 bg-orange-50 px-4 py-3 text-sm text-orange-800 dark:border-orange-400/30 dark:bg-orange-400/10 dark:text-orange-200">
@@ -185,7 +197,7 @@ const box = 'rounded-xl border border-neutral-200 p-4 dark:border-white/10';
         <SubmissionHistory :history="history" />
 
         <!-- One editor's decision is final for this round, so confirm first -->
-        <Modal :show="confirmOpen" @close="confirmOpen = false">
+        <Modal :show="confirmOpen" max-width="max-w-2xl" @close="confirmOpen = false">
             <div class="p-6 sm:p-8">
                 <span class="mb-4 grid size-12 place-items-center rounded-xl bg-gold-400/15 text-lg text-gold-400">
                     <Fa icon="clipboard-check" />
@@ -194,6 +206,11 @@ const box = 'rounded-xl border border-neutral-200 p-4 dark:border-white/10';
                 <p class="mt-2 text-sm text-neutral-400">
                     {{ t('submissions.screening.confirmText', { code: submission.code, decision: screenForm.decision ? t(`submissions.screening.${screenForm.decision}`) : '' }) }}
                 </p>
+                <div class="mt-4">
+                    <p class="mb-2 text-sm font-medium">{{ t('closeRevision.preview') }}</p>
+                    <MailPreview v-if="screenMail.preview.value" :preview="screenMail.preview.value" @leave="confirmOpen = false" />
+                    <p v-else class="py-6 text-center text-sm text-neutral-400"><Fa icon="spinner" spin class="mr-2" />{{ t('remindAuthor.loading') }}</p>
+                </div>
                 <div class="mt-6 flex justify-end gap-2">
                     <button class="rounded-lg border border-white/20 px-4 py-2.5 text-sm transition hover:border-gold-400" @click="confirmOpen = false">{{ t('common.cancel') }}</button>
                     <button class="flex items-center gap-2 rounded-lg bg-gold-400 px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-gold-300 disabled:opacity-60" :disabled="screenForm.processing" @click="screen">

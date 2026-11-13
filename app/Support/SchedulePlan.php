@@ -24,6 +24,28 @@ class SchedulePlan
         return json_decode((string) Setting::get(self::KEY), true) ?: [];
     }
 
+    /**
+     * The registration row is the one row enforced (2026-11-13, user decision: lock sign-up only, the rest stays
+     * a guide). With mode "lock", sign-up and "join this year" work from start to end (whole days, app timezone):
+     * { state: upcoming|open|closed, start, end }. Not saved, or another mode: always open.
+     */
+    public static function registration(): array
+    {
+        $row = self::all()['registration'] ?? null;
+        if (! $row || ($row['mode'] ?? '') !== 'lock' || empty($row['start']) || empty($row['end'])) {
+            return ['state' => 'open', 'start' => $row['start'] ?? null, 'end' => $row['end'] ?? null];
+        }
+        $today = now()->toDateString();
+        $state = $today < $row['start'] ? 'upcoming' : ($today > $row['end'] ? 'closed' : 'open');
+
+        return ['state' => $state, 'start' => $row['start'], 'end' => $row['end']];
+    }
+
+    public static function registrationOpen(): bool
+    {
+        return self::registration()['state'] === 'open';
+    }
+
     public static function put(string $row, array $value): void
     {
         Setting::put(self::KEY, json_encode([...self::all(), $row => $value]));

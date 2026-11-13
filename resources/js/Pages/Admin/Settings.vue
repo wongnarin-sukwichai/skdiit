@@ -13,6 +13,7 @@ import ConferenceTab from '@/Components/Admin/Settings/ConferenceTab.vue';
 import WebsiteTab from '@/Components/Admin/Settings/WebsiteTab.vue';
 import ScheduleTab from '@/Components/Admin/Settings/ScheduleTab.vue';
 import YearTab from '@/Components/Admin/Settings/YearTab.vue';
+import ClosureTab from '@/Components/Admin/Settings/ClosureTab.vue';
 import { useI18n } from '@/i18n';
 
 // System settings: submission rules, academic titles and affiliations (accounts are under Staff / Reviewers, track names under Tracks)
@@ -25,7 +26,8 @@ defineProps({
     journalList: { type: Array, required: true }, // partner journals offered at the first gate
     reviewCriteria: { type: Array, required: true }, // scoring criteria with how many evaluations used each
     siteDocuments: { type: Array, required: true }, // files on the public Documents page
-    yearSummary: { type: Object, required: true }, // the current conference year (ConferenceYearController::summary)
+    yearSummary: { type: Object, required: true },
+    closure: { type: Object, required: true }, // { closed, message: { th, en } } // the current conference year (ConferenceYearController::summary)
 });
 
 const { t } = useI18n();
@@ -41,6 +43,7 @@ const tabs = [
     { key: 'reviewCriteria', icon: 'list-check' },
     { key: 'submission', icon: 'file-arrow-up' },
     { key: 'year', icon: 'database' },
+    { key: 'closure', icon: 'power-off' },
 ];
 // ?tab=schedule (e.g. from the editor timeline) opens that tab
 const asked = new URLSearchParams(window.location.search).get('tab');
@@ -76,6 +79,7 @@ const tab = ref(tabs.some((item) => item.key === asked) ? asked : 'conference');
                 <ConferenceTab v-if="tab === 'conference'" />
                 <ScheduleTab v-else-if="tab === 'schedule'" :settings="submission" />
                 <YearTab v-else-if="tab === 'year'" :summary="yearSummary" />
+                <ClosureTab v-else-if="tab === 'closure'" :closure="closure" />
                 <WebsiteTab v-else-if="tab === 'website'" :documents="siteDocuments" :max-mb="submission.maxMb" />
                 <SubmissionTab v-else-if="tab === 'submission'" :settings="submission" />
                 <AcademicTitlesTab v-else-if="tab === 'academicTitles'" :titles="academicTitles" />

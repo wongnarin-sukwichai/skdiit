@@ -47,9 +47,9 @@ function logout() {
 </script>
 
 <template>
-    <div class="min-h-screen bg-neutral-100 text-neutral-800 transition-colors duration-300 dark:bg-ink-950 dark:text-neutral-100">
+    <div class="min-h-screen bg-neutral-100 text-neutral-800 transition-colors duration-300 dark:bg-ink-950 dark:text-neutral-100 print:bg-white print:text-black">
         <!-- Headbar: black in both themes, as in the design -->
-        <header class="dark sticky top-0 z-40 flex h-20 items-center gap-3 border-b border-gold-400/20 bg-ink-950 px-4 text-neutral-100 sm:px-6">
+        <header class="dark sticky top-0 z-40 print:hidden flex h-20 items-center gap-3 border-b border-gold-400/20 bg-ink-950 px-4 text-neutral-100 sm:px-6">
             <div class="pointer-events-none absolute inset-0 overflow-hidden">
                 <div class="gold-streaks absolute inset-y-0 right-0 w-2/3 opacity-30" />
             </div>
@@ -124,7 +124,7 @@ function logout() {
 
         <aside
             :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
-            class="fixed top-20 bottom-0 left-0 z-30 flex w-72 flex-col border-r border-neutral-200 bg-white transition-transform duration-300 lg:w-80 dark:border-white/10 dark:bg-ink-900"
+            class="fixed top-20 bottom-0 left-0 z-30 flex w-72 print:hidden flex-col border-r border-neutral-200 bg-white transition-transform duration-300 lg:w-80 dark:border-white/10 dark:bg-ink-900"
         >
             <nav class="flex-1 overflow-y-auto p-3">
                 <div v-for="group in menuGroups" :key="group.key" class="mb-3 space-y-1">
@@ -157,10 +157,14 @@ function logout() {
             </p>
         </aside>
 
-        <main class="p-4 sm:p-6 lg:ml-80">
+        <main class="p-4 sm:p-6 lg:ml-80 print:m-0 print:p-0">
+            <!-- The system is closed to everyone but admin (Settings › ปิดระบบ) -->
+            <Link v-if="page.props.siteClosed" href="/admin/settings?tab=closure" class="mb-4 flex items-center gap-3 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 print:hidden dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
+                <Fa icon="power-off" /> <span class="flex-1">{{ t('admin.closure.banner') }}</span> <Fa icon="chevron-right" class="text-xs" />
+            </Link>
             <!-- Not on the home page, which shows the same stages in full (EditorTimelineCard) -->
             <Transition name="fade">
-                <EditorTimeline v-if="page.props.editorStages && page.component !== 'Admin/Dashboard'" :data="page.props.editorStages" class="mb-4" />
+                <EditorTimeline v-if="page.props.editorStages && page.component !== 'Admin/Dashboard'" :data="page.props.editorStages" class="mb-4 print:hidden" />
             </Transition>
             <Transition name="fade" mode="out-in">
                 <!-- Fade on a new page only: filters, tabs, views and pagination change the query, and the page fades its own list -->
@@ -170,7 +174,7 @@ function logout() {
             </Transition>
         </main>
 
-        <FlashToast />
-        <ImpersonationBanner />
+        <FlashToast class="print:hidden" />
+        <ImpersonationBanner class="print:hidden" />
     </div>
 </template>

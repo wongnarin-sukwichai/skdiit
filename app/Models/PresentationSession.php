@@ -8,11 +8,13 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 
 /**
  * A presentation session (2026-11-12): one day, one time span, one room, a track, a chair (typed in) and the minutes
  * each paper gets. Its papers run in presentation_order; each paper's slot (submissions.presentation_at / room)
- * is worked out from the session by syncPapers(), which the slides cut-off, the emails and the public schedule read.
+ * is worked out from the session by syncPapers(), which the slides cut-off and the public schedule read. Authors are
+ * emailed only when staff press "Notify authors" (notifyAuthors(), 2026-11-13), for slots that changed since.
  */
 class PresentationSession extends Model
 {
@@ -76,23 +78,44 @@ class PresentationSession extends Model
     }
 
     /**
-     * Number the papers 1..n in their order and work out each one's slot from the session. A paper whose slot
-     * changed gets a "presentation scheduled" entry, which emails the author the new time and room.
+     * Number the papers 1..n in their order and work out each one's slot from the session. Nothing is emailed here:
+     * arranging a session moves many slots, so authors hear once, from notifyAuthors().
      */
-    public function syncPapers(?User $by): void
+    public function syncPapers(): void
     {
         $this->loadMissing('room');
         $start = Carbon::parse($this->date->toDateString().' '.$this->start_time);
         $room = $this->room->name_th;
 
-        $this->papers()->get()->values()->each(function (Submission $paper, int $i) use ($start, $room, $by) {
+        $this->papers()->get()->values()->each(function (Submission $paper, int $i) use ($start, $room) {
             $at = $start->copy()->addMinutes($i * $this->minutes);
-            $changed = ! $paper->presentation_at?->equalTo($at) || $paper->presentation_room !== $room;
             $paper->forceFill(['presentation_order' => $i + 1, 'presentation_at' => $at, 'presentation_room' => $room])->save();
-            if ($changed) {
-                $paper->log(SubmissionAction::PresentationScheduled, $by, meta: ['at' => $at->toIso8601String(), 'room' => $room]);
-            }
         });
+    }
+
+    /** "Y-m-d H:i|room" of a paper's current slot, compared with submissions.presentation_notified. */
+    public static function slotKey(Submission $paper): ?string
+    {
+        return $paper->presentation_at ? $paper->presentation_at->format('Y-m-d H:i').'|'.$paper->presentation_room : null;
+    }
+
+    /** This year's papers in a session whose slot the author has not been emailed yet. */
+    public static function unnotified(): Collection
+    {
+        return Submission::currentYear()->whereNotNull('presentation_session_id')->whereNotNull('presentation_at')->get()
+            ->filter(fn (Submission $paper) => static::slotKey($paper) !== $paper->presentation_notified)->values();
+    }
+
+    /** Email every author whose slot changed since the last notice (logged as "presentation scheduled"). Returns how many. */
+    public static function notifyAuthors(?User $by): int
+    {
+        $papers = static::unnotified();
+        $papers->each(function (Submission $paper) use ($by) {
+            $paper->forceFill(['presentation_notified' => static::slotKey($paper)])->save();
+            $paper->log(SubmissionAction::PresentationScheduled, $by, meta: ['at' => $paper->presentation_at->toIso8601String(), 'room' => $paper->presentation_room]);
+        });
+
+        return $papers->count();
     }
 
     /** One line for pickers: "27 ม.ค. 09:00–10:30 · room". */
@@ -120,6 +143,7 @@ class PresentationSession extends Model
                 'authors' => $paper->relationLoaded('authors') ? $paper->authors->pluck('name')->join(', ') : '',
                 'at' => $paper->presentation_at?->format('H:i'),
                 'slides' => (bool) $paper->slides_path,
+                'notified' => static::slotKey($paper) === $paper->presentation_notified,
             ])->values()] : []),
         ];
     }

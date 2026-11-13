@@ -1,5 +1,5 @@
 <script setup>
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
 import Card from '@/Components/Admin/Card.vue';
 import PageHeader from '@/Components/Admin/PageHeader.vue';
@@ -14,15 +14,24 @@ import { useI18n } from '@/i18n';
 const props = defineProps({
     counts: { type: Object, required: true }, // people in each group now (App\Support\Audience)
     history: { type: Array, required: true }, // { id, audience, subject, body, recipients, by, at }
+    allowed: { type: Array, default: () => [] }, // groups this person may send to (the broad ones are admin's)
     templates: { type: Array, required: true }, // { key, subject_th, subject_en, body_th, body_en, vars, changed }
 });
 
 const { t, formatDate, formatNumber } = useI18n();
 const when = (value) => formatDate(value, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-const tab = ref('send');
+// Opened from a link (e.g. the reminder preview): ?tab=templates&template={key} opens that template and scrolls to it
+const query = new URLSearchParams(window.location.search);
+const tab = ref(query.get('tab') === 'templates' ? 'templates' : 'send');
+const linkedTemplate = query.get('template');
+onMounted(() => {
+    if (!linkedTemplate || !props.templates.some((tpl) => tpl.key === linkedTemplate)) return;
+    open.value = linkedTemplate;
+    nextTick(() => document.getElementById(`template-${linkedTemplate}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+});
 const groups = [
-    { label: 'registrants', keys: ['registrants', 'attendees', 'authors'] },
+    { label: 'registrants', keys: ['registrants', 'authors_no_paper', 'authors_with_paper'] },
     { label: 'authorsTodo', keys: ['authors_revision', 'authors_camera_ready', 'authors_slides'] },
     { label: 'reviewers', keys: ['reviewers', 'reviewers_open', 'reviewers_overdue'] },
 ];
@@ -106,12 +115,16 @@ const label = 'mb-1.5 block text-sm font-medium';
                                         type="button"
                                         role="radio"
                                         :aria-checked="form.audience === key"
-                                        :disabled="!counts[key]"
+                                        :disabled="!counts[key] || !allowed.includes(key)"
+                                        :title="allowed.includes(key) ? undefined : t('announcements.adminOnly')"
                                         :class="form.audience === key ? 'border-gold-400 bg-gold-50 dark:bg-gold-400/10' : 'border-neutral-300 hover:border-gold-400 dark:border-white/15'"
                                         class="flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-sm transition disabled:opacity-40 disabled:hover:border-neutral-300"
                                         @click="form.audience = key"
                                     >
-                                        <span>{{ t(`announcements.audiences.${key}`) }}</span>
+                                        <span>
+                                            {{ t(`announcements.audiences.${key}`) }}
+                                            <span v-if="!allowed.includes(key)" class="block text-[0.7rem] text-neutral-500 dark:text-neutral-400"><Fa icon="lock" class="mr-1" />{{ t('announcements.adminOnly') }}</span>
+                                        </span>
                                         <span class="rounded-full bg-neutral-100 px-2 text-xs tabular-nums dark:bg-white/10">{{ formatNumber(counts[key]) }}</span>
                                     </button>
                                 </div>
@@ -153,7 +166,7 @@ const label = 'mb-1.5 block text-sm font-medium';
             <!-- Workflow email templates -->
             <div v-else key="templates" class="space-y-3">
                 <p class="text-sm text-neutral-500 dark:text-neutral-400">{{ t('announcements.templatesIntro') }}</p>
-                <section v-for="tpl in templates" :key="tpl.key" class="rounded-xl border border-neutral-200 dark:border-white/10">
+                <section v-for="tpl in templates" :id="`template-${tpl.key}`" :key="tpl.key" :class="tpl.key === linkedTemplate ? 'border-gold-400 ring-2 ring-gold-400/30' : 'border-neutral-200 dark:border-white/10'" class="scroll-mt-24 rounded-xl border">
                     <button type="button" class="flex w-full items-center gap-3 p-3 text-left" @click="open = open === tpl.key ? null : tpl.key">
                         <Fa icon="envelope" class="text-gold-500" />
                         <span class="flex-1">

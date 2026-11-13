@@ -2,22 +2,23 @@
 
 use App\Http\Controllers\Admin\AcademicTitleController;
 use App\Http\Controllers\Admin\AccountController;
+use App\Http\Controllers\Admin\ActivityLogController;
+use App\Http\Controllers\Admin\AffiliationController;
 use App\Http\Controllers\Admin\AnnouncementController;
 use App\Http\Controllers\Admin\ArticleController;
 use App\Http\Controllers\Admin\ConferenceYearController;
 use App\Http\Controllers\Admin\DashboardController;
-use App\Http\Controllers\Admin\AffiliationController;
-use App\Http\Controllers\Admin\MealOptionController;
-use App\Http\Controllers\Admin\PartnerJournalController;
-use App\Http\Controllers\Admin\MySubmissionController;
-use App\Http\Controllers\Admin\PresentationController;
-use App\Http\Controllers\Admin\PublicationController;
 use App\Http\Controllers\Admin\ExcelExportController;
+use App\Http\Controllers\Admin\MealOptionController;
+use App\Http\Controllers\Admin\MySubmissionController;
+use App\Http\Controllers\Admin\NotificationController;
+use App\Http\Controllers\Admin\PartnerJournalController;
+use App\Http\Controllers\Admin\PresentationController;
 use App\Http\Controllers\Admin\RegistrantController;
-use App\Http\Controllers\Admin\ReviewerController;
 use App\Http\Controllers\Admin\ReviewController;
 use App\Http\Controllers\Admin\ReviewCriterionController;
 use App\Http\Controllers\Admin\ReviewerAssignmentController;
+use App\Http\Controllers\Admin\ReviewerController;
 use App\Http\Controllers\Admin\SelectionController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\SiteContentController;
@@ -27,18 +28,19 @@ use App\Http\Controllers\Admin\SubmissionNoteController;
 use App\Http\Controllers\Admin\TrackController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ImpersonationController;
-use App\Models\Setting;
+use App\Http\Middleware\RecordAdminActivity;
 use App\Models\SiteDocument;
 use App\Models\Submission;
-use App\Models\User;
 use App\Models\Track;
+use App\Models\User;
+use App\Support\Reports;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
 // Frontend (public)
 // Home: headline and the public registrant list (this year's registrants, no contact details)
 Route::get('/', fn () => Inertia::render('Front/Home', ['registrants' => fn () => User::publicRegistrants()]))->name('home');
-Route::get('/schedule', fn () => \Inertia\Inertia::render('Front/Schedule', ['presentations' => \App\Http\Controllers\Admin\PresentationController::publicSchedule()]))->name('schedule');
+Route::get('/schedule', fn () => Inertia::render('Front/Schedule', ['presentations' => PresentationController::publicSchedule()]))->name('schedule');
 Route::inertia('/submission', 'Front/Submission')->name('submission');
 // Documents admin uploads (Settings › Website content), downloadable by anyone
 Route::get('/important', fn () => Inertia::render('Front/Important', ['documents' => SiteDocument::ordered()->get()->map->toClient()]))->name('important');
@@ -69,7 +71,7 @@ Route::post('/impersonation/stop', [ImpersonationController::class, 'stop'])->mi
 
 // Backend (admin)
 // Each route checks the user's role against config/modules.php
-Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
+Route::prefix('admin')->name('admin.')->middleware(['auth', RecordAdminActivity::class])->group(function () {
     Route::get('/', [DashboardController::class, 'index'])->middleware('module:dashboard')->name('dashboard');
     // Admin views the system as another user, read only (the controller checks who may)
     Route::post('/impersonate/{user}', [ImpersonationController::class, 'start'])->name('impersonate');
@@ -92,13 +94,16 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
     Route::post('/export', ExcelExportController::class)->name('export');
 
     // Reports (mock): admin and editor
-    Route::inertia('/reports', 'Admin/Reports')->middleware('module:reports')->name('reports');
+    Route::get('/reports', fn () => Inertia::render('Admin/Reports', ['report' => Reports::all()]))->middleware('module:reports')->name('reports');
 
-    // Notifications (mock until email/SMTP is decided); admin also sees the email log
-    Route::inertia('/notifications', 'Admin/Notifications')->middleware('module:notifications')->name('notifications');
+    // Notifications; admin and editors also see the email log (real since 2026-11-13; editors without password emails)
+    Route::get('/notifications', [NotificationController::class, 'index'])->middleware('module:notifications')->name('notifications');
+    // Everyone with a backend reads their own notifications (bell, home card)
+    Route::post('/notifications/read-all', [NotificationController::class, 'readAll'])->name('notifications.readAll');
+    Route::post('/notifications/{notification}/read', [NotificationController::class, 'read'])->whereNumber('notification')->name('notifications.read');
+    Route::post('/notifications/emails/{log}/resend', [NotificationController::class, 'resend'])->middleware('module:notifications')->name('notifications.resend');
 
     // Publication overview and the article archive (mock; the publication work itself is real on each paper's page)
-    Route::inertia('/publication', 'Admin/Publication')->middleware('module:publication')->name('publication');
     // Article archive: finished papers of earlier conference years (real)
     Route::get('/articles', [ArticleController::class, 'index'])->middleware('module:articles')->name('articles');
 
@@ -106,6 +111,9 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
     // Presentation schedule (2026-11-12): admin keeps rooms and sessions; editors view (and assign from a paper page)
     Route::prefix('presentations')->middleware('module:presentations')->controller(PresentationController::class)->group(function () {
         Route::get('/', 'index')->name('presentations');
+        Route::post('/notify', 'notify')->name('presentations.notify'); // admin and editors (view) alike
+        Route::post('/remind-slides', 'remindSlides')->name('presentations.remindSlides');
+        Route::get('/remind-slides/preview', 'remindSlidesPreview')->name('presentations.remindSlides.preview');
         Route::middleware('module:presentations,full')->group(function () {
             Route::post('/rooms', 'storeRoom')->name('presentations.rooms.store');
             Route::put('/rooms/{room}', 'updateRoom')->name('presentations.rooms.update');
@@ -165,6 +173,7 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
         Route::put('/submission', 'updateSubmission')->name('settings.submission');
         Route::put('/deadlines', 'updateDeadlines')->name('settings.deadlines');
         Route::put('/schedule/{row}', 'updatePhase')->name('settings.schedule');
+        Route::put('/closure', 'updateClosure')->name('settings.closure');
     });
     // Design preview (2026-10-20): the author's paper journey in every status, before it goes on the author pages
     Route::get('/preview/author-journey', fn () => Inertia::render('Admin/Preview/AuthorJourney', [
@@ -249,10 +258,16 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
     Route::prefix('selection')->middleware('module:selection')->controller(SelectionController::class)->group(function () {
         Route::get('/', 'index')->name('selection');
         Route::get('/export', 'export')->name('selection.export');
+        Route::post('/remind-offers', 'remindOffers')->middleware('module:selection,full')->name('selection.remind-offers');
+        Route::get('/remind-offers/preview', 'remindOffersPreview')->middleware('module:selection,full')->name('selection.remind-offers.preview');
         Route::get('/{submission}', 'show')->whereNumber('submission')->name('selection.show');
         Route::post('/{submission}', 'route')->whereNumber('submission')->middleware('module:selection,full')->name('selection.route');
         Route::put('/{submission}/track', 'updateTrack')->whereNumber('submission')->middleware('module:selection,full')->name('selection.track');
     });
+
+    // Remind one author (editors; the journal role too for a journal offer): checked by Submission::authorCanBeRemindedBy
+    Route::post('/submissions/{submission}/remind-author', [SubmissionController::class, 'remindAuthor'])->whereNumber('submission')->name('submissions.remind-author');
+    Route::get('/submissions/{submission}/remind-author/preview', [SubmissionController::class, 'remindAuthorPreview'])->whereNumber('submission')->name('submissions.remind-author.preview');
 
     // Editors and admin: all papers
     Route::prefix('submissions')->middleware('module:submissions')->controller(SubmissionController::class)->group(function () {
@@ -261,10 +276,14 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
         Route::get('/{submission}', 'show')->name('submissions.show');
         Route::put('/{submission}/presentation', [PresentationController::class, 'assign'])->name('submissions.presentation');
         Route::put('/{submission}/track', 'updateTrack')->name('submissions.track');
+        Route::get('/{submission}/mail-preview', 'mailPreview')->name('submissions.mail-preview');
         Route::post('/{submission}/screening', 'screen')->name('submissions.screen');
         Route::post('/{submission}/decision', 'decide')->name('submissions.decide');
         Route::post('/{submission}/review-round', 'startReviewRound')->name('submissions.review-round');
         Route::post('/{submission}/camera-ready/approve', 'approveCameraReady')->name('submissions.camera-ready.approve');
+        Route::post('/{submission}/camera-ready/use-latest', 'useLatestCameraReady')->name('submissions.camera-ready.use-latest');
+        Route::post('/{submission}/close-revision', 'closeRevision')->name('submissions.close-revision');
+        Route::get('/{submission}/close-revision/preview', 'closeRevisionPreview')->name('submissions.close-revision.preview');
         Route::post('/{submission}/camera-ready/fix', 'requestCameraReadyFix')->name('submissions.camera-ready.fix');
         Route::post('/{submission}/cancel-acceptance', 'cancelAcceptance')->name('submissions.cancel-acceptance');
 
@@ -297,7 +316,8 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
     });
 
     // Activity log (mock): who did what, when and from where
-    Route::inertia('/activity-log', 'Admin/ActivityLog')->middleware('module:activity-log')->name('activity-log');
+    Route::get('/activity-log', [ActivityLogController::class, 'index'])->middleware('module:activity-log')->name('activity-log');
+    Route::get('/activity-log/rows', [ActivityLogController::class, 'rows'])->middleware('module:activity-log')->name('activity-log.rows');
 
     // A new module without its page yet: add its key here to show Admin/Placeholder
     // Route::get('/{section}', fn (string $section) => Inertia::render('Admin/Placeholder', ['section' => $section]))

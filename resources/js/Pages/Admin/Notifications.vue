@@ -1,5 +1,5 @@
 <script setup>
-import { computed, reactive, ref } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import { Head, router, usePage } from '@inertiajs/vue3';
 import Card from '@/Components/Admin/Card.vue';
 import PageHeader from '@/Components/Admin/PageHeader.vue';
@@ -7,22 +7,23 @@ import Pagination from '@/Components/Pagination.vue';
 import ConfirmModal from '@/Components/Admin/ConfirmModal.vue';
 import EmailPreviewModal from '@/Components/Admin/EmailPreviewModal.vue';
 import { useI18n } from '@/i18n';
-import { useToast } from '@/composables/useToast';
 import { timeAgo, useNotifications } from '@/composables/useNotifications';
-import { emailLog } from '@/data/mock';
 
 /*
- * Notifications (every role): what happened to my papers and reviews.
- * Admin also sees the email log (every email the system sent). Mock until SMTP is decided.
+ * Notifications (admin and editors): what happened to my papers and reviews.
+ * Email log (real since 2026-11-13, NotificationController): every email the system sent, 15 per page from the
+ * server, searchable; open one and send it again. Editors do not get password emails.
  */
+const props = defineProps({
+    emails: { type: Object, required: true }, // paginator of EmailLog::toClient()
+    emailFilters: { type: Object, required: true }, // { q, status }
+    failedEmails: { type: Number, default: 0 },
+});
+
 const { t, tr, formatDate, formatNumber } = useI18n();
-const { toast } = useToast();
 const { items, unread, markRead, markAllRead } = useNotifications();
 const me = usePage().props.auth.user;
-const isAdmin = computed(() => me.accessRole === 'admin');
-// Editors coordinate with authors and reviewers: they see paper emails (not passwords)
 const seesEmails = computed(() => ['admin', 'editor'].includes(me.accessRole));
-const PAPER_ONLY_HIDDEN = ['LoginPassword'];
 
 const tab = ref(seesEmails.value && new URLSearchParams(usePage().url.split('?')[1]).get('tab') === 'emails' ? 'emails' : 'notifications');
 
@@ -37,20 +38,26 @@ function open(item) {
     router.visit(item.href);
 }
 
-// ---- Email log (admin) ----
-const emails = reactive(emailLog
-    .filter((e) => isAdmin.value || !PAPER_ONLY_HIDDEN.includes(e.template))
-    .map((e) => ({ ...e, resentBy: null, resentAt: null })));
-const emailFilter = reactive({ q: '', status: '' });
-const emailPage = ref(1);
-const emailRows = computed(() => {
-    const q = emailFilter.q.trim().toLowerCase();
-    return emails.filter((e) => (!emailFilter.status || e.status === emailFilter.status)
-        && (!q || `${e.to} ${e.name.en} ${e.name.th} ${e.subject.en} ${e.subject.th}`.toLowerCase().includes(q)));
-});
-const emailLastPage = computed(() => Math.max(1, Math.ceil(emailRows.value.length / 10)));
-const emailPageRows = computed(() => emailRows.value.slice((emailPage.value - 1) * 10, emailPage.value * 10));
-const failedCount = computed(() => emails.filter((e) => e.status === 'failed').length);
+// ---- Email log (server side: search, status and page go in the query) ----
+const emailFilter = reactive({ q: props.emailFilters.q ?? '', status: props.emailFilters.status ?? '' });
+const emailPage = ref(props.emails.current_page);
+watch(() => props.emails.current_page, (p) => { emailPage.value = p; });
+const emailRows = computed(() => props.emails.data);
+const emailLastPage = computed(() => Math.max(1, props.emails.last_page));
+function loadEmails(page = 1) {
+    router.get('/admin/notifications', { tab: 'emails', q: emailFilter.q || undefined, status: emailFilter.status || undefined, page: page > 1 ? page : undefined }, { preserveState: true, preserveScroll: true, replace: true, only: ['emails', 'emailFilters', 'failedEmails'] });
+}
+let searchTimer = null;
+function onSearch() {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => loadEmails(1), 350);
+}
+watch(emailPage, (p) => p !== props.emails.current_page && loadEmails(p));
+
+// Which email it was: a workflow template, an announcement or a password
+const kindLabel = (kind) => (kind === 'announcement' || kind.startsWith('password_')
+    ? t(`admin.notificationsPage.kind.${kind}`)
+    : t(`announcements.template.${kind}`));
 
 // Open the email as sent, and send it again (e.g. the user says it never arrived); always confirmed first
 const previewing = ref(null);
@@ -62,18 +69,13 @@ function askResend(email) {
     shownResending.value = email;
 }
 function resend() {
-    // Real system: queue the same Mailable again (LoginPassword creates a new password, the old one is never stored)
     const email = resending.value;
-    // Who resent it, so other editors don't send it a third time
-    Object.assign(email, { status: 'queued', error: null, resent: email.resent + 1, resentBy: me.name, resentAt: new Date().toISOString() });
-    toast('admin.notificationsPage.toast.resent', { email: email.to });
-    resending.value = null;
+    router.post(`/admin/notifications/emails/${email.id}/resend`, {}, { preserveScroll: true, preserveState: true, onFinish: () => { resending.value = null; } });
 }
 
 const statusStyle = {
     sent: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-300',
     failed: 'border-red-200 bg-red-50 text-red-700 dark:border-red-500/40 dark:bg-red-500/15 dark:text-red-300',
-    queued: 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/40 dark:bg-sky-500/15 dark:text-sky-300',
 };
 const input = 'rounded-lg border border-neutral-300 bg-neutral-50 py-2.5 pr-3 text-sm outline-none transition focus:border-gold-400 focus:ring-2 focus:ring-gold-400/20 dark:border-white/10 dark:bg-ink-800';
 </script>
@@ -97,7 +99,7 @@ const input = 'rounded-lg border border-neutral-300 bg-neutral-50 py-2.5 pr-3 te
                 @click="tab = key"
             >
                 <Fa :icon="key === 'emails' ? 'envelope' : 'bell'" /> {{ t(`admin.notificationsPage.tabs.${key}`) }}
-                <span v-if="key === 'emails' && failedCount" class="rounded-full bg-red-500 px-2 py-0.5 text-xs text-white">{{ formatNumber(failedCount) }}</span>
+                <span v-if="key === 'emails' && failedEmails" class="rounded-full bg-red-500 px-2 py-0.5 text-xs text-white">{{ formatNumber(failedEmails) }}</span>
             </button>
         </nav>
 
@@ -156,12 +158,13 @@ const input = 'rounded-lg border border-neutral-300 bg-neutral-50 py-2.5 pr-3 te
                 <div class="flex flex-wrap gap-3">
                     <label class="relative min-w-60 flex-1">
                         <Fa icon="magnifying-glass" class="absolute top-1/2 left-4 -translate-y-1/2 text-neutral-400" />
-                        <input v-model="emailFilter.q" :placeholder="t('admin.notificationsPage.emailSearch')" :class="[input, 'w-full pl-11']" @input="emailPage = 1">
+                        <input v-model="emailFilter.q" :placeholder="t('admin.notificationsPage.emailSearch')" :class="[input, 'w-full pl-11']" @input="onSearch">
                     </label>
-                    <select v-model="emailFilter.status" :class="[input, 'pl-3']" :aria-label="t('registrants.status')" @change="emailPage = 1">
+                    <select v-model="emailFilter.status" :class="[input, 'pl-3']" :aria-label="t('registrants.status')" @change="loadEmails(1)">
                         <option value="">{{ t('admin.registrants.allStatuses') }}</option>
-                        <option v-for="s in ['sent', 'failed', 'queued']" :key="s" :value="s">{{ t(`admin.notificationsPage.emailStatus.${s}`) }}</option>
+                        <option v-for="s in ['sent', 'failed']" :key="s" :value="s">{{ t(`admin.notificationsPage.emailStatus.${s}`) }}</option>
                     </select>
+                    <span class="self-center text-sm text-neutral-500 dark:text-neutral-400">{{ t('admin.notificationsPage.total', { n: formatNumber(emails.total) }) }}</span>
                 </div>
 
                 <div class="overflow-x-auto rounded-xl border border-neutral-200 dark:border-white/10">
@@ -177,16 +180,16 @@ const input = 'rounded-lg border border-neutral-300 bg-neutral-50 py-2.5 pr-3 te
                             </tr>
                         </thead>
                         <Transition name="fade" mode="out-in">
-                            <tbody :key="`${emailPage}-${emailRows.length}`" class="divide-y divide-neutral-200 dark:divide-white/5">
-                                <tr v-for="email in emailPageRows" :key="email.id" class="odd:bg-neutral-50 dark:odd:bg-white/2">
+                            <tbody :key="`${emails.current_page}-${emails.total}-${emailFilter.status}`" class="divide-y divide-neutral-200 dark:divide-white/5">
+                                <tr v-for="email in emailRows" :key="email.id" class="odd:bg-neutral-50 dark:odd:bg-white/2">
                                     <td class="px-4 py-2.5 whitespace-nowrap text-neutral-600 dark:text-neutral-300">{{ formatDate(email.at, { dateStyle: 'medium', timeStyle: 'short' }) }}</td>
                                     <td class="px-3 py-2.5">
-                                        <div>{{ tr(email.name) }}</div>
+                                        <div>{{ email.name }}</div>
                                         <div class="text-xs text-neutral-500 dark:text-neutral-400">{{ email.to }}</div>
                                     </td>
                                     <td class="px-3 py-2.5">
-                                        <div>{{ tr(email.subject) }}</div>
-                                        <div class="font-mono text-xs text-neutral-400">{{ email.template }}</div>
+                                        <div>{{ email.subject }}</div>
+                                        <div class="text-xs text-neutral-400">{{ kindLabel(email.kind) }}</div>
                                     </td>
                                     <td class="px-3 py-2.5 text-center">
                                         <span :class="statusStyle[email.status]" class="inline-flex rounded-full border px-3 py-0.5 text-xs font-medium whitespace-nowrap">{{ t(`admin.notificationsPage.emailStatus.${email.status}`) }}</span>
@@ -207,15 +210,14 @@ const input = 'rounded-lg border border-neutral-300 bg-neutral-50 py-2.5 pr-3 te
                                                 ? 'border-red-400 text-red-600 hover:bg-red-50 dark:border-red-500/50 dark:text-red-300 dark:hover:bg-red-500/10'
                                                 : 'border-neutral-300 hover:border-gold-400 hover:text-gold-600 dark:border-white/15 dark:hover:text-gold-400'"
                                             class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium whitespace-nowrap transition disabled:opacity-40"
-                                            :disabled="email.status === 'queued'"
-                                            :title="email.status === 'queued' ? t('admin.notificationsPage.emailStatus.queued') : undefined"
+                                            :disabled="!!usePage().props.impersonation"
                                             @click="askResend(email)"
                                         >
                                             <Fa icon="paper-plane" /> {{ t('admin.notificationsPage.resendShort') }}
                                         </button>
                                     </td>
                                 </tr>
-                                <tr v-if="!emailPageRows.length">
+                                <tr v-if="!emailRows.length">
                                     <td colspan="6" class="px-4 py-12 text-center text-neutral-500">{{ t('admin.notificationsPage.emailEmpty') }}</td>
                                 </tr>
                             </tbody>
@@ -228,15 +230,14 @@ const input = 'rounded-lg border border-neutral-300 bg-neutral-50 py-2.5 pr-3 te
             </div>
         </Transition>
 
-        <p class="text-xs text-neutral-500 dark:text-neutral-400"><Fa icon="circle-info" class="mr-1 text-gold-500" /> {{ t('admin.notificationsPage.mockNote') }}</p>
     </Card>
 
-    <EmailPreviewModal :email="previewing" @close="previewing = null" @resend="askResend" />
+    <EmailPreviewModal :email="previewing" :kind-label="kindLabel" @close="previewing = null" @resend="askResend" />
     <ConfirmModal
         :show="!!resending"
         icon="paper-plane"
         :title="t('admin.notificationsPage.confirmResendTitle')"
-        :message="shownResending ? t(shownResending.template === 'LoginPassword' ? 'admin.notificationsPage.confirmResendPassword' : 'admin.notificationsPage.confirmResend', { subject: tr(shownResending.subject), email: shownResending.to }) : ''"
+        :message="shownResending ? t(shownResending.password ? 'admin.notificationsPage.confirmResendPassword' : 'admin.notificationsPage.confirmResend', { subject: shownResending.subject, email: shownResending.to }) : ''"
         :confirm-label="t('admin.notificationsPage.resend')"
         @close="resending = null"
         @confirm="resend"

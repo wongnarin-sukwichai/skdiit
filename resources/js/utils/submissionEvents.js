@@ -25,6 +25,9 @@ export const eventIcons = {
     acceptance_cancelled: 'ban',
     presentation_scheduled: 'person-chalkboard',
     slides_uploaded: 'file-powerpoint',
+    slides_reminded: 'bell',
+    author_reminded: 'bell',
+    revision_closed: 'ban',
 };
 
 // Labelled by their outcome (to_status)
@@ -35,6 +38,12 @@ const BY_OUTCOME = ['screened', 'decided', 'journal_screened', 'journal_result']
  * the author's answer to a journal offer by the answer; the rest fill their meta into the text.
  */
 export function eventTitle(t, event) {
+    if (event.action === 'author_reminded') {
+        return t(`submissions.history.author_reminded.${event.meta?.task === 'cameraReady' ? 'cameraReady' : 'revision'}`);
+    }
+    if (event.action === 'camera_ready_approved' && event.meta?.from_latest) {
+        return t('submissions.history.camera_ready_from_latest', { version: event.meta.version ?? '' });
+    }
     if (event.action === 'journal_offer_answered') {
         return t(`submissions.history.journal_offer_answered.${event.meta?.answer ?? 'decline'}`, { journal: event.meta?.journal ?? '' });
     }

@@ -6,6 +6,8 @@ import FilePick from '@/Components/Admin/FilePick.vue';
 import Modal from '@/Components/Modal.vue';
 import { ATTACHMENT_TYPES as attachmentTypes } from '@/utils/editorAttachment';
 import { useI18n } from '@/i18n';
+import MailPreview from '@/Components/Admin/MailPreview.vue';
+import { useMailPreview } from '@/composables/useMailPreview';
 
 // Staff side after acceptance (conference track) or the journal's acceptance: camera-ready, slot and slides
 const props = defineProps({
@@ -41,15 +43,28 @@ const isFull = (s) => s.count >= s.capacity && s.id !== publication.value.presen
 const toCheck = computed(() => status.value === 'camera_ready' && !props.submission.cameraReadyApproved);
 const checkForm = useForm({ choice: '', comment: '', attachment: null });
 const checkConfirm = ref(false);
+// The email the author will get, in the confirm dialogs (2026-11-13)
+const checkMail = useMailPreview(props.submission.id);
+watch(checkConfirm, (open) => open && checkMail.load({ step: 'check', choice: checkForm.choice, comment: checkForm.comment }));
 function saveCheck() {
     const url = `/admin/submissions/${props.submission.id}/camera-ready/${checkForm.choice === 'approve' ? 'approve' : 'fix'}`;
     checkForm.transform((data) => ({ comment: data.comment || null, attachment: data.choice === 'fix' ? data.attachment : null }))
         .post(url, { preserveScroll: true, forceFormData: true, onSuccess: () => checkForm.reset(), onFinish: () => { checkConfirm.value = false; } });
 }
 
+// Waiting for the author's camera-ready file: take the latest reviewed PDF instead (2026-11-13)
+const latestOpen = ref(false);
+const latestForm = useForm({});
+function useLatest() {
+    latestForm.post(`/admin/submissions/${props.submission.id}/camera-ready/use-latest`, { preserveScroll: true, onFinish: () => { latestOpen.value = false; } });
+}
+
 // Rare: withdraw the acceptance, with a reason (the author is told)
 const cancelOpen = ref(false);
 const cancelForm = useForm({ comment: '' });
+const cancelMail = useMailPreview(props.submission.id);
+watch(cancelOpen, (open) => open && cancelMail.load({ step: 'cancel', comment: cancelForm.comment }));
+watch(() => cancelForm.comment, (comment) => cancelOpen.value && cancelMail.later({ step: 'cancel', comment }));
 function cancelAcceptance() {
     cancelForm.post(`/admin/submissions/${props.submission.id}/cancel-acceptance`, { preserveScroll: true, onSuccess: () => { cancelOpen.value = false; cancelForm.reset(); } });
 }
@@ -76,6 +91,9 @@ const box = 'rounded-lg border border-neutral-200 p-4 dark:border-white/10';
                 <p v-else class="text-sm text-neutral-500 dark:text-neutral-400">{{ t('publication.staff.noCameraReady') }}</p>
                 <p v-if="submission.cameraReadyApproved" class="mt-2 text-sm text-emerald-600 dark:text-emerald-400"><Fa icon="circle-check" class="mr-1" />{{ t('publication.check.approvedOn', { date: formatDate(submission.cameraReadyApproved) }) }}</p>
                 <p v-else-if="submission.cameraReadyFix" class="mt-2 text-sm text-orange-600 dark:text-orange-300"><Fa icon="pen" class="mr-1" />{{ t('publication.check.waitingFix') }}</p>
+                <button v-if="status === 'accepted'" type="button" class="mt-3 flex items-center gap-2 rounded-lg border border-emerald-500/60 px-3 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-500/10" @click="latestOpen = true">
+                    <Fa icon="file-circle-check" /> {{ t('decision.useLatest') }}
+                </button>
             </div>
 
             <!-- Step 3 of 3: check the camera-ready file against the reviewers' notes -->
@@ -158,10 +176,15 @@ const box = 'rounded-lg border border-neutral-200 p-4 dark:border-white/10';
             </button>
         </div>
 
-        <Modal :show="checkConfirm" @close="checkConfirm = false">
+        <Modal :show="checkConfirm" max-width="max-w-2xl" @close="checkConfirm = false">
             <div class="p-6 sm:p-8">
                 <h2 class="text-xl font-semibold">{{ t(`publication.check.confirm.${checkForm.choice || 'approve'}`) }}</h2>
                 <p class="mt-2 text-sm text-neutral-400">{{ t(`publication.check.confirmText.${checkForm.choice || 'approve'}`, { code: submission.code }) }}</p>
+                <div class="mt-4">
+                    <p class="mb-2 text-sm font-medium">{{ t('closeRevision.preview') }}</p>
+                    <MailPreview v-if="checkMail.preview.value" :preview="checkMail.preview.value" @leave="checkConfirm = false" />
+                    <p v-else class="py-6 text-center text-sm text-neutral-400"><Fa icon="spinner" spin class="mr-2" />{{ t('remindAuthor.loading') }}</p>
+                </div>
                 <div class="mt-6 flex justify-end gap-2">
                     <button type="button" class="rounded-lg border border-white/20 px-4 py-2.5 text-sm transition hover:border-gold-400" @click="checkConfirm = false">{{ t('common.cancel') }}</button>
                     <button type="button" class="flex items-center gap-2 rounded-lg bg-gold-400 px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-gold-300 disabled:opacity-60" :disabled="checkForm.processing" @click="saveCheck">
@@ -171,13 +194,18 @@ const box = 'rounded-lg border border-neutral-200 p-4 dark:border-white/10';
             </div>
         </Modal>
 
-        <Modal :show="cancelOpen" @close="cancelOpen = false">
+        <Modal :show="cancelOpen" max-width="max-w-2xl" @close="cancelOpen = false">
             <form class="p-6 sm:p-8" @submit.prevent="cancelAcceptance">
                 <span class="mb-4 grid size-12 place-items-center rounded-xl bg-red-500/15 text-lg text-red-400"><Fa icon="ban" /></span>
                 <h2 class="text-xl font-semibold">{{ t('publication.check.cancelTitle', { code: submission.code }) }}</h2>
                 <p class="mt-2 text-sm text-neutral-400">{{ t('publication.check.cancelText') }}</p>
                 <textarea v-model="cancelForm.comment" rows="4" maxlength="5000" required :placeholder="t('publication.check.cancelReason')" class="mt-4 w-full rounded-lg border border-white/10 bg-ink-800 px-3 py-2.5 text-sm text-white outline-none focus:border-gold-400" />
                 <span v-if="cancelForm.errors.comment" class="block text-xs text-red-400">{{ t(cancelForm.errors.comment) }}</span>
+                <div class="mt-4">
+                    <p class="mb-2 text-sm font-medium">{{ t('closeRevision.preview') }}</p>
+                    <MailPreview v-if="cancelMail.preview.value" :preview="cancelMail.preview.value" @leave="cancelOpen = false" />
+                    <p v-else class="py-6 text-center text-sm text-neutral-400"><Fa icon="spinner" spin class="mr-2" />{{ t('remindAuthor.loading') }}</p>
+                </div>
                 <div class="mt-6 flex justify-end gap-2">
                     <button type="button" class="rounded-lg border border-white/20 px-4 py-2.5 text-sm transition hover:border-gold-400" @click="cancelOpen = false">{{ t('common.cancel') }}</button>
                     <button type="submit" class="flex items-center gap-2 rounded-lg bg-red-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-600 disabled:opacity-60" :disabled="!cancelForm.comment.trim() || cancelForm.processing">
@@ -187,4 +215,14 @@ const box = 'rounded-lg border border-neutral-200 p-4 dark:border-white/10';
             </form>
         </Modal>
     </section>
+    <Modal :show="latestOpen" max-width="max-w-md" @close="latestOpen = false">
+        <div class="space-y-4 p-6">
+            <h2 class="text-lg font-semibold"><Fa icon="file-circle-check" class="mr-2 text-emerald-400" />{{ t('decision.useLatest') }}</h2>
+            <p class="text-sm text-neutral-300">{{ t('decision.useLatestConfirm', { code: submission.code }) }}</p>
+            <div class="flex justify-end gap-2">
+                <button type="button" class="rounded-lg border border-white/20 px-4 py-2.5 text-sm" @click="latestOpen = false">{{ t('common.cancel') }}</button>
+                <button type="button" class="rounded-lg bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-400 disabled:opacity-50" :disabled="latestForm.processing" @click="useLatest">{{ t('decision.useLatest') }}</button>
+            </div>
+        </div>
+    </Modal>
 </template>

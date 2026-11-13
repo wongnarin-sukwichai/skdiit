@@ -2,11 +2,11 @@
 
 namespace App\Support;
 
+use App\Models\ActivityLog;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Log;
 
 /**
  * Admin "view as this user" for support: the admin signs in as another account to see exactly what they see.
@@ -43,7 +43,7 @@ class Impersonation
         ]);
         Auth::login($target);
 
-        Log::info('impersonation.start', ['admin' => $admin->email, 'user' => $target->email, 'role' => $target->accessRole()]);
+        ActivityLog::record('impersonation', 'impersonation_start', $target->email, $target->accessRole(), $admin);
     }
 
     /** Back to the admin account; returns the page the admin started from (null when the admin is gone). */
@@ -52,12 +52,7 @@ class Impersonation
         $data = $request->session()->pull(self::KEY);
         $admin = $data ? User::find($data['by']) : null;
 
-        Log::info('impersonation.stop', [
-            'admin' => $admin?->email,
-            'user' => $request->user()?->email,
-            'reason' => $reason,
-            'minutes' => $data ? (int) Carbon::parse($data['started_at'])->diffInMinutes(now()) : null,
-        ]);
+        ActivityLog::record('impersonation', 'impersonation_stop', $request->user()?->email, $reason.($data ? ' · '.(int) Carbon::parse($data['started_at'])->diffInMinutes(now()).' min' : ''), $admin);
 
         if (! $admin || $admin->suspended_at) {
             Auth::logout();

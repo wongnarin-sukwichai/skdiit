@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Enums\SubmissionAction;
-use App\Enums\SubmissionStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Journal;
 use App\Models\Submission;
@@ -11,6 +10,7 @@ use App\Models\SubmissionEvent;
 use App\Models\Track;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -25,7 +25,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * Selection: the first gate (client request 2026-11-11). Admin, editors and the journal role alike see every paper of
  * the year and, after the submission deadline, set its track and either offer it to one partner journal or send it to
  * the conference track. The author answers the offer on their paper page (MySubmissionController::answerJournal);
- * unanswered offers lapse to the conference track (Submission::expireJournalOffers). The list exports to Excel.
+ * an offer past its answer date stays until an editor moves it (option ข2, 2026-11-13: nothing lapses on its own);
+ * editors remind the authors who have not answered with one button (remindOffers). The list exports to Excel.
  * The journal role has no Submissions menu, so it reads a paper here (show); editors use the Submissions page.
  */
 class SelectionController extends Controller
@@ -34,7 +35,6 @@ class SelectionController extends Controller
 
     public function index(Request $request): Response
     {
-        Submission::expireJournalOffers();
         $user = $request->user();
         $filters = $request->only('q', 'tab', 'track', 'journal');
         $tab = in_array($filters['tab'] ?? null, Submission::GATE_TABS, true) ? $filters['tab'] : 'waiting';
@@ -60,10 +60,28 @@ class SelectionController extends Controller
             'journals' => Journal::ordered()->get()->map(fn (Journal $journal) => [...$journal->toClient(), 'active' => $journal->active]),
             'journalDeadline' => Submission::journalDeadline()?->toIso8601String(),
             'answerDays' => Submission::journalAnswerDays(),
+            // Offers waiting for the author, and how many are past their answer date (editors act on them)
+            'pendingOffers' => ['total' => ($pending = Submission::pendingOffers())->count(), 'overdue' => $pending->filter->journalOfferOverdue()->count()],
             // Editors and admin open a paper on the Submissions page; the journal role here
             'showUrl' => $user->moduleAccess('submissions') ? '/admin/submissions' : '/admin/selection',
             ...Submission::window(),
         ]);
+    }
+
+    /** How many authors would get the journal-offer reminder, and the first one's email as it will go out. */
+    public function remindOffersPreview(): JsonResponse
+    {
+        $pending = Submission::pendingOffers();
+
+        return response()->json(['count' => $pending->count(), 'preview' => $pending->first()?->reminderPreview()]);
+    }
+
+    /** One email to every author who has not answered a journal offer yet. */
+    public function remindOffers(Request $request): RedirectResponse
+    {
+        $n = Submission::remindJournalOffers($request->user());
+
+        return back()->with('success', ['key' => 'selection.reminded', 'params' => ['n' => $n]]);
     }
 
     /** Offer the paper to a journal, or send it to the conference track; the track is set at the same time. */
@@ -158,6 +176,8 @@ class SelectionController extends Controller
             'tracks' => Track::ordered()->get()->map->toClient(),
             'journals' => Journal::where('active', true)->ordered()->get()->map->toClient(),
             'answerDays' => Submission::journalAnswerDays(),
+            // Offers waiting for the author, and how many are past their answer date (editors act on them)
+            'pendingOffers' => ['total' => ($pending = Submission::pendingOffers())->count(), 'overdue' => $pending->filter->journalOfferOverdue()->count()],
             'deadline' => Submission::journalDeadline()?->toIso8601String(),
             'pastDeadline' => $submission->isPastJournalDeadline(),
             'decisions' => $submission->events()->with('user')

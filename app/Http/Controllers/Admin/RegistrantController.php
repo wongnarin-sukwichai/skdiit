@@ -4,29 +4,24 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Admin\Concerns\ManagesAccounts;
 use App\Http\Controllers\Controller;
-use App\Mail\LoginPassword;
 use App\Models\Affiliation;
+use App\Models\EmailLog;
 use App\Models\MealOption;
 use App\Models\Submission;
 use App\Models\User;
-use App\Support\WorkflowMail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
-use Throwable;
 
 /**
  * Registrants of the current conference year (role 'user'): admin manages them, editors can view.
  * Admin may delete a registrant (user request 2026-11-11): the account goes with every paper of theirs and the papers'
- * files; suspending keeps everything. Only authors sign up (the request to submit papers was removed 2026-11-11);
- * admin may still switch an attend-only registrant to author, who is told by email (template became_author).
+ * files; suspending keeps everything. Every registrant is an author (2026-11-13: attend-only and the
+ * "became author" email were removed; participation is always attend_submit).
  * Password, suspend and unsuspend come from ManagesAccounts.
  */
 class RegistrantController extends Controller
@@ -75,12 +70,8 @@ class RegistrantController extends Controller
         $user = User::create([...$data, 'password' => $password, 'role' => 'user']);
         $user->forceFill(['registered_year' => Submission::conferenceYear()])->save();
 
-        try {
-            Mail::to($user)->send(new LoginPassword($user, $password, 'registered'));
-        } catch (Throwable $e) {
-            // The account is kept; admin can send a new password from the ⋯ menu
-            report($e);
-        }
+        // A failed email is logged; the account is kept and admin can send a new password from the ⋯ menu
+        EmailLog::password($user, $password, 'registered');
 
         return back()->with('success', 'admin.registrants.toast.created');
     }
@@ -88,21 +79,9 @@ class RegistrantController extends Controller
     public function update(Request $request, User $user): RedirectResponse
     {
         $this->ensureManaged($user);
-        $data = $this->validated($request, $user);
+        $user->update($this->validated($request, $user));
 
-        // Back to attend only is allowed while there is no paper
-        if ($data['participation'] === 'attend' && $user->participation === 'attend_submit' && $user->submissions()->exists()) {
-            throw ValidationException::withMessages(['participation' => 'admin.registrants.form.participationHasPaper']);
-        }
-
-        $becameAuthor = $data['participation'] === 'attend_submit' && $user->participation === 'attend';
-        $user->update($data);
-
-        if ($becameAuthor) {
-            WorkflowMail::account('became_author', $user, '/admin/my-submissions');
-        }
-
-        return back()->with('success', $becameAuthor ? 'admin.registrants.toast.participationChanged' : 'admin.registrants.toast.updated');
+        return back()->with('success', 'admin.registrants.toast.updated');
     }
 
     /** One role per account: a registrant without papers becomes a reviewer (and moves to the Reviewers page). */
@@ -125,7 +104,6 @@ class RegistrantController extends Controller
             }
             $user->delete();
         });
-        Log::info('Registrant deleted', ['email' => $user->email, 'by' => $request->user()->email]);
 
         return back()->with('success', 'admin.registrants.toast.deleted');
     }
@@ -149,21 +127,20 @@ class RegistrantController extends Controller
             'phone' => ['nullable', 'string', 'max:30'],
             'affiliation' => ['required', Rule::in(Affiliation::codes())],
             'affiliation_other' => ['nullable', 'required_if:affiliation,'.Affiliation::OTHER, 'string', 'max:255'],
-            'participation' => ['required', Rule::in(['attend', 'attend_submit'])],
             ...MealOption::rules(required: false),
         ], [
             ...self::ACCOUNT_MESSAGES,
             'required_if' => 'validation.required',
             'affiliation.in' => 'validation.required',
-            'participation.in' => 'validation.required',
             ...MealOption::MESSAGES,
         ]);
 
         return [
-            ...collect($data)->only('name', 'phone', 'affiliation', 'participation')->all(),
+            ...collect($data)->only('name', 'phone', 'affiliation')->all(),
             ...MealOption::columns($data),
             'email' => strtolower($data['email']),
             'affiliation_other' => $data['affiliation'] === Affiliation::OTHER ? trim($data['affiliation_other']) : null,
+            'participation' => 'attend_submit', // every registrant is an author (2026-11-13)
         ];
     }
 }

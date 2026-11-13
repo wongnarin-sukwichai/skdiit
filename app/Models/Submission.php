@@ -4,12 +4,15 @@ namespace App\Models;
 
 use App\Enums\SubmissionAction;
 use App\Enums\SubmissionStatus;
+use App\Support\SiteContent;
+use App\Support\WorkflowMail;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class Submission extends Model
@@ -29,6 +32,7 @@ class Submission extends Model
             'slides_at' => 'datetime',
             'presentation_at' => 'datetime',
             'journal_answer_due' => 'date',
+            'author_reminded_at' => 'datetime',
             'journal_reminded_at' => 'datetime',
         ];
     }
@@ -163,6 +167,36 @@ class Submission extends Model
         ]);
 
         return $version;
+    }
+
+    /**
+     * "Use the latest file as the camera-ready file" (2026-11-13, editors only): the latest manuscript PDF, the one
+     * that went through review, is copied as the camera-ready file and approved at once; the author uploads nothing.
+     * $withDecision: done together with "accept", so the author gets one email (decision_accept_final), not two.
+     */
+    public function useLatestAsCameraReady(?User $by, bool $withDecision = false): void
+    {
+        $pdf = $this->files()->where('kind', 'manuscript')->orderByDesc('version')->firstOrFail();
+        $path = 'camera-ready/'.Str::random(40).'.pdf';
+        Storage::copy($pdf->path, $path);
+
+        $old = $this->camera_ready_path;
+        $from = $this->status;
+        $this->forceFill([
+            'camera_ready_path' => $path,
+            'camera_ready_name' => $pdf->name,
+            'camera_ready_size' => $pdf->size,
+            'camera_ready_at' => now(),
+            'camera_ready_approved_at' => now(),
+        ]);
+        $this->status = SubmissionStatus::CameraReady;
+        $this->save();
+        $this->log(SubmissionAction::CameraReadyApproved, $by, $from !== $this->status ? $from : null, null, array_filter([
+            'from_latest' => true, 'version' => $pdf->version, 'with_decision' => $withDecision ?: null,
+        ]));
+        if ($old) {
+            Storage::delete($old);
+        }
     }
 
     /** Version number of the current manuscript (the latest PDF). */
@@ -751,26 +785,121 @@ class Submission extends Model
         $this->log(SubmissionAction::JournalOfferAnswered, $by, $from, null, ['answer' => $answer, 'journal' => $this->journal?->name]);
     }
 
-    /** Offers not answered by their due date go to the conference track (run on page loads and by the scheduler). */
-    public static function expireJournalOffers(): int
+    /** Offers still waiting for the author's answer this year (the Selection reminder button). */
+    public static function pendingOffers()
     {
-        $expired = static::where('status', SubmissionStatus::JournalSelected)->whereDate('journal_answer_due', '<', today())->with('journal')->get();
-        $expired->each->answerJournalOffer('expired', null);
-
-        return $expired->count();
+        return static::currentYear()->where('status', SubmissionStatus::JournalSelected)->with('journal')->get();
     }
 
-    /** Remind authors whose offer is due within two days (once per offer; scheduler only, it sends email). */
-    public static function remindJournalOffers(): int
+    /** "Remind the authors who have not answered" (an editor's button, 2026-11-13): one email each, logged with who sent it. */
+    public static function remindJournalOffers(?User $by): int
     {
-        $due = static::where('status', SubmissionStatus::JournalSelected)->whereNull('journal_reminded_at')
-            ->whereDate('journal_answer_due', '>=', today())->whereDate('journal_answer_due', '<=', today()->addDays(2))->with('journal')->get();
-        $due->each(function (Submission $submission) {
-            $submission->forceFill(['journal_reminded_at' => now()])->save();
-            $submission->log(SubmissionAction::JournalOfferReminded, null, null, null, ['journal' => $submission->journal?->name, 'due' => $submission->journal_answer_due->toDateString()]);
+        $pending = static::pendingOffers();
+        $pending->each(function (Submission $submission) use ($by) {
+            $submission->forceFill(['journal_reminded_at' => now(), 'author_reminded_at' => now(), 'author_reminded_by' => $by?->id])->save();
+            $submission->log(SubmissionAction::JournalOfferReminded, $by, null, null, ['journal' => $submission->journal?->name, 'due' => $submission->journal_answer_due?->toDateString()]);
         });
 
-        return $due->count();
+        return $pending->count();
+    }
+
+    /**
+     * What the author is being waited for, if a reminder makes sense (2026-11-13): the journal offer, a revision
+     * (screening or after review) or the camera-ready file. Null otherwise.
+     */
+    public function authorReminderTask(): ?string
+    {
+        return match ($this->status) {
+            SubmissionStatus::JournalSelected => 'journal',
+            SubmissionStatus::Revision, SubmissionStatus::ReviewRevision => 'revision',
+            SubmissionStatus::Accepted => 'cameraReady',
+            default => null,
+        };
+    }
+
+    /** May this person remind the author? Editors (and admin); for a journal offer also the journal role (Selection). */
+    public function authorCanBeRemindedBy(User $user): bool
+    {
+        $task = $this->authorReminderTask();
+
+        return $task && ($user->moduleAccess('submissions') === 'full' || ($task === 'journal' && $user->moduleAccess('selection') === 'full'));
+    }
+
+    /** The history entry a reminder writes: [action, meta] (the journal offer keeps its own action and template). */
+    private function reminderEntry(): array
+    {
+        $task = $this->authorReminderTask();
+
+        return $task === 'journal'
+            ? [SubmissionAction::JournalOfferReminded, ['journal' => $this->journal?->name, 'due' => $this->journal_answer_due?->toDateString()]]
+            : [SubmissionAction::AuthorReminded, array_filter(['task' => $task, 'due' => $task === 'revision' ? $this->revision_due_date?->toDateString() : null])];
+    }
+
+    /** One reminder email to this paper's author, logged with who sent it (WorkflowMail picks the template). */
+    public function remindAuthor(User $by): void
+    {
+        [$action, $meta] = $this->reminderEntry();
+        $this->forceFill(['author_reminded_at' => now(), 'author_reminded_by' => $by->id]);
+        if ($action === SubmissionAction::JournalOfferReminded) {
+            $this->journal_reminded_at = now();
+        }
+        $this->save();
+        $this->log($action, $by, null, null, $meta);
+    }
+
+    /** The reminder exactly as the author would get it, without sending it (shown before the editor confirms). */
+    public function reminderPreview(): ?array
+    {
+        [$action, $meta] = $this->reminderEntry();
+
+        return $this->previewMail($action, $meta);
+    }
+
+    /**
+     * Any step's email exactly as it would go out, without sending it (2026-11-13): the history entry is built but not
+     * saved, and WorkflowMail::compose() fills the same template the real send uses.
+     */
+    public function previewMail(SubmissionAction $action, ?array $meta = null, ?string $comment = null, ?SubmissionStatus $toStatus = null): ?array
+    {
+        $event = new SubmissionEvent(['action' => $action, 'meta' => $meta, 'comment' => $comment, 'to_status' => $toStatus?->value]);
+        $event->setRelation('submission', $this);
+        $mail = WorkflowMail::compose($event);
+
+        return $mail ? [
+            'to' => ['name' => $mail['to']->name, 'email' => $mail['to']->email],
+            'subject' => SiteContent::all()['conference']['shortName'].' – '.$mail['subject'], // as TemplatedMail sends it
+            'bodyTh' => $mail['body_th'],
+            'bodyEn' => $mail['body_en'],
+            'template' => $mail['key'], // links to Announcements › Email templates
+        ] : null;
+    }
+
+    /** "Close" a revision the author never sent (2026-11-13): editors only, while the paper waits for a revision. */
+    public function canCloseRevision(): bool
+    {
+        return $this->status->awaitsAuthorRevision();
+    }
+
+    /** The status a closed revision ends in: not accepted at screening, or not accepted after review. */
+    public function closedRevisionStatus(): SubmissionStatus
+    {
+        return $this->status === SubmissionStatus::Revision ? SubmissionStatus::Rejected : SubmissionStatus::ReviewRejected;
+    }
+
+    /** Close it with a reason: the paper is not accepted and the author is told (email revision_closed). */
+    public function closeRevision(User $by, string $reason): void
+    {
+        $from = $this->status;
+        $this->status = $this->closedRevisionStatus();
+        $this->revision_due_date = null;
+        $this->save();
+        $this->log(SubmissionAction::RevisionClosed, $by, $from, $reason);
+    }
+
+    /** The answer date has passed and the author has not answered: shown in red for the editors to act on. */
+    public function journalOfferOverdue(): bool
+    {
+        return $this->status === SubmissionStatus::JournalSelected && $this->journal_answer_due && $this->journal_answer_due->lt(today());
     }
 
     /** Last moment the presenter may upload or replace slides: the talk, or a few days before it (Settings). */
@@ -818,6 +947,10 @@ class Submission extends Model
             'revisionDueDate' => $this->revision_due_date?->toDateString(),
             // Camera-ready check (2026-11-12): approved, or sent back for fixes (accepted with a file already sent)
             'cameraReadyApproved' => $this->camera_ready_approved_at?->toIso8601String(),
+            // Reminding the author from the row (2026-11-13): what they are waited for, and the last reminder
+            'remindTask' => $this->authorReminderTask(),
+            'canCloseRevision' => $this->canCloseRevision(),
+            'authorRemindedAt' => $this->author_reminded_at?->toIso8601String(),
             'cameraReadyFix' => $this->status === SubmissionStatus::Accepted && $this->camera_ready_path !== null,
             'submittedAt' => $this->created_at->toIso8601String(),
             'updatedAt' => $this->updated_at->toIso8601String(),
@@ -825,6 +958,8 @@ class Submission extends Model
             // First gate: the journal offered (name, link, terms) and the last day to answer
             'journal' => $this->journal?->toClient(),
             'journalAnswerDue' => $this->journal_answer_due?->toDateString(),
+            'journalOfferOverdue' => $this->journalOfferOverdue(),
+            'journalRemindedAt' => $this->journal_reminded_at?->toIso8601String(),
         ];
 
         if ($full) {

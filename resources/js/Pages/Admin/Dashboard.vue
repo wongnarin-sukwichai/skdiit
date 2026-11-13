@@ -10,15 +10,10 @@ import TrendChart from '@/Components/Admin/Charts/TrendChart.vue';
 import { useI18n } from '@/i18n';
 import { timeAgo, useNotifications } from '@/composables/useNotifications';
 import { eventIcons, eventTitle } from '@/utils/submissionEvents';
-import { dashboardData, emailLog, reportData } from '@/data/mock';
 import { useSite } from '@/composables/useSite';
 
-// Editors are the coordinators (no secretariat role): they also follow registrants and paper emails.
-// Sample counts until those modules are real; paper emails = everything except passwords.
-const paperEmailsFailed = emailLog.filter((e) => e.status === 'failed' && e.template !== 'LoginPassword').length;
-
 /*
- * Home: "what do I have to do now", per role (mock). Totals and breakdowns live in Reports.
+ * Home: "what do I have to do now", per role (real since 2026-11-13). Totals and breakdowns live in Reports.
  */
 const props = defineProps({
     // Real paper numbers for editor and admin (DashboardController): { queues, journalWaiting, overdueReviews, overdue }
@@ -41,7 +36,7 @@ const role = computed(() => user.value.accessRole);
 // Work queues open the matching Submissions tab (Submission::STAGE_OF_QUEUE)
 const queueLink = (queue) => `/admin/submissions?stage=${{ screening: 'screening', needReviewers: 'findReviewers', overdue: 'findReviewers', unavailable: 'findReviewers', readyToDecide: 'reviewing', revised: 'revisedReview' }[queue]}`;
 const data = computed(() => {
-    const mock = dashboardData[role.value] ?? {};
+    const mock = {};
     if (props.mine) return props.mine;
     // Journal role: papers to route at the first gate, offers waiting for the author (real)
     if (props.journal) {
@@ -72,25 +67,33 @@ const data = computed(() => {
                 { key: 'reviewerUnavailable', icon: 'user-xmark', count: p.queues.unavailable, href: queueLink('unavailable') },
                 { key: 'journalWaiting', icon: 'newspaper', count: p.journalWaiting, href: '/admin/selection?tab=waiting' },
                 // Coordination
-                { key: 'paperEmailsFailed', icon: 'envelope', count: paperEmailsFailed, href: '/admin/notifications?tab=emails' },
+                { key: 'paperEmailsFailed', icon: 'envelope', count: p.failedEmails, href: '/admin/notifications?tab=emails' },
                 { key: 'reviewersNotSignedIn', icon: 'user-clock', count: p.reviewersNotSignedIn, href: '/admin/reviewers' },
-                { key: 'registrantsToday', icon: 'user-plus', count: dashboardData.admin.kpis.registrantsToday, href: '/admin/registrants' },
-                { key: 'notSignedIn', icon: 'user-clock', count: dashboardData.admin.tasks.find((x) => x.key === 'notSignedIn').count, href: '/admin/registrants?account=unverified' },
+                { key: 'registrantsToday', icon: 'user-plus', count: p.people.today, href: '/admin/registrants' },
+                { key: 'notSignedIn', icon: 'user-clock', count: p.people.notSignedIn, href: '/admin/registrants?account=unverified' },
             ],
             overdue: p.overdue,
             activity: p.activity,
         };
     }
-    // Admin: the paper numbers are real, everything else is still sample data
-    const real = { screening: [p.queues.screening, queueLink('screening')], overdueReviews: [p.queues.overdue, queueLink('overdue')] };
+    // Admin: everything real (2026-11-13)
     return {
-        ...mock,
-        kpis: { ...mock.kpis, waitingScreening: p.queues.screening, overdueReviews: p.overdueReviews },
+        kpis: { registrantsToday: p.people.today, waitingScreening: p.queues.screening, overdueReviews: p.overdueReviews },
         tasks: [
             // The first-gate deadline has passed and papers still wait to be routed
             { key: 'journalPastDeadline', icon: 'triangle-exclamation', count: p.journalPastDeadline, href: '/admin/selection?tab=late' },
-            ...mock.tasks.map((task) => (real[task.key] ? { ...task, count: real[task.key][0], href: real[task.key][1] } : task)),
+            { key: 'screening', icon: 'file-lines', count: p.queues.screening, href: queueLink('screening') },
+            { key: 'overdueReviews', icon: 'triangle-exclamation', count: p.queues.overdue, href: queueLink('overdue') },
+            { key: 'failedEmails', icon: 'envelope', count: p.failedEmails, href: '/admin/notifications?tab=emails' },
+            { key: 'notSignedIn', icon: 'user-clock', count: p.people.notSignedIn, href: '/admin/registrants?account=unverified' },
+            { key: 'noSession', icon: 'person-chalkboard', count: p.noSession, href: '/admin/presentations' },
         ],
+        // Latest paper activity: who did what on which paper
+        activity: p.activity.slice(0, 6).map((e) => ({
+            icon: eventIcons[e.action] ?? 'circle-info',
+            at: e.at,
+            text: `${e.code} · ${eventTitle(t, e)}${e.actor ? ` · ${e.actor.name}` : ''}`,
+        })),
     };
 });
 
@@ -107,7 +110,7 @@ const { items: notifications, unread, markRead, markAllRead } = useNotifications
 const hasNotificationsMenu = computed(() => usePage().props.auth.modules.some((m) => m.key === 'notifications'));
 
 const today = formatDate(new Date().toISOString(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-const recentDays = reportData.registrants.trend.slice(-14);
+const recentDays = computed(() => props.papers?.people?.trend ?? []);
 const site = useSite();
 const upcomingDates = computed(() => site.value.dates
     .filter((d) => d.date >= new Date().toISOString().slice(0, 10))
@@ -284,6 +287,5 @@ const row = 'flex items-center gap-3 rounded-lg px-3 py-2.5 transition hover:bg-
             </Card>
         </div>
 
-        <p class="text-xs text-neutral-500 dark:text-neutral-400"><Fa icon="circle-info" class="mr-1 text-gold-500" /> {{ t(['editor', 'reviewer', 'author', 'journal'].includes(role) ? 'admin.dash.realNote' : 'admin.dash.mockNote') }}</p>
     </div>
 </template>

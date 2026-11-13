@@ -4,14 +4,15 @@ namespace App\Http\Controllers\Admin;
 
 use App\Enums\SubmissionStatus;
 use App\Http\Controllers\Controller;
+use App\Models\ActivityLog;
 use App\Models\Setting;
 use App\Models\Submission;
 use App\Models\User;
+use App\Support\SchedulePlan;
 use App\Support\SiteContent;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
@@ -35,6 +36,7 @@ class ConferenceYearController extends Controller
             'toArchive' => (clone $papers)->whereIn('status', [SubmissionStatus::CameraReady, SubmissionStatus::JournalAccepted])->count(),
             'unfinished' => (clone $papers)->whereNotIn('status', [SubmissionStatus::CameraReady, SubmissionStatus::JournalAccepted, SubmissionStatus::Rejected, SubmissionStatus::ReviewRejected])->count(),
             'registrants' => User::where('role', 'user')->where('registered_year', $year)->count(),
+            'reviewers' => User::where('role', 'reviewer')->whereNull('suspended_at')->count(),
             'archived' => Submission::archived()->count(),
         ];
     }
@@ -46,22 +48,26 @@ class ConferenceYearController extends Controller
             'year' => ['required', 'integer', 'gt:'.$current, 'max:'.($current + 5)],
             // Typed by admin to confirm: the new year
             'confirm' => ['required', 'same:year'],
+            // Reviewers usually change every year: suspend them all, admin re-opens those who continue (2026-11-13)
+            'suspend_reviewers' => ['boolean'],
         ], ['required' => 'validation.required', 'gt' => 'validation.year_after', 'max' => 'validation.year_after', 'same' => 'validation.confirm_year', 'integer' => 'validation.integer']);
         $new = (int) $data['year'];
 
-        DB::transaction(function () use ($current, $new) {
+        $suspend = $request->boolean('suspend_reviewers');
+        DB::transaction(function () use ($current, $new, $suspend) {
             Setting::put('conference_year', $new);
             // The new year sets its own dates
-            foreach (['submission_opens', 'submission_deadline', 'journal_deadline', \App\Support\SchedulePlan::KEY] as $key) {
+            foreach (['submission_opens', 'submission_deadline', 'journal_deadline', SchedulePlan::KEY] as $key) {
                 Setting::put($key, null);
             }
             // "SKDIIT 2027" becomes "SKDIIT 2028" (admin checks the rest in Settings › Conference)
             $conference = SiteContent::all()['conference'];
             $conference['shortName'] = str_replace((string) $current, (string) $new, $conference['shortName']);
             SiteContent::put('conference', $conference);
+            if ($suspend) {
+                User::where('role', 'reviewer')->whereNull('suspended_at')->update(['suspended_at' => now()]);
+            }
         });
-
-        Log::info('New conference year', ['from' => $current, 'to' => $new, 'by' => $request->user()->email]);
 
         return back()->with('success', 'admin.year.started');
     }
@@ -78,10 +84,10 @@ class ConferenceYearController extends Controller
         foreach (Storage::allFiles() as $file) {
             $zip->addFile(Storage::path($file), 'files/'.$file);
         }
-        $zip->addFromString('README.txt', "SKDIIT backup ".now()->toDateTimeString()."\n\ndatabase.sql: import into an empty MySQL database (e.g. mysql -u root skdiit_db < database.sql).\nfiles/: copy into storage/app/private/.\n");
+        $zip->addFromString('README.txt', 'SKDIIT backup '.now()->toDateTimeString()."\n\ndatabase.sql: import into an empty MySQL database (e.g. mysql -u root skdiit_db < database.sql).\nfiles/: copy into storage/app/private/.\n");
         $zip->close();
 
-        Log::info('Backup downloaded', ['by' => $request->user()->email]);
+        ActivityLog::record('system', 'backup_downloaded');
 
         return response()->download($zipPath, 'skdiit-backup-'.now()->format('Ymd-His').'.zip')->deleteFileAfterSend();
     }
@@ -90,7 +96,7 @@ class ConferenceYearController extends Controller
     private function dumpDatabase(): string
     {
         $pdo = DB::connection()->getPdo();
-        $sql = "-- SKDIIT database backup ".now()->toDateTimeString()."\nSET FOREIGN_KEY_CHECKS=0;\nSET NAMES utf8mb4;\n\n";
+        $sql = '-- SKDIIT database backup '.now()->toDateTimeString()."\nSET FOREIGN_KEY_CHECKS=0;\nSET NAMES utf8mb4;\n\n";
 
         foreach (DB::select('SHOW TABLES') as $row) {
             $table = array_values((array) $row)[0];

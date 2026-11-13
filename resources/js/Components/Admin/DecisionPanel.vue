@@ -1,10 +1,12 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { router, useForm } from '@inertiajs/vue3';
 import Modal from '@/Components/Modal.vue';
 import FilePick from '@/Components/Admin/FilePick.vue';
 import { ATTACHMENT_TYPES as attachmentTypes } from '@/utils/editorAttachment';
 import { useI18n } from '@/i18n';
+import MailPreview from '@/Components/Admin/MailPreview.vue';
+import { useMailPreview } from '@/composables/useMailPreview';
 
 // Editor's decision after peer review, or on a revised paper (decide directly or start a new review round)
 const props = defineProps({
@@ -25,17 +27,20 @@ const decisions = [
     { value: 'reject', icon: 'xmark', active: 'border-red-500 bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-300' },
 ];
 
-const form = useForm({ decision: '', comment: '', attachment: null, revision_due_date: isoDate(new Date(Date.now() + 14 * 86400000)) });
+const form = useForm({ decision: '', comment: '', attachment: null, use_latest: false, revision_due_date: isoDate(new Date(Date.now() + 14 * 86400000)) });
 const needsDue = computed(() => form.decision === 'revise');
 
 const confirm = ref(null); // 'decision' | 'round'
+// The email the author will get, shown in the confirm dialog (2026-11-13)
+const mail = useMailPreview(props.submission.id);
+watch(confirm, (value) => value === 'decision' && mail.load({ step: 'decide', choice: form.decision, comment: form.comment, due: needsDue.value ? form.revision_due_date : null, use_latest: form.use_latest }));
 const roundBusy = ref(false);
 function save() {
-    form.transform((data) => ({ ...data, revision_due_date: needsDue.value ? data.revision_due_date : null }))
+    form.transform((data) => ({ ...data, use_latest: data.decision === 'accept' && data.use_latest, revision_due_date: needsDue.value ? data.revision_due_date : null }))
         .post(`/admin/submissions/${props.submission.id}/decision`, {
             preserveScroll: true,
             forceFormData: true,
-            onSuccess: () => form.reset('decision', 'comment', 'attachment'),
+            onSuccess: () => form.reset('decision', 'comment', 'attachment', 'use_latest'),
             onFinish: () => (confirm.value = null),
         });
 }
@@ -90,6 +95,16 @@ const border = (error) => (error ? 'border-red-500/70' : 'border-neutral-300 dar
             </div>
             <span v-if="form.errors.decision" class="block text-xs text-red-500 dark:text-red-400">{{ t(form.errors.decision) }}</span>
 
+            <!-- Accept: optionally take the latest reviewed PDF as the camera-ready file (the author sends nothing more) -->
+            <Transition name="fade">
+                <label v-if="form.decision === 'accept'" for="use-latest" class="flex items-start gap-3 rounded-lg border border-emerald-300 bg-emerald-50/60 p-3 text-sm dark:border-emerald-500/30 dark:bg-emerald-500/10">
+                    <input id="use-latest" v-model="form.use_latest" type="checkbox" class="mt-0.5 size-4 shrink-0 accent-emerald-600">
+                    <span>
+                        <span class="block font-medium">{{ t('decision.useLatest') }}</span>
+                        <span class="block text-xs text-neutral-500 dark:text-neutral-400">{{ t('decision.useLatestHint') }}</span>
+                    </span>
+                </label>
+            </Transition>
             <Transition name="fade">
                 <label v-if="needsDue" class="block">
                     <span class="mb-1 block text-sm font-medium">{{ t('decision.revisionDue') }} <span class="text-red-500">*</span></span>
@@ -113,7 +128,7 @@ const border = (error) => (error ? 'border-red-500/70' : 'border-neutral-300 dar
             </button>
         </form>
 
-        <Modal :show="!!confirm" @close="confirm = null">
+        <Modal :show="!!confirm" :max-width="confirm === 'decision' ? 'max-w-2xl' : undefined" @close="confirm = null">
             <div class="p-6 sm:p-8">
                 <span class="mb-4 grid size-12 place-items-center rounded-xl bg-gold-400/15 text-lg text-gold-400">
                     <Fa :icon="confirm === 'round' ? 'user-check' : 'gavel'" />
@@ -128,6 +143,11 @@ const border = (error) => (error ? 'border-red-500/70' : 'border-neutral-300 dar
                         {{ t('submissions.screening.confirmText', { code: submission.code, decision: form.decision ? t(`decision.option.${form.decision}`) : '' }) }}
                         <template v-if="needsDue"> {{ t('decision.confirmDue', { date: formatDate(form.revision_due_date, { day: 'numeric', month: 'long', year: 'numeric' }) }) }}</template>
                     </p>
+                    <div class="mt-4">
+                        <p class="mb-2 text-sm font-medium">{{ t('closeRevision.preview') }}</p>
+                        <MailPreview v-if="mail.preview.value" :preview="mail.preview.value" @leave="confirm = null" />
+                        <p v-else class="py-6 text-center text-sm text-neutral-400"><Fa icon="spinner" spin class="mr-2" />{{ t('remindAuthor.loading') }}</p>
+                    </div>
                 </template>
                 <div class="mt-6 flex justify-end gap-2">
                     <button class="rounded-lg border border-white/20 px-4 py-2.5 text-sm transition hover:border-gold-400" @click="confirm = null">{{ t('common.cancel') }}</button>

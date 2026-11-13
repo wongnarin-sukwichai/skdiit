@@ -189,7 +189,7 @@ function logout() {
         </header>
 
         <!-- Signed up in an earlier conference year: join this one -->
-        <div v-if="joinYear" class="border-b border-gold-400/30 bg-gold-400/10">
+        <div v-if="joinYear && page.props.registration?.state === 'open'" class="border-b border-gold-400/30 bg-gold-400/10">
             <div class="mx-auto flex max-w-[1600px] flex-wrap items-center gap-3 px-4 py-3 text-sm sm:px-6 lg:px-8">
                 <Fa icon="calendar-days" class="text-gold-400" />
                 <span class="flex-1 text-neutral-100">{{ t('auth.joinYear', { name: page.props.site.conference.shortName }) }}</span>

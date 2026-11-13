@@ -14,10 +14,19 @@ use Illuminate\Database\Eloquent\Builder;
 class Audience
 {
     public const KEYS = [
-        'registrants', 'attendees', 'authors',
+        'registrants', 'authors_no_paper', 'authors_with_paper',
         'authors_revision', 'authors_camera_ready', 'authors_slides',
         'reviewers', 'reviewers_open', 'reviewers_overdue',
     ];
+
+    /** Everyone in a broad group: admin only (2026-11-13, option ก). Editors send to the to-do groups. */
+    public const BROAD = ['registrants', 'authors_no_paper', 'authors_with_paper', 'reviewers'];
+
+    /** The groups this person may send to. */
+    public static function keysFor(User $user): array
+    {
+        return $user->accessRole() === 'admin' ? self::KEYS : array_values(array_diff(self::KEYS, self::BROAD));
+    }
 
     public static function query(string $key): Builder
     {
@@ -31,8 +40,9 @@ class Audience
 
         return match ($key) {
             'registrants' => $registrants(),
-            'attendees' => $registrants()->where('participation', 'attend'),
-            'authors' => $registrants()->where('participation', 'attend_submit'),
+            // Every registrant is an author since 2026-11-13: split by whether they have sent a paper this year
+            'authors_no_paper' => $registrants()->whereDoesntHave('submissions', fn ($s) => $s->currentYear()),
+            'authors_with_paper' => $paper(fn ($s) => $s),
             // Their paper waits for a revision (screening or after review)
             'authors_revision' => $paper(fn ($s) => $s->whereIn('status', [SubmissionStatus::Revision, SubmissionStatus::ReviewRevision])),
             // Accepted in the conference track, camera-ready not sent yet

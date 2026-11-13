@@ -29,7 +29,7 @@ class JournalWorkflowSmokeTest extends TestCase
             $this->markTestSkipped('Seed the sample papers first.');
         }
         $pages = [
-            'wongnarin.s@msu.ac.th' => ['/admin', '/admin/submissions', '/admin/selection', "/admin/selection/{$paper->id}", "/admin/submissions/{$paper->id}", '/admin/settings', '/admin/staff', '/admin/reviewers', '/admin/registrants', '/admin/publication', '/admin/presentations', '/admin/reports', '/admin/activity-log', '/admin/notifications'],
+            'wongnarin.s@msu.ac.th' => ['/admin', '/admin/submissions', '/admin/selection', "/admin/selection/{$paper->id}", "/admin/submissions/{$paper->id}", '/admin/settings', '/admin/staff', '/admin/reviewers', '/admin/registrants', '/admin/presentations', '/admin/reports', '/admin/activity-log', '/admin/notifications'],
             'editor@skdiit.test' => ['/admin', '/admin/submissions', "/admin/submissions/{$paper->id}"],
             'journal@skdiit.test' => ['/admin', '/admin/selection', '/admin/selection/'.Submission::where('code', 'SKDIIT27-0001')->value('id')],
             'reviewer@skdiit.test' => ['/admin', '/admin/reviews'],
@@ -90,13 +90,22 @@ class JournalWorkflowSmokeTest extends TestCase
             'keywords_th' => 'k', 'keywords_en' => 'k', 'file_path' => 'x', 'file_name' => 'x.pdf', 'file_size' => 1,
         ]);
         $finished->forceFill(['status' => SubmissionStatus::JournalAccepted])->save();
+        $reviewer = $this->user('reviewer');
+        $oldReview = $finished->reviews()->create(['reviewer_id' => $reviewer->id, 'round' => 1, 'due_date' => now()->addWeek()]);
+        $this->actingAs($reviewer)->get("/admin/reviews/{$oldReview->id}")->assertOk();
 
         // Confirmation must match the new year; then the year moves on
         $this->actingAs($admin)->post('/admin/settings/year/rollover', ['year' => $year + 1, 'confirm' => 'x'])->assertSessionHasErrors('confirm');
         $this->actingAs($editor)->post('/admin/settings/year/rollover', ['year' => $year + 1, 'confirm' => $year + 1])->assertRedirect();
         $this->assertSame($year, Submission::conferenceYear());
-        $this->actingAs($admin)->post('/admin/settings/year/rollover', ['year' => $year + 1, 'confirm' => $year + 1])->assertSessionHasNoErrors();
+        $this->actingAs($admin)->post('/admin/settings/year/rollover', ['year' => $year + 1, 'confirm' => $year + 1, 'suspend_reviewers' => true])->assertSessionHasNoErrors();
         $this->assertSame($year + 1, Submission::conferenceYear());
+
+        // Reviewers: every account suspended (admin re-opens those who continue); last year's work is closed to them
+        $this->assertNotNull($reviewer->fresh()->suspended_at);
+        $reviewer->forceFill(['suspended_at' => null])->save();
+        $this->actingAs($reviewer)->get('/admin/reviews')->assertOk()->assertInertia(fn ($page) => $page->where('reviews', []));
+        $this->actingAs($reviewer)->get("/admin/reviews/{$oldReview->id}")->assertNotFound();
         $this->assertNull(Setting::get('submission_deadline'));
         $this->assertStringContainsString((string) ($year + 1), \App\Support\SiteContent::all()['conference']['shortName']);
 
@@ -113,7 +122,7 @@ class JournalWorkflowSmokeTest extends TestCase
         $this->assertSame(sprintf('SKDIIT%02d-0001', ($year + 1) % 100), $new->fresh()->code);
 
         // Last year's registrant joins the new year
-        $this->assertSame(0, \App\Support\Audience::query('authors')->whereKey($author->id)->count());
+        $this->assertSame(0, \App\Support\Audience::query('registrants')->whereKey($author->id)->count());
         $this->actingAs($author)->post('/join-year')->assertRedirect();
         $this->assertSame($year + 1, $author->fresh()->registered_year);
 
@@ -136,11 +145,12 @@ class JournalWorkflowSmokeTest extends TestCase
         $this->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class);
         Setting::put('submission_deadline', now()->subDay()->format('Y-m-d H:i'));
         $editor = $this->user('editor');
+        $admin = $this->user('admin');
         $journal = $this->user('journal');
         $author = $this->user('user', 'attend_submit');
 
         // A workflow step emails the author with the (edited) template; the journal's reason is never in it
-        $this->actingAs($editor)->put('/admin/announcements/templates/journal_selected', [
+        $this->actingAs($admin)->put('/admin/announcements/templates/journal_selected', [
             'subject_th' => 'คัดเลือก {code}', 'subject_en' => 'Selected {code}', 'body_th' => 'เรียน {name} {comment}', 'body_en' => 'Dear {name}',
         ])->assertSessionHasNoErrors();
         $paper = $author->submissions()->create([
@@ -163,21 +173,47 @@ class JournalWorkflowSmokeTest extends TestCase
             ->where('submissions.data.0.reviewers.0.name', $reviewer->name)->where('submissions.data.0.reviewers.0.state', 'pending'));
 
         // Back to the default text
-        $this->actingAs($editor)->delete('/admin/announcements/templates/journal_selected')->assertRedirect();
+        $this->actingAs($admin)->delete('/admin/announcements/templates/journal_selected')->assertRedirect();
         $this->assertNull(\App\Models\EmailTemplate::find('journal_selected'));
 
-        // An announcement to the reviewers with open reviews; {name} is personal; reviewers cannot use the page
-        $this->actingAs($editor)->get('/admin/announcements')->assertOk()->assertInertia(fn ($page) => $page->where('counts.reviewers_open', fn ($n) => $n >= 1));
+        // An announcement to the reviewers with open reviews; {name} is personal. Editors send to the to-do groups
+        // only; the broad groups (everyone) are admin's (2026-11-13)
+        $this->actingAs($editor)->get('/admin/announcements')->assertOk()
+            ->assertInertia(fn ($page) => $page->where('allowed', fn ($keys) => ! collect($keys)->contains('registrants') && collect($keys)->contains('reviewers_open')));
+        $this->actingAs($editor)->post('/admin/announcements', ['audience' => 'registrants', 'subject' => 'ทุกคน', 'body' => 'x'])->assertSessionHasErrors('audience');
+        $this->actingAs($admin)->get('/admin/announcements')->assertOk()->assertInertia(fn ($page) => $page->where('counts.reviewers_open', fn ($n) => $n >= 1)->where('allowed', fn ($keys) => collect($keys)->contains('registrants')));
         $this->actingAs($editor)->post('/admin/announcements', ['audience' => 'reviewers_open', 'subject' => 'เตือน', 'body' => 'เรียน {name}'])->assertSessionHasNoErrors();
         \Illuminate\Support\Facades\Mail::assertSent(\App\Mail\TemplatedMail::class, fn ($mail) => $mail->hasTo($reviewer->email) && $mail->bodyTh === "เรียน {$reviewer->name}");
         $this->assertSame(\App\Support\Audience::query('reviewers_open')->count(), \App\Models\Announcement::latest('id')->value('recipients'));
         $this->actingAs($reviewer)->get('/admin/announcements')->assertRedirect();
+
+        // Email log: every send is recorded; editors see it (no password emails) and may send one again
+        $log = \App\Models\EmailLog::where('kind', 'announcement')->where('to_email', $reviewer->email)->latest('id')->firstOrFail();
+        $this->assertSame('sent', $log->status);
+        $this->actingAs($editor)->get('/admin/notifications?tab=emails&q='.urlencode($reviewer->email))->assertOk()
+            ->assertInertia(fn ($page) => $page->where('emails.data.0.id', $log->id));
+        $this->actingAs($editor)->post("/admin/notifications/emails/{$log->id}/resend")->assertSessionHas('success');
+        $this->assertSame(1, $log->fresh()->resent);
+        $password = \App\Models\EmailLog::create(['user_id' => $reviewer->id, 'to_email' => $reviewer->email, 'kind' => 'password_reset', 'subject' => 'x', 'status' => 'sent']);
+        $this->actingAs($editor)->post("/admin/notifications/emails/{$password->id}/resend")->assertForbidden();
     }
 
     public function test_schedule_and_pdpa(): void
     {
         $this->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class);
         $admin = $this->user('admin');
+
+        // Activity log: a settings change and a failed sign-in are recorded; admin reads them, editors do not
+        $this->actingAs($admin)->put('/admin/settings/schedule/notify', ['start' => '2027-01-05', 'end' => '2027-01-05', 'mode' => 'info'])->assertSessionHasNoErrors();
+        $this->assertTrue(\App\Models\ActivityLog::where('user_id', $admin->id)->where('action', 'settings_changed')->where('detail', 'settings')->exists());
+        auth()->logout();
+        $this->post('/login', ['email' => 'nobody@smoke.test', 'password' => 'wrong'])->assertSessionHasErrors('email');
+        $this->assertTrue(\App\Models\ActivityLog::where('action', 'login_failed')->where('target', 'nobody@smoke.test')->where('flagged', true)->exists());
+        $this->actingAs($admin)->get('/admin/activity-log?category=auth&q=nobody@smoke.test')->assertOk()
+            ->assertInertia(fn ($page) => $page->where('entries.data.0.action', 'login_failed')->where('entries.data.0.flagged', true));
+        $this->actingAs($this->user('editor'))->get('/admin/activity-log?q=nobody@smoke.test')->assertOk()
+            ->assertInertia(fn ($page) => $page->where('entries.total', 0));
+        $this->actingAs($admin)->getJson('/admin/activity-log/rows?category=system')->assertOk()->assertJsonPath('0.action', 'settings_changed');
 
         // Timeline rows not enforced yet are saved too (App\Support\SchedulePlan) and shared with backend pages
         $this->actingAs($admin)->put('/admin/settings/schedule/notify', ['start' => '2027-01-06', 'end' => '2027-01-06', 'mode' => 'info', 'public' => true])->assertSessionHasNoErrors();
@@ -203,6 +239,10 @@ class JournalWorkflowSmokeTest extends TestCase
         // PDPA: no registration without consent; the time of consent is kept
         auth()->logout();
         $signup = ['email' => 'pdpa@smoke.test', 'name' => 'ทดสอบ', 'affiliation' => 'msu', 'participation' => 'attend_submit', 'meal' => 'regular'];
+        // Registration row (lock mode): no sign-up outside its dates, whatever the real schedule says
+        \App\Support\SchedulePlan::put('registration', ['start' => now()->subDays(10)->toDateString(), 'end' => now()->subDay()->toDateString(), 'mode' => 'lock', 'public' => true]);
+        $this->post('/register', [...$signup, 'pdpa' => '1'])->assertSessionHasErrors(['email' => 'auth.registrationClosed']);
+        \App\Support\SchedulePlan::put('registration', ['start' => now()->subDay()->toDateString(), 'end' => now()->addDay()->toDateString(), 'mode' => 'lock', 'public' => true]);
         $this->post('/register', $signup)->assertSessionHasErrors('pdpa');
         $this->post('/register', [...$signup, 'pdpa' => '1'])->assertSessionHasNoErrors();
         $this->assertNotNull(User::where('email', 'pdpa@smoke.test')->value('pdpa_accepted_at'));
@@ -265,10 +305,25 @@ class JournalWorkflowSmokeTest extends TestCase
         $send = ['recommendation' => 'revise', 'comment' => 'ok', 'no_conflict' => '1'];
         $this->actingAs($reviewer)->post("/admin/reviews/{$review->id}", [...$send, 'scores' => [$method->id => 4]])->assertSessionHasErrors("scores.{$writing->id}");
         $this->actingAs($reviewer)->post("/admin/reviews/{$review->id}", [...$send, 'scores' => [$method->id => 4, $writing->id => 6]])->assertSessionHasErrors("scores.{$writing->id}");
+        $editor = $this->user('editor');
         $this->actingAs($reviewer)->post("/admin/reviews/{$review->id}", [...$send, 'scores' => [$method->id => 4, $writing->id => 3]])->assertSessionHasNoErrors();
 
+        // Notifications (bell): the editors hear about the review, the reviewer does not hear about their own action
+        $notice = \App\Models\UserNotification::where('user_id', $editor->id)->where('kind', 'review_submitted')->latest('id')->firstOrFail();
+        $this->assertSame($paper->code, $notice->params['code']);
+        $this->assertFalse(\App\Models\UserNotification::where('user_id', $reviewer->id)->where('kind', 'review_submitted')->exists());
+        $this->actingAs($editor)->get('/admin')->assertInertia(fn ($page) => $page->where('notifications.items.0.kind', 'review_submitted'));
+        $this->actingAs($reviewer)->postJson("/admin/notifications/{$notice->id}/read")->assertForbidden();
+        $this->actingAs($editor)->postJson("/admin/notifications/{$notice->id}/read")->assertOk();
+        $this->assertNotNull($notice->fresh()->read_at);
+
+        // Reports and the admin home are real: the sent review and its scores are counted
+        $this->actingAs($this->user('admin'))->get('/admin/reports')->assertOk()
+            ->assertInertia(fn ($page) => $page->where('report.reviews.kpis.done', fn ($n) => $n >= 1)->has('report.reviews.criteria')->has('report.papers.byJournal')->has('report.registrants.meals'));
+        $this->actingAs($this->user('admin'))->get('/admin')->assertOk()
+            ->assertInertia(fn ($page) => $page->has('papers.people.trend', 14)->has('papers.failedEmails')->has('papers.noSession'));
+
         // Editors see the scores and the average; authors never do
-        $editor = $this->user('editor');
         $this->actingAs($editor)->get("/admin/submissions/{$paper->id}")->assertOk()
             ->assertInertia(fn ($page) => $page->where('reviews.0.average', 3.5)->has('reviews.0.scores', 2));
         $paper->forceFill(['status' => SubmissionStatus::ReviewRevision])->save(); // the round is decided: authors read the comments
@@ -467,17 +522,22 @@ class JournalWorkflowSmokeTest extends TestCase
         $this->actingAs($admin)->post("/admin/selection/{$third->id}", ['to' => 'conference', 'track_id' => Track::first()->id])->assertSessionHasNoErrors();
         $this->assertSame(SubmissionStatus::Screening, $third->fresh()->status);
 
-        // An unanswered offer: reminded two days before, then expires to the conference track
+        // An unanswered offer (option ข2, 2026-11-13): nothing happens on its own. Editors remind with a button;
+        // past the answer date it only turns red, and stays until an editor moves it (a late answer still counts)
         $fourth = $newPaper('ท4');
         $this->actingAs($editor)->post("/admin/selection/{$fourth->id}", $offer)->assertSessionHasNoErrors();
-        Submission::whereKeyNot($fourth->id)->where('status', SubmissionStatus::JournalSelected)->update(['journal_reminded_at' => now()]);
-        $fourth->forceFill(['journal_answer_due' => today()->addDay()])->save();
-        $this->assertSame(1, Submission::remindJournalOffers());
-        $this->assertSame(0, Submission::remindJournalOffers()); // once per offer
+        $this->actingAs($editor)->post('/admin/selection/remind-offers')->assertSessionHas('success');
+        $this->assertNotNull($fourth->fresh()->journal_reminded_at);
+        $this->assertTrue($fourth->events()->where('action', 'journal_offer_reminded')->where('user_id', $editor->id)->exists());
+        $this->actingAs($journal)->post('/admin/selection/remind-offers')->assertSessionHas('success'); // the journal role has full Selection too
         $fourth->forceFill(['journal_answer_due' => today()->subDay()])->save();
-        $this->actingAs($author)->get('/admin/my-submissions')->assertOk(); // page loads expire lapsed offers
+        $this->actingAs($author)->get('/admin/my-submissions')->assertOk();
+        $this->actingAs($editor)->get('/admin/selection?tab=offered')->assertOk()
+            ->assertInertia(fn ($page) => $page->where('pendingOffers.overdue', fn ($n) => $n >= 1));
+        $this->assertSame(SubmissionStatus::JournalSelected, $fourth->fresh()->status);
+        $this->assertTrue($fourth->fresh()->journalOfferOverdue());
+        $this->actingAs($editor)->post("/admin/selection/{$fourth->id}", ['to' => 'conference', 'track_id' => Track::first()->id])->assertSessionHasNoErrors();
         $this->assertSame(SubmissionStatus::Screening, $fourth->fresh()->status);
-        $this->assertSame('expired', $fourth->events()->where('action', 'journal_offer_answered')->first()->meta['answer']);
 
         // Late papers (past the selection deadline) show on the dashboards
         $late = $newPaper('ท5');

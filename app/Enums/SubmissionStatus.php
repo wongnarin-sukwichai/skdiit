@@ -39,7 +39,7 @@ enum SubmissionStatus: string
             self::Revision => ['ส่งกลับให้แก้ไข', 'Revision requested'],
             self::Rejected => ['ไม่ผ่านการคัดกรอง', 'Rejected at screening'],
             self::InReview => ['รอผลประเมิน', 'Awaiting peer review'],
-            self::ReviewRevision => ['ต้องแก้ไข', 'Revision requested'],
+            self::ReviewRevision => ['ขอให้แก้ไข', 'Revision requested'],
             self::Revised => ['ส่งฉบับแก้ไขแล้ว', 'Revision received'],
             self::Accepted => ['ผ่านการประเมิน รอฉบับสมบูรณ์', 'Accepted: awaiting camera-ready'],
             self::ReviewRejected => ['ไม่ผ่านการประเมิน', 'Rejected after review'],

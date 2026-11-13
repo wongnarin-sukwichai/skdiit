@@ -4,9 +4,10 @@ import { useI18n } from '@/i18n';
 import { today as todayIn } from '@/utils/timeline';
 
 /*
- * Where a revision stands (2026-11-12), next to the status badge: the author is revising (orange, with the due date;
- * red once it has passed), or a revision came back and waits for the editors ("revision N", blue); the camera-ready
- * file: waiting for the author / fixes (orange), waiting for the editors' check (blue), approved (green).
+ * Where a revision stands (2026-11-12), under the status badge as a line of coloured text with an icon (2026-11-13, the
+ * same look as the journal answer on Selection): the author is revising (amber, with the due date; red once it has
+ * passed), or a revision came back and waits for the editors ("revision N", blue); the camera-ready file: waiting for
+ * the author (amber) / fixes (orange), waiting for the editors' check (blue), approved (green).
  */
 const props = defineProps({
     status: { type: String, required: true },
@@ -19,39 +20,42 @@ const props = defineProps({
 const { t, formatDate } = useI18n();
 
 const badge = computed(() => {
+    // Waiting for the author's revision: plain text like the journal answer on Selection (2026-11-13, user request):
+    // red with ⚠ once past the due date, amber with ⏳ before it
     if (['screening_revision', 'review_revision'].includes(props.status)) {
         const late = props.dueDate && props.dueDate < todayIn();
         return {
-            icon: late ? 'triangle-exclamation' : 'pen',
-            tone: late ? 'border-red-300 bg-red-50 text-red-700 dark:border-red-500/40 dark:bg-red-500/15 dark:text-red-300' : 'border-orange-300 bg-orange-50 text-orange-700 dark:border-orange-500/40 dark:bg-orange-500/15 dark:text-orange-300',
+            plain: true,
+            icon: late ? 'triangle-exclamation' : 'hourglass-half',
+            tone: late ? 'font-semibold text-red-600 dark:text-red-400' : 'text-amber-600 dark:text-amber-300',
             text: late ? t('submissions.revisionBadge.late', { date: formatDate(props.dueDate) })
-                : props.dueDate ? `${t('submissions.revisionBadge.revising')} · ${t('submissions.revisionBadge.due', { date: formatDate(props.dueDate) })}`
+                : props.dueDate ? t('submissions.revisionBadge.revisingBy', { date: formatDate(props.dueDate) })
                     : t('submissions.revisionBadge.revising'),
         };
     }
-    // Camera-ready (2026-11-12): waiting for the author (or their fixes), waiting for the editors' check, approved
-    const orange = 'border-orange-300 bg-orange-50 text-orange-700 dark:border-orange-500/40 dark:bg-orange-500/15 dark:text-orange-300';
+    // Camera-ready (2026-11-12): waiting for the author (or their fixes), waiting for the editors' check, approved.
+    // Plain text with an icon too (2026-11-13), the same look as the revision lines above
+    const amber = 'text-amber-600 dark:text-amber-300';
+    const sky = 'text-sky-600 dark:text-sky-300';
     if (props.status === 'accepted') {
-        return { icon: props.cameraReadyFix ? 'pen' : 'hourglass-half', tone: orange, text: t(props.cameraReadyFix ? 'submissions.revisionBadge.finalFix' : 'submissions.revisionBadge.finalWaiting') };
+        return props.cameraReadyFix
+            ? { plain: true, icon: 'pen', tone: 'text-orange-600 dark:text-orange-300', text: t('submissions.revisionBadge.finalFix') }
+            : { plain: true, icon: 'hourglass-half', tone: amber, text: t('submissions.revisionBadge.finalWaiting') };
     }
     if (props.status === 'camera_ready') {
         return props.cameraReadyApproved
-            ? { icon: 'circle-check', tone: 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-300', text: t('submissions.revisionBadge.finalApproved') }
-            : { icon: 'magnifying-glass', tone: 'border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-500/40 dark:bg-sky-500/15 dark:text-sky-300', text: t('submissions.revisionBadge.finalCheck') };
+            ? { plain: true, icon: 'circle-check', tone: 'text-emerald-600 dark:text-emerald-400', text: t('submissions.revisionBadge.finalApproved') }
+            : { plain: true, icon: 'magnifying-glass', tone: sky, text: t('submissions.revisionBadge.finalCheck') };
     }
     if (props.revisionCount && ['screening', 'revised'].includes(props.status)) {
-        return {
-            icon: 'rotate',
-            tone: 'border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-500/40 dark:bg-sky-500/15 dark:text-sky-300',
-            text: t('submissions.revisionBadge.round', { n: props.revisionCount }),
-        };
+        return { plain: true, icon: 'rotate', tone: sky, text: t('submissions.revisionBadge.round', { n: props.revisionCount }) };
     }
     return null;
 });
 </script>
 
 <template>
-    <span v-if="badge" :class="badge.tone" class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium whitespace-nowrap">
-        <Fa :icon="badge.icon" class="text-[0.65rem]" /> {{ badge.text }}
+    <span v-if="badge" :class="badge.tone" class="block text-xs whitespace-nowrap">
+        <Fa :icon="badge.icon" class="mr-1" />{{ badge.text }}
     </span>
 </template>

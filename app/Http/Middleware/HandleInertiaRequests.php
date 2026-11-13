@@ -55,6 +55,12 @@ class HandleInertiaRequests extends Middleware
             // Backend, admin and editors: the work along the schedule, shown above every page (EditorTimeline)
             'editorStages' => fn () => \App\Support\EditorStages::forClient($user),
             // Backend: saved timeline rows not enforced yet (useSchedulePlan; the rest of the plan is on the client)
+            // Sign-up window (row "registration", the one locked row): { state, start, end } for the sign-up form
+            'registration' => fn () => \App\Support\SchedulePlan::registration(),
+            // Backend: my notifications (bell, home card, Notifications page): { items (latest 50), unread }
+            // Admin: the system is closed to everyone else (banner in the backend)
+            'siteClosed' => fn () => $user?->accessRole() === 'admin' && \App\Support\SiteClosure::isClosed(),
+            'notifications' => fn () => \App\Models\UserNotification::forClient($user),
             'schedulePlan' => fn () => $user?->modules() ? \App\Support\SchedulePlan::all() : [],
             // Affiliation list for the sign-up form and labels (useAffiliations); 'other' is added on the client
             'affiliations' => fn () => Affiliation::ordered()->get()->map->toClient(),

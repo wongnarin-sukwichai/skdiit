@@ -80,12 +80,6 @@ return [
         'icon' => 'clipboard-check',
         'access' => ['reviewer' => 'own'],
     ],
-    'publication' => [
-        'group' => 'papers',
-        'href' => '/admin/publication',
-        'icon' => 'book',
-        'access' => ['admin' => 'full', 'editor' => 'full'],
-    ],
 
     // Conference event
     'presentations' => [

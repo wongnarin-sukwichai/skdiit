@@ -10,9 +10,11 @@ use App\Models\Setting;
 use App\Models\Submission;
 use App\Models\Track;
 use App\Support\SiteContent;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -56,6 +58,8 @@ class PresentationController extends Controller
             'days' => static::days(),
             'conferenceDays' => static::conferenceDays(),
             'canEdit' => $request->user()->moduleAccess('presentations') === 'full',
+            'unnotified' => PresentationSession::unnotified()->count(),
+            'needSlides' => static::needSlides()->count(),
         ]);
     }
 
@@ -123,7 +127,7 @@ class PresentationController extends Controller
     {
         $room->update($this->room($request));
         // Papers keep the room name in their slot: refresh the sessions in this room
-        $room->sessions()->currentYear()->get()->each(fn (PresentationSession $session) => $session->syncPapers($request->user()));
+        $room->sessions()->currentYear()->get()->each(fn (PresentationSession $session) => $session->syncPapers());
 
         return back()->with('success', 'admin.presentations.toast.roomSaved');
     }
@@ -162,7 +166,7 @@ class PresentationController extends Controller
         $session->fill($this->session($request));
         $this->guardClash($session);
         $session->save();
-        $session->syncPapers($request->user()); // new day, time, room or minutes: every paper's slot follows
+        $session->syncPapers(); // new day, time, room or minutes: every paper's slot follows
 
         return back()->with('success', 'admin.presentations.toast.saved');
     }
@@ -204,7 +208,7 @@ class PresentationController extends Controller
 
     /**
      * Put a paper in a session (last in its running order), move it to another one, or take it out (session_id null).
-     * Used by the Presentations page (admin) and the paper page (editors). The author is emailed the new slot.
+     * Used by the Presentations page (admin) and the paper page (editors). The author is emailed later, by notify().
      */
     public function assign(Request $request, Submission $submission): RedirectResponse
     {
@@ -222,10 +226,10 @@ class PresentationController extends Controller
                 $this->clearSlot($submission, $request);
             } elseif ($new->id !== $old?->id) {
                 $submission->forceFill(['presentation_session_id' => $new->id, 'presentation_order' => (int) $new->papers()->max('presentation_order') + 1])->save();
-                $new->syncPapers($request->user());
+                $new->syncPapers();
             }
             if ($old && $old->id !== $new?->id) {
-                $old->syncPapers($request->user()); // close the gap it left
+                $old->syncPapers(); // close the gap it left
             }
         });
 
@@ -244,20 +248,68 @@ class PresentationController extends Controller
         $to = $direction === 'up' ? $from - 1 : $from + 1;
         if (isset($ids[$to])) {
             [$ids[$from], $ids[$to]] = [$ids[$to], $ids[$from]];
-            DB::transaction(function () use ($ids, $session, $request) {
+            DB::transaction(function () use ($ids, $session) {
                 foreach ($ids as $i => $id) {
                     Submission::whereKey($id)->update(['presentation_order' => $i + 1]);
                 }
-                $session->syncPapers($request->user());
+                $session->syncPapers();
             });
         }
 
         return back();
     }
 
+    /**
+     * "Remind about slides" (2026-11-13): email every author whose paper has a session, no slides yet and can
+     * still upload (Submission::canUploadSlides()). Logged as slides_reminded on each paper.
+     */
+    public function remindSlides(Request $request): RedirectResponse
+    {
+        $papers = static::needSlides();
+        $papers->each(fn (Submission $paper) => $paper->log(SubmissionAction::SlidesReminded, $request->user(), meta: static::slidesReminderMeta($paper)));
+
+        return back()->with('success', ['key' => 'admin.presentations.toast.slidesReminded', 'params' => ['n' => $papers->count()]]);
+    }
+
+    /** How many presenters would get the slides reminder, and the first one's email as it will go out (2026-11-13). */
+    public function remindSlidesPreview(): JsonResponse
+    {
+        $papers = static::needSlides();
+
+        return response()->json([
+            'count' => $papers->count(),
+            'preview' => $papers->first()?->previewMail(SubmissionAction::SlidesReminded, static::slidesReminderMeta($papers->first())),
+        ]);
+    }
+
+    private static function slidesReminderMeta(Submission $paper): array
+    {
+        return [
+            'at' => $paper->presentation_at->toIso8601String(),
+            'room' => $paper->presentation_room,
+            'due' => $paper->slidesUntil()->toDateString(),
+            'due_time' => $paper->slidesUntil()->format('H:i'),
+        ];
+    }
+
+    /** This year's papers in a session, without slides, still open for them. */
+    private static function needSlides(): Collection
+    {
+        return Submission::currentYear()->whereNotNull('presentation_session_id')->whereNull('slides_path')->get()
+            ->filter(fn (Submission $paper) => $paper->canUploadSlides())->values();
+    }
+
+    /** "Notify authors" (2026-11-13): one email per paper whose slot changed since its last notice. */
+    public function notify(Request $request): RedirectResponse
+    {
+        $count = PresentationSession::notifyAuthors($request->user());
+
+        return back()->with('success', ['key' => 'admin.presentations.toast.notified', 'params' => ['n' => $count]]);
+    }
+
     private function clearSlot(Submission $paper, Request $request): void
     {
-        $paper->forceFill(['presentation_session_id' => null, 'presentation_order' => null, 'presentation_at' => null, 'presentation_room' => null])->save();
+        $paper->forceFill(['presentation_session_id' => null, 'presentation_order' => null, 'presentation_at' => null, 'presentation_room' => null, 'presentation_notified' => null])->save();
         $paper->log(SubmissionAction::PresentationScheduled, $request->user(), meta: ['at' => null, 'room' => null]);
     }
 

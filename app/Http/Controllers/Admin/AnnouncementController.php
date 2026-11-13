@@ -22,10 +22,12 @@ class AnnouncementController extends Controller
 {
     private const MESSAGES = ['required' => 'validation.required', 'max' => 'validation.too_long', 'audience.in' => 'validation.required'];
 
-    public function index(): Response
+    public function index(Request $request): Response
     {
         return Inertia::render('Admin/Announcements', [
             'counts' => Audience::counts(),
+            // Groups this person may send to (the broad ones are admin's)
+            'allowed' => Audience::keysFor($request->user()),
             'history' => Announcement::with('user')->latest()->limit(50)->get()->map->toClient(),
             'templates' => collect(EmailTemplate::DEFAULTS)->keys()->map(function (string $key) {
                 $saved = EmailTemplate::with('updatedBy')->find($key);
@@ -44,7 +46,7 @@ class AnnouncementController extends Controller
     public function send(Request $request): RedirectResponse
     {
         $data = $request->validate([
-            'audience' => ['required', Rule::in(Audience::KEYS)],
+            'audience' => ['required', Rule::in(Audience::keysFor($request->user()))],
             'subject' => ['required', 'string', 'max:200'],
             'body' => ['required', 'string', 'max:20000'],
         ], self::MESSAGES);
@@ -54,6 +56,7 @@ class AnnouncementController extends Controller
 
         $recipients->each(fn (User $user) => WorkflowMail::send(
             $user,
+            'announcement',
             str_replace('{name}', $user->name, $data['subject']),
             str_replace('{name}', $user->name, $data['body']),
             null,

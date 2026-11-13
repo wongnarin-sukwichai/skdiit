@@ -5,7 +5,9 @@ import Card from '@/Components/Admin/Card.vue';
 import PageHeader from '@/Components/Admin/PageHeader.vue';
 import StatCards from '@/Components/Admin/StatCards.vue';
 import Modal from '@/Components/Modal.vue';
+import BulkReminderModal from '@/Components/Admin/BulkReminderModal.vue';
 import { useI18n } from '@/i18n';
+import { useSite } from '@/composables/useSite';
 
 /*
  * Presentation schedule (2026-11-12, real data: PresentationController). Admin keeps the rooms and the sessions
@@ -20,9 +22,22 @@ const props = defineProps({
     days: { type: Array, required: true }, // presentation days (Y-m-d), kept on this page
     conferenceDays: { type: Array, default: () => [] }, // Settings › Conference: date..end date
     canEdit: { type: Boolean, required: true },
+    unnotified: { type: Number, default: 0 }, // papers whose slot changed since the author was last emailed
+    needSlides: { type: Number, default: 0 }, // papers in a session, no slides yet, still open for them
 });
 
+// "Remind about slides" (2026-11-13): one email to each author still missing slides, confirmed first
+const remindOpen = ref(false);
+
+// "Notify authors" (2026-11-13): arranging sessions emails nobody; one press emails every changed slot
+const notifying = ref(false);
+function notifyAuthors() {
+    router.post('/admin/presentations/notify', {}, { ...options, onStart: () => { notifying.value = true; }, onFinish: () => { notifying.value = false; } });
+}
+
 const { t, tr, formatDate, formatNumber } = useI18n();
+const site = useSite();
+const printSchedule = () => window.print();
 
 const stats = computed(() => ({
     sessions: props.sessions.length,
@@ -119,7 +134,46 @@ const err = (form, key) => (form.errors[key] ? t(form.errors[key]) : null);
 <template>
     <Head :title="t('admin.menu.presentations')" />
 
-    <div class="space-y-6">
+    <!-- Printed schedule: plain black on white, one block per session (window.print; the layout hides its chrome) -->
+    <div class="hidden text-black print:block">
+        <header class="mb-6 border-b-2 border-black pb-3">
+            <h1 class="text-2xl font-bold">{{ t('admin.menu.presentations') }} · {{ site.conference.shortName }}</h1>
+            <p class="text-sm">{{ tr(site.conference.fullName) }} · {{ tr(site.conference.venue) }}</p>
+            <p class="text-xs text-neutral-600">{{ t('admin.presentations.printedAt', { date: formatDate(new Date(), { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) }) }}</p>
+        </header>
+        <section v-for="(day, d) in byDay.filter((x) => x.spans.length)" :key="day.date" :class="d > 0 ? 'break-before-page' : ''">
+            <h2 class="mb-3 text-lg font-bold">{{ dayLabel(day.date) }}</h2>
+            <template v-for="group in day.spans" :key="group.span">
+                <div v-for="session in group.sessions" :key="session.id" class="mb-5 break-inside-avoid">
+                    <p class="bg-neutral-200 px-2 py-1 text-sm font-semibold [print-color-adjust:exact]">
+                        {{ group.span }} · {{ tr(session.room.name) }} · {{ session.track ? tr(session.track.name) : t('admin.presentations.anyTrack') }}
+                    </p>
+                    <p class="px-2 py-1 text-xs">{{ t('admin.presentations.chair') }}: {{ session.chair || '—' }}</p>
+                    <table class="w-full border-collapse text-xs">
+                        <thead>
+                            <tr class="border-b border-black text-left">
+                                <th class="w-14 px-2 py-1">{{ t('admin.presentations.printCols.time') }}</th>
+                                <th class="w-24 px-2 py-1">{{ t('admin.presentations.printCols.code') }}</th>
+                                <th class="px-2 py-1">{{ t('admin.presentations.printCols.title') }}</th>
+                                <th class="w-1/4 px-2 py-1">{{ t('admin.presentations.printCols.authors') }}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="paper in session.papers" :key="paper.id" class="border-b border-neutral-300 align-top">
+                                <td class="px-2 py-1 font-mono">{{ paper.at }}</td>
+                                <td class="px-2 py-1 font-mono">{{ paper.code }}</td>
+                                <td class="px-2 py-1">{{ tr(paper.title) }}</td>
+                                <td class="px-2 py-1">{{ paper.authors }}</td>
+                            </tr>
+                            <tr v-if="!session.papers.length"><td colspan="4" class="px-2 py-2 text-neutral-500">{{ t('admin.presentations.emptySession') }}</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </template>
+        </section>
+    </div>
+
+    <div class="space-y-6 print:hidden">
         <Card class="space-y-6">
             <PageHeader icon="person-chalkboard" :title="t('admin.menu.presentations')" :subtitle="t('admin.presentations.subtitle')" />
             <StatCards :stats="stats" :cards="statCards" />
@@ -147,7 +201,22 @@ const err = (form, key) => (form.errors[key] ? t(form.errors[key]) : null);
                 <p v-if="!days.length" class="text-sm text-amber-700 dark:text-amber-300"><Fa icon="triangle-exclamation" class="mr-1" />{{ t('admin.presentations.noDays') }}</p>
                 <p v-else class="text-xs text-neutral-500 dark:text-neutral-400">{{ t('admin.presentations.daysHint') }}</p>
             </div>
-            <div v-if="canEdit" class="flex flex-wrap justify-end gap-2">
+            <Transition name="fade">
+                <div v-if="unnotified" class="flex flex-col gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm sm:flex-row sm:items-center dark:border-amber-500/40 dark:bg-amber-500/10">
+                    <p class="flex-1 text-amber-800 dark:text-amber-200"><Fa icon="envelope" class="mr-2" />{{ t('admin.presentations.unnotified', { n: unnotified }) }}</p>
+                    <button type="button" class="flex shrink-0 items-center justify-center gap-2 rounded-lg bg-gold-400 px-4 py-2.5 font-semibold text-black transition hover:bg-gold-300 disabled:opacity-60" :disabled="notifying" @click="notifyAuthors">
+                        <Fa icon="paper-plane" /> {{ t('admin.presentations.notify', { n: unnotified }) }}
+                    </button>
+                </div>
+            </Transition>
+            <div class="flex flex-wrap justify-end gap-2">
+                <button type="button" class="flex items-center gap-2 rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition hover:border-gold-400 disabled:opacity-40 dark:border-white/20" :disabled="!sessions.length" @click="printSchedule">
+                    <Fa icon="print" /> {{ t('admin.presentations.print') }}
+                </button>
+                <button v-if="needSlides" type="button" class="flex items-center gap-2 rounded-lg border border-amber-400 px-4 py-2.5 text-sm text-amber-700 transition hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-500/10" @click="remindOpen = true">
+                    <Fa icon="envelope" /> {{ t('admin.presentations.remindSlides', { n: needSlides }) }}
+                </button>
+                <template v-if="canEdit">
                 <button type="button" class="flex items-center gap-2 rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition hover:border-gold-400 dark:border-white/20" @click="roomsOpen = true; editRoom()">
                     <Fa icon="location-dot" /> {{ t('admin.presentations.manageRooms') }} ({{ formatNumber(rooms.length) }})
                 </button>
@@ -155,6 +224,7 @@ const err = (form, key) => (form.errors[key] ? t(form.errors[key]) : null);
                 <button type="button" class="flex items-center gap-2 rounded-lg bg-gold-400 px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-gold-300" @click="rooms.length ? openSession() : (roomsOpen = true, editRoom())">
                     <Fa icon="plus" /> {{ t('admin.presentations.addSession') }}
                 </button>
+                </template>
             </div>
         </Card>
 
@@ -190,6 +260,7 @@ const err = (form, key) => (form.errors[key] ? t(form.errors[key]) : null);
                                     <Link :href="`/admin/submissions/${paper.id}`" class="line-clamp-2 hover:text-gold-600 dark:hover:text-gold-400">{{ tr(paper.title) }}</Link>
                                     <p class="text-xs text-neutral-500 dark:text-neutral-400">
                                         <span class="font-mono">{{ paper.code }}</span> · {{ paper.authors }}
+                                        <span v-if="!paper.notified" class="ml-1 rounded-full bg-sky-100 px-2 py-0.5 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300" :title="t('admin.presentations.notNotifiedHint')"><Fa icon="envelope" class="mr-1" />{{ t('admin.presentations.notNotified') }}</span>
                                         <span v-if="!paper.slides" class="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300"><Fa icon="file-powerpoint" class="mr-1" />{{ t('admin.stats.noSlides') }}</span>
                                     </p>
                                 </div>
@@ -304,6 +375,16 @@ const err = (form, key) => (form.errors[key] ? t(form.errors[key]) : null);
             </Transition>
         </form>
     </Modal>
+
+    <BulkReminderModal
+        :show="remindOpen"
+        :title="t('admin.presentations.remindSlidesTitle')"
+        :intro="t('admin.presentations.remindSlidesText', { n: needSlides })"
+        preview-url="/admin/presentations/remind-slides/preview"
+        send-url="/admin/presentations/remind-slides"
+        :confirm-label="t('admin.presentations.remindSlides', { n: needSlides })"
+        @close="remindOpen = false"
+    />
 
     <!-- Rooms -->
     <Modal :show="roomsOpen" max-width="max-w-xl" @close="roomsOpen = false">

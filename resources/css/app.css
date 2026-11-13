@@ -136,3 +136,9 @@ body { background: var(--color-ink-950); }
     .toast-enter-active, .toast-leave-active { transition: opacity .2s ease; }
     .toast-enter-from, .toast-leave-to { transform: none; }
 }
+
+/* Printed pages (e.g. the presentation schedule): A4, white page even in dark mode */
+@media print {
+    @page { size: A4; margin: 12mm; }
+    html, body { background: #fff !important; }
+}

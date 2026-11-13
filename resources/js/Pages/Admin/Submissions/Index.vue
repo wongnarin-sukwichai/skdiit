@@ -7,6 +7,7 @@ import DeadlineNotice from '@/Components/Admin/DeadlineNotice.vue';
 import Pagination from '@/Components/Pagination.vue';
 import SubmissionStatusBadge from '@/Components/Admin/SubmissionStatusBadge.vue';
 import RevisionBadge from '@/Components/Admin/RevisionBadge.vue';
+import RemindAuthorButton from '@/Components/Admin/RemindAuthorButton.vue';
 import WaitingOnBadge from '@/Components/Admin/WaitingOnBadge.vue';
 import ReviewerStatusList from '@/Components/Admin/ReviewerStatusList.vue';
 import { useI18n } from '@/i18n';
@@ -30,11 +31,12 @@ const { t, tr, formatDate, formatNumber } = useI18n();
 const q = ref(props.filters.q ?? '');
 const track = ref(props.filters.track ?? '');
 const status = ref(props.filters.status ?? '');
-const stage = ref(props.filters.stage ?? '');
+const stage = ref(props.filters.stage ?? 'all');
+const inStage = computed(() => stage.value && stage.value !== 'all'); // a stage tab, not "all"
 
-// Where each paper stands (2026-11-12), one tab per paper; "All" keeps the status filter (and rejected papers)
+// Where each paper stands (2026-11-12), one tab per paper; "All" (last, 2026-11-13) keeps the status filter and
+// rejected papers. Opening the menu shows the first tab with the editors' move (the server picks it)
 const stageTabs = [
-    { key: '', icon: 'list' },
     { key: 'screening', icon: 'file-lines' },
     { key: 'revisedScreening', icon: 'rotate' },
     { key: 'findReviewers', icon: 'user-check' },
@@ -42,10 +44,11 @@ const stageTabs = [
     { key: 'decide', icon: 'gavel' },
     { key: 'awaitingFinal', icon: 'hourglass-half' },
     { key: 'cameraReady', icon: 'file-circle-check' },
+    { key: 'all', icon: 'list' },
 ];
 function pickStage(key) {
     stage.value = key;
-    if (key) status.value = '';
+    if (key !== 'all') status.value = '';
     load();
 }
 // Gold: papers waiting for the editors; grey: papers in the tab that wait for someone else
@@ -70,7 +73,7 @@ const byTrack = computed(() => props.tracks
     .filter((group) => group.papers.length));
 
 function load(params = {}) {
-    router.get('/admin/submissions', { q: q.value || undefined, track: track.value || undefined, status: status.value || undefined, stage: stage.value || undefined, view: view.value === 'tracks' ? 'tracks' : undefined, ...params }, {
+    router.get('/admin/submissions', { q: q.value || undefined, track: track.value || undefined, status: status.value || undefined, stage: stage.value || 'all', view: view.value === 'tracks' ? 'tracks' : undefined, ...params }, {
         only: ['submissions', 'filters', 'stages'],
         preserveState: true,
         preserveScroll: true,
@@ -85,7 +88,7 @@ function reset() {
     q.value = '';
     track.value = '';
     status.value = '';
-    stage.value = '';
+    stage.value = 'all';
     load();
 }
 
@@ -114,7 +117,7 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
         <nav class="flex gap-1 overflow-x-auto border-b border-neutral-200 dark:border-white/10" role="tablist">
             <button
                 v-for="item in stageTabs"
-                :key="item.key || 'all'"
+                :key="item.key"
                 role="tab"
                 :aria-selected="stage === item.key"
                 :class="stage === item.key
@@ -124,11 +127,11 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
                 @click="pickStage(item.key)"
             >
                 <Fa :icon="item.icon" />
-                {{ t(`submissions.stage.${item.key || 'all'}`) }}
-                <span v-if="item.key" :class="tabTone(item.key)" class="rounded-full px-2 py-0.5 text-xs font-semibold">{{ formatNumber(tabNumber(item.key)) }}</span>
+                {{ t(`submissions.stage.${item.key}`) }}
+                <span v-if="item.key !== 'all'" :class="tabTone(item.key)" class="rounded-full px-2 py-0.5 text-xs font-semibold">{{ formatNumber(tabNumber(item.key)) }}</span>
             </button>
         </nav>
-        <p v-if="stage" class="-mt-3 text-sm text-neutral-500 dark:text-neutral-400"><Fa icon="circle-info" class="mr-1 text-gold-500" /> {{ t(`submissions.stage.hint.${stage}`) }}</p>
+        <p v-if="inStage" class="-mt-3 text-sm text-neutral-500 dark:text-neutral-400"><Fa icon="circle-info" class="mr-1 text-gold-500" /> {{ t(`submissions.stage.hint.${stage}`) }}</p>
 
         <form class="grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_14rem_14rem_auto_auto]" @submit.prevent="load()">
             <label class="relative">
@@ -139,7 +142,7 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
                 <option value="">{{ t('submissions.manage.allTracks') }}</option>
                 <option v-for="item in tracks" :key="item.id" :value="String(item.id)">{{ tr(item.name) }}</option>
             </select>
-            <select v-model="status" :class="input" :disabled="!!stage" :title="stage ? t('submissions.queue.statusLocked') : undefined" @change="load()">
+            <select v-model="status" :class="input" :disabled="inStage" :title="inStage ? t('submissions.queue.statusLocked') : undefined" @change="load()">
                 <option value="">{{ t('submissions.manage.allStatuses') }}</option>
                 <option v-for="item in statuses" :key="item" :value="item">{{ t(`submissions.status.${item}`) }}</option>
             </select>
@@ -212,7 +215,12 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
                             <!-- Whose move it is: editor, reviewer (with x/y sent) or author -->
                             <!-- This round's reviewers: who has sent (and what), who is still reviewing -->
                             <td class="px-4 py-3"><ReviewerStatusList :reviewers="item.reviewers" /></td>
-                            <td class="px-4 py-3"><WaitingOnBadge :waiting="item.waitingOn" /></td>
+                            <td class="px-4 py-3">
+                                <span class="flex flex-col items-start gap-1.5">
+                                    <WaitingOnBadge :waiting="item.waitingOn" />
+                                    <RemindAuthorButton :submission="item" compact />
+                                </span>
+                            </td>
                             <td class="px-4 py-3 whitespace-nowrap text-neutral-500 dark:text-neutral-400">{{ formatDate(item.submittedAt) }}</td>
                             <td class="px-4 py-3">
                                 <div class="flex items-center justify-end gap-1.5">
@@ -221,7 +229,7 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
                             </td>
                         </tr>
                         <tr v-if="!submissions.data.length">
-                            <td colspan="8" class="px-4 py-12 text-center text-neutral-500 dark:text-neutral-400">{{ t(stage ? 'submissions.queue.empty' : 'submissions.manage.empty') }}</td>
+                            <td colspan="8" class="px-4 py-12 text-center text-neutral-500 dark:text-neutral-400">{{ t(inStage ? 'submissions.queue.empty' : 'submissions.manage.empty') }}</td>
                         </tr>
                     </tbody>
                 </Transition>
@@ -230,7 +238,7 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
 
         <!-- Cards by track: every matching paper, its status and whose move it is -->
         <div v-else key="tracks" class="space-y-6">
-            <p v-if="!byTrack.length" class="rounded-xl border border-dashed border-neutral-300 py-12 text-center text-sm text-neutral-500 dark:border-white/15 dark:text-neutral-400">{{ t(stage ? 'submissions.queue.empty' : 'submissions.manage.empty') }}</p>
+            <p v-if="!byTrack.length" class="rounded-xl border border-dashed border-neutral-300 py-12 text-center text-sm text-neutral-500 dark:border-white/15 dark:text-neutral-400">{{ t(inStage ? 'submissions.queue.empty' : 'submissions.manage.empty') }}</p>
             <section v-for="group in byTrack" :key="group.track.id">
                 <h3 class="mb-3 flex items-center gap-2 font-semibold">
                     <Fa icon="layer-group" class="text-gold-500" /> {{ tr(group.track.name) }}
@@ -253,6 +261,7 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
                                 <SubmissionStatusBadge :status="item.status" />
                                 <RevisionBadge :status="item.status" :revision-count="item.revisionCount" :due-date="item.revisionDueDate" :camera-ready-approved="item.cameraReadyApproved" :camera-ready-fix="item.cameraReadyFix" />
                                 <WaitingOnBadge :waiting="item.waitingOn" />
+                                <RemindAuthorButton :submission="item" compact />
                             </span>
                             <ReviewerStatusList v-if="item.reviewers.length" :reviewers="item.reviewers" class="border-t border-neutral-200 pt-2 dark:border-white/10" />
                         </Link>

@@ -16,7 +16,11 @@ class SubmissionEvent extends Model
     protected static function booted(): void
     {
         // The email that goes with this step (to the author, or to the reviewer for assignments and reminders)
-        static::created(fn (SubmissionEvent $event) => WorkflowMail::forEvent($event));
+        static::created(function (SubmissionEvent $event) {
+            WorkflowMail::forEvent($event);
+            // ...and the notification in the system (bell), for the author, the reviewer or the staff
+            \App\Support\Notifier::forEvent($event);
+        });
     }
 
     protected function casts(): array

@@ -47,10 +47,8 @@ const list = computed(() => props.registrants);
 const { form, perPage, page, total, lastPage, rows, filtered, search, reset } = useRegistrantTable(list, {
     withEmail: true,
     affiliationText: affiliationOf,
-    filters: { participation: '', status: '', account: '', from: '', to: '' },
-    match: (row, f) => (!f.participation || row.participation === f.participation)
-        && (!f.status || (f.status === 'registered' && row.participation === 'attend')
-            || (f.status === 'none' && row.participation === 'attend_submit' && !row.paperStatus)
+    filters: { status: '', account: '', from: '', to: '' },
+    match: (row, f) => (!f.status || (f.status === 'none' && !row.paperStatus)
             || row.paperStatus === f.status)
         && (!f.account || accountState(row) === f.account)
         && (!f.from || day(row.registeredAt) >= f.from)
@@ -70,7 +68,7 @@ const tabs = [
 ];
 const tab = ref(tabs.some((item) => item.key === query.get('tab')) ? query.get('tab') : 'list');
 
-// Status filter: attend-only, author without a paper, then each paper status (App\Enums\SubmissionStatus)
+// Status filter: no paper yet, then each paper status (App\Enums\SubmissionStatus)
 const paperStatuses = [
     'submitted', 'journal_selected', 'journal_accepted',
     'screening', 'screening_revision', 'screening_rejected', 'in_review', 'review_revision', 'revised',
@@ -79,15 +77,15 @@ const paperStatuses = [
 
 const stats = computed(() => ({
     total: list.value.length,
-    attendOnly: list.value.filter((r) => r.participation === 'attend').length,
-    authors: list.value.filter((r) => r.participation === 'attend_submit').length,
     papers: list.value.filter((r) => r.paperStatus).length,
+    noPaper: list.value.filter((r) => !r.paperStatus).length,
+    companions: list.value.filter((r) => r.companion_name).length,
 }));
 const statCards = [
     { key: 'total', icon: 'user' },
-    { key: 'attendOnly', icon: 'users' },
-    { key: 'authors', icon: 'file-arrow-up' },
     { key: 'papers', icon: 'file-lines' },
+    { key: 'noPaper', icon: 'hourglass-half' },
+    { key: 'companions', icon: 'user-plus' },
 ];
 
 // Row selection (export the selected rows)
@@ -190,14 +188,14 @@ const exporting = ref(false);
 
 function statusText(row) {
     if (row.paperStatus) return t(`submissions.status.${row.paperStatus}`);
-    return t(row.participation === 'attend' ? 'admin.registrants.registered' : 'admin.registrants.notSubmitted');
+    return t('admin.registrants.notSubmitted');
 }
 
 async function exportExcel() {
     const source = checked.value.size ? filtered.value.filter((r) => checked.value.has(r.id)) : filtered.value;
     const headers = [
         t('registrants.no'), t('registrants.name'), t('registrants.email'), t('admin.accounts.phone'), t('registrants.affiliation'),
-        t('registrants.participation'), t('registrants.paper'),
+        t('registrants.paper'),
         t('meals.yourMeal'), t('meals.companionName'), t('meals.companionMeal'),
         t('registrants.status'), t('admin.registrants.account'),
         t('registrants.registeredAt'),
@@ -208,7 +206,6 @@ async function exportExcel() {
         r.email,
         r.phone ?? '',
         affiliationOf(r),
-        t(`admin.registrants.participationType.${r.participation}`),
         r.paper ? `${r.paper.code} ${tr(r.paper.title)}` : '',
         mealOf(r),
         r.companion_name ?? '',
@@ -306,15 +303,9 @@ const plainBadge = 'inline-flex items-center rounded-full border px-3 py-0.5 tex
                         <input v-model="form.affiliation" :placeholder="t('registrants.searchAffiliation')" :class="[input, 'pl-11']">
                     </label>
                 </div>
-                <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_auto_auto]">
-                    <select v-model="form.participation" :class="[input, 'pl-3']" :aria-label="t('registrants.participation')">
-                        <option value="">{{ t('admin.registrants.allParticipation') }}</option>
-                        <option value="attend">{{ t('admin.registrants.participationType.attend') }}</option>
-                        <option value="attend_submit">{{ t('admin.registrants.participationType.attend_submit') }}</option>
-                    </select>
+                <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto_auto]">
                     <select v-model="form.status" :class="[input, 'pl-3']" :aria-label="t('registrants.status')">
                         <option value="">{{ t('admin.registrants.allStatuses') }}</option>
-                        <option value="registered">{{ t('admin.registrants.registered') }}</option>
                         <option value="none">{{ t('admin.registrants.notSubmitted') }}</option>
                         <option v-for="s in paperStatuses" :key="s" :value="s">{{ t(`submissions.status.${s}`) }}</option>
                     </select>

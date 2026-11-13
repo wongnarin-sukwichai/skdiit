@@ -8,13 +8,17 @@ import BarList from '@/Components/Admin/Charts/BarList.vue';
 import TrendChart from '@/Components/Admin/Charts/TrendChart.vue';
 import { useI18n } from '@/i18n';
 import { useToast } from '@/composables/useToast';
-import { affiliationByKey, mockTracks, reportData } from '@/data/mock';
+import { useMealOptions } from '@/composables/useMealOptions';
 
 /*
- * Reports (admin, editor): totals and breakdowns of the whole conference,
- * each tab exportable to Excel. Mock numbers for the client demo.
+ * Reports (admin, editor): totals and breakdowns of this conference year (real since 2026-11-13,
+ * App\Support\Reports), each tab exportable to Excel.
  */
+const props = defineProps({
+    report: { type: Object, required: true },
+});
 const { t, tr } = useI18n();
+const { mealName } = useMealOptions();
 const { toast } = useToast();
 
 const tabs = [
@@ -24,26 +28,28 @@ const tabs = [
 ];
 const tab = ref('registrants');
 
-const r = reportData;
-const trackName = (id) => tr(mockTracks.find((x) => x.id === id).name);
+const r = props.report;
+const trackName = (name) => (name ? tr(name) : t('submissions.noTrack'));
 
 // ---- Registrants ----
-const affiliationRows = computed(() => r.registrants.byAffiliation.map(([key, value]) => ({ key, label: tr(affiliationByKey[key]), value })));
-const participationRows = computed(() => r.registrants.byParticipation.map(([key, value]) => ({ key, label: t(`admin.registrants.participationType.${key}`), value })));
+const affiliationRows = computed(() => r.registrants.byAffiliation.map(([name, value], i) => ({ key: i, label: tr(name), value })));
+const mealRows = computed(() => r.registrants.meals.map(([code, other, value], i) => ({ key: i, label: mealName(code, other), value })));
 
 // ---- Papers ----
-const trackRows = computed(() => r.papers.byTrack.map(([id, value]) => ({ key: id, label: trackName(id), value })));
+const trackRows = computed(() => r.papers.byTrack.map(([name, value], i) => ({ key: i, label: trackName(name), value })));
+const paperAffiliationRows = computed(() => r.papers.byAffiliation.map(([name, value], i) => ({ key: i, label: tr(name), value })));
+const criteriaRows = computed(() => r.reviews.criteria.filter(([, avg]) => avg !== null).map(([name, value], i) => ({ key: i, label: tr(name), value })));
 const statusRows = computed(() => r.papers.byStatus.map(([key, value]) => ({ key, label: t(`submissions.status.${key}`), value })));
 const routeRows = computed(() => r.papers.routes.map(([key, value]) => ({ key, label: t(`publication.route.${key}`), value })));
 const decided = r.papers.kpis.accepted + r.papers.kpis.rejected;
-const acceptance = Math.round((r.papers.kpis.accepted / decided) * 100);
+const acceptance = decided ? Math.round((r.papers.kpis.accepted / decided) * 100) : 0;
 
 // ---- Reviews ----
 const recommendationRows = computed(() => r.reviews.recommendations.map(([key, value]) => ({ key, label: t(`reviews.recommendation.${key}`), value })));
 const reviewers = computed(() => [...r.reviews.reviewers].sort((a, b) => b.late - a.late || b.avgDays - a.avgDays));
 
 const kpis = computed(() => ({
-    registrants: { stats: r.registrants.kpis, cards: [['total', 'users'], ['attendOnly', 'user'], ['authors', 'file-arrow-up'], ['notSignedIn', 'user-clock']] },
+    registrants: { stats: r.registrants.kpis, cards: [['total', 'users'], ['papers', 'file-arrow-up'], ['notSignedIn', 'user-clock'], ['companions', 'user-plus']] },
     papers: { stats: { ...r.papers.kpis, acceptance }, cards: [['submitted', 'file-lines'], ['inReview', 'clipboard-check'], ['accepted', 'circle-check'], ['acceptance', 'percent']] },
     reviews: { stats: r.reviews.kpis, cards: [['assigned', 'user-check'], ['done', 'circle-check'], ['avgDays', 'clock'], ['overdue', 'triangle-exclamation']] },
 }[tab.value]));
@@ -55,14 +61,14 @@ function sheet() {
     const count = t('admin.reports.count');
     const rowsOf = (title, list, unit = '') => [[title, ''], ...list.map((x) => [x.label, `${x.value}${unit}`]), ['', '']];
     if (tab.value === 'registrants') {
-        return { headers: [label, count], rows: [...rowsOf(t('admin.reports.byAffiliation'), affiliationRows.value), ...rowsOf(t('admin.reports.byParticipation'), participationRows.value), [t('admin.reports.daily'), ''], ...r.registrants.trend.map((p) => [p.date, String(p.value)])] };
+        return { headers: [label, count], rows: [...rowsOf(t('admin.reports.byAffiliation'), affiliationRows.value), ...rowsOf(t('admin.reports.meals'), mealRows.value), [t('admin.reports.daily'), ''], ...r.registrants.trend.map((p) => [p.date, String(p.value)])] };
     }
     if (tab.value === 'papers') {
-        return { headers: [label, count], rows: [...rowsOf(t('admin.reports.byTrack'), trackRows.value), ...rowsOf(t('admin.reports.byStatus'), statusRows.value), ...rowsOf(t('admin.reports.byRoute'), routeRows.value)] };
+        return { headers: [label, count], rows: [...rowsOf(t('admin.reports.byTrack'), trackRows.value), ...rowsOf(t('admin.reports.byStatus'), statusRows.value), ...rowsOf(t('admin.reports.byRoute'), routeRows.value), ...rowsOf(t('admin.reports.byAuthorAffiliation'), paperAffiliationRows.value), [t('admin.reports.byJournal'), `${t('admin.reports.offered')} / ${t('admin.reports.journalAccepted')}`], ...r.papers.byJournal.map((j) => [j.name, `${j.offered} / ${j.accepted}`])] };
     }
     return {
         headers: [t('admin.reports.reviewer'), t('submissions.fields.track'), t('admin.reports.assigned'), t('admin.reports.done'), t('admin.reports.avgDays'), t('admin.reports.late')],
-        rows: reviewers.value.map((x) => [tr(x.name), x.tracks.map(trackName).join(', '), String(x.assigned), String(x.done), String(x.avgDays), String(x.late)]),
+        rows: [...reviewers.value.map((x) => [x.name, x.tracks.map(trackName).join(', '), String(x.assigned), String(x.done), String(x.avgDays), String(x.late)]), ['', '', '', '', '', ''], [t('admin.reports.criteriaAvg'), '', '', '', '', ''], ...criteriaRows.value.map((c) => [c.label, '', '', '', String(c.value), ''])],
     };
 }
 
@@ -140,9 +146,10 @@ const h2 = 'mb-4 text-base font-semibold';
                     <BarList :rows="affiliationRows" />
                 </Card>
                 <Card>
-                    <h2 :class="h2">{{ t('admin.reports.byParticipation') }}</h2>
-                    <BarList :rows="participationRows" />
-                    <p class="mt-6 text-sm text-neutral-500 dark:text-neutral-400"><Fa icon="circle-info" class="mr-1 text-gold-500" /> {{ t('admin.reports.notSignedInHint', { n: r.registrants.kpis.notSignedIn }) }}</p>
+                    <h2 :class="h2">{{ t('admin.reports.meals') }}</h2>
+                    <BarList v-if="mealRows.length" :rows="mealRows" />
+                    <p v-else class="text-sm text-neutral-500">{{ t('admin.reports.noData') }}</p>
+                    <p class="mt-6 text-sm text-neutral-500 dark:text-neutral-400"><Fa icon="circle-info" class="mr-1 text-gold-500" /> {{ t('admin.reports.mealsHint', { n: r.registrants.companions }) }}</p>
                 </Card>
             </div>
 
@@ -166,14 +173,38 @@ const h2 = 'mb-4 text-base font-semibold';
                         <BarList :rows="statusRows.slice(7)" :max="Math.max(1, ...statusRows.map((x) => x.value))" class="mt-2.5 md:mt-0" />
                     </div>
                 </Card>
+                <Card>
+                    <h2 :class="h2">{{ t('admin.reports.byAuthorAffiliation') }}</h2>
+                    <BarList v-if="paperAffiliationRows.length" :rows="paperAffiliationRows" />
+                    <p v-else class="text-sm text-neutral-500">{{ t('admin.reports.noData') }}</p>
+                </Card>
+                <Card>
+                    <h2 :class="h2">{{ t('admin.reports.byJournal') }}</h2>
+                    <table v-if="r.papers.byJournal.length" class="w-full text-sm">
+                        <thead class="text-left text-neutral-500 dark:text-neutral-400">
+                            <tr><th class="py-2 font-medium">{{ t('admin.reports.journal') }}</th><th class="py-2 text-right font-medium">{{ t('admin.reports.offered') }}</th><th class="py-2 text-right font-medium">{{ t('admin.reports.journalAccepted') }}</th></tr>
+                        </thead>
+                        <tbody class="divide-y divide-neutral-200 dark:divide-white/5">
+                            <tr v-for="j in r.papers.byJournal" :key="j.name"><td class="py-2">{{ j.name }}</td><td class="py-2 text-right tabular-nums">{{ j.offered }}</td><td class="py-2 text-right tabular-nums">{{ j.accepted }}</td></tr>
+                        </tbody>
+                    </table>
+                    <p v-else class="text-sm text-neutral-500">{{ t('admin.reports.noData') }}</p>
+                </Card>
             </div>
 
             <!-- Reviews -->
             <div v-else key="reviews" class="grid gap-6 xl:grid-cols-[1fr_2fr]">
-                <Card>
-                    <h2 :class="h2">{{ t('admin.reports.recommendations') }}</h2>
-                    <BarList :rows="recommendationRows" />
-                </Card>
+                <div class="space-y-6">
+                    <Card>
+                        <h2 :class="h2">{{ t('admin.reports.recommendations') }}</h2>
+                        <BarList :rows="recommendationRows" />
+                    </Card>
+                    <Card>
+                        <h2 :class="h2">{{ t('admin.reports.criteriaAvg') }}</h2>
+                        <BarList v-if="criteriaRows.length" :rows="criteriaRows" :max="5" />
+                        <p v-else class="text-sm text-neutral-500">{{ t('admin.reports.noData') }}</p>
+                    </Card>
+                </div>
                 <Card>
                     <h2 :class="h2">{{ t('admin.reports.reviewerLoad') }}</h2>
                     <div class="overflow-x-auto rounded-xl border border-neutral-200 dark:border-white/10">
@@ -188,16 +219,16 @@ const h2 = 'mb-4 text-base font-semibold';
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-neutral-200 dark:divide-white/5">
-                                <tr v-for="x in reviewers" :key="x.name.en">
+                                <tr v-for="x in reviewers" :key="x.name">
                                     <td class="px-4 py-2.5">
-                                        <div class="font-medium">{{ tr(x.name) }}</div>
+                                        <div class="font-medium">{{ x.name }}</div>
                                         <div class="text-xs text-neutral-500 dark:text-neutral-400">{{ x.tracks.map(trackName).join(' · ') }}</div>
                                     </td>
                                     <td class="px-3 py-2.5 text-right tabular-nums">{{ x.assigned }}</td>
                                     <td class="px-3 py-2.5">
                                         <div class="flex items-center gap-2" :title="`${x.done}/${x.assigned}`">
                                             <div class="h-2 w-24 rounded-full bg-neutral-100 dark:bg-white/5">
-                                                <div class="h-full rounded-full bg-gold-400" :style="{ width: `${(x.done / x.assigned) * 100}%` }" />
+                                                <div class="h-full rounded-full bg-gold-400" :style="{ width: `${x.assigned ? (x.done / x.assigned) * 100 : 0}%` }" />
                                             </div>
                                             <span class="text-xs tabular-nums text-neutral-500 dark:text-neutral-400">{{ x.done }}/{{ x.assigned }}</span>
                                         </div>
@@ -215,7 +246,5 @@ const h2 = 'mb-4 text-base font-semibold';
             </div>
 
         </Transition>
-
-        <p class="text-xs text-neutral-500 dark:text-neutral-400"><Fa icon="circle-info" class="mr-1 text-gold-500" /> {{ t('admin.reports.mockNote') }}</p>
     </div>
 </template>

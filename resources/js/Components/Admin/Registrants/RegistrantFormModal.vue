@@ -11,7 +11,7 @@ import { mealFormFields, mealPayload } from '@/composables/useMealOptions';
 
 /**
  * Add or edit a registrant (RegistrantController store/update; same rules as signing up).
- * Admin can switch the participation type later (the registrant is told by email and keeps their password);
+ * Every registrant is an author (attend-only removed 2026-11-13).
  * back to attend only is allowed while there is no paper.
  */
 const props = defineProps({
@@ -24,8 +24,6 @@ const { t } = useI18n();
 const form = useForm({ name: '', email: '', phone: '', affiliation: '', affiliation_other: '', participation: 'attend_submit', ...mealFormFields() });
 
 const isCreate = computed(() => !props.registrant);
-const hasPaper = computed(() => !!props.registrant?.paper);
-const participationChanged = computed(() => !isCreate.value && form.participation !== props.registrant.participation);
 
 watch(() => props.show, (open) => {
     if (!open) return;
@@ -78,31 +76,6 @@ function submit() {
                     </FormField>
                 </div>
                 <AffiliationField :form="form" />
-
-                <div>
-                    <span class="mb-1.5 block text-sm text-neutral-300">{{ t('registrants.participation') }}</span>
-                    <div class="grid gap-2 sm:grid-cols-2">
-                        <label
-                            v-for="value in ['attend', 'attend_submit']"
-                            :key="value"
-                            :class="[
-                                form.participation === value ? 'border-gold-400 bg-gold-400/10' : 'border-white/10 hover:border-white/30',
-                                value === 'attend' && hasPaper && 'cursor-not-allowed opacity-45 hover:border-white/10',
-                            ]"
-                            class="flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm transition"
-                        >
-                            <input v-model="form.participation" type="radio" :value="value" :disabled="value === 'attend' && hasPaper" class="accent-gold-400">
-                            {{ t(`admin.registrants.participationType.${value}`) }}
-                        </label>
-                    </div>
-                    <p v-if="hasPaper" class="mt-1.5 text-xs text-neutral-500">{{ t('admin.registrants.form.participationHasPaper') }}</p>
-                    <p v-if="form.errors.participation" class="mt-1.5 text-xs text-red-400">{{ t(form.errors.participation) }}</p>
-                    <Transition name="fade">
-                        <p v-if="participationChanged && form.participation === 'attend_submit'" class="mt-2 rounded-lg border border-gold-400/30 bg-gold-400/5 px-3 py-2.5 text-xs text-neutral-300">
-                            <Fa icon="envelope" class="mr-1 text-gold-400" /> {{ t('admin.registrants.form.participationNotice') }}
-                        </p>
-                    </Transition>
-                </div>
 
                 <MealFields :form="form" />
 

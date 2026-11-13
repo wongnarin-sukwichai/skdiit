@@ -29,6 +29,9 @@ enum SubmissionAction: string
     case JournalOfferReminded = 'journal_offer_reminded'; // the author was reminded to answer the offer; meta: journal, due
     case PresentationScheduled = 'presentation_scheduled'; // meta: at, room (null = cleared)
     case SlidesUploaded = 'slides_uploaded';          // author uploaded (or replaced) the presentation slides
+    case RevisionClosed = 'revision_closed';          // an editor closed a revision the author never sent: not accepted (2026-11-13); comment: reason
+    case AuthorReminded = 'author_reminded';          // an editor reminded the author from the paper's row (2026-11-13); meta: task revision|cameraReady, due
+    case SlidesReminded = 'slides_reminded';          // staff reminded the author to upload slides (2026-11-13); meta: at, room, due
 
     /** Journal decisions: the author sees the outcome but never the journal's reason. */
     public function hidesCommentFromAuthor(): bool

@@ -35,19 +35,25 @@ class EmailTemplate extends Model
         'screening_revise' => ['comment'],
         'screening_reject' => ['comment'],
         'decision_accept' => ['comment'],
+        'decision_accept_final' => ['comment'],
         'decision_revise' => ['comment', 'due'],
         'decision_reject' => ['comment'],
         'presentation_scheduled' => ['date', 'room'],
+        'slides_reminder' => ['date', 'room', 'due'],
+        'revision_reminder' => ['due'],
+        'revision_closed' => ['comment'],
+        'camera_ready_reminder' => [],
         'reviewer_assigned' => ['due'],
         'review_reminder' => ['due'],
+        'reviewer_removed' => [],
+        'review_due_changed' => ['due'],
         'camera_ready_approved' => ['comment'],
         'camera_ready_fix' => ['comment'],
         'acceptance_cancelled' => ['comment'],
-        'became_author' => [],
     ];
 
     /** Account emails, not about a paper: no {code} or {title}. */
-    public const ACCOUNT_KEYS = ['became_author'];
+    public const ACCOUNT_KEYS = []; // none since 2026-11-13 (became_author removed with attend-only)
 
     /** key => [subject_th, subject_en, body_th, body_en] */
     public const DEFAULTS = [
@@ -101,6 +107,11 @@ class EmailTemplate extends Model
             "เรียน {name}\n\nยินดีด้วย บทความ \"{title}\" ({code}) ผ่านการประเมินแล้ว กรุณาอัปโหลดไฟล์ฉบับสมบูรณ์ (camera-ready) ในระบบ\n\n{comment}",
             "Dear {name},\n\nCongratulations: your paper \"{title}\" ({code}) has been accepted. Please upload the camera-ready file in the system.\n\n{comment}",
         ],
+        'decision_accept_final' => [
+            'บทความ {code} ผ่านการประเมิน (ไม่ต้องส่งไฟล์เพิ่ม)', 'Your paper {code} is accepted (no further file needed)',
+            "เรียน {name}\n\nขอแสดงความยินดี บทความ \"{title}\" ({code}) ผ่านการประเมินแล้ว บรรณาธิการใช้ไฟล์ฉบับล่าสุดของท่านเป็นฉบับสมบูรณ์ ท่านไม่ต้องส่งไฟล์เพิ่ม ผู้จัดงานจะแจ้งกำหนดการนำเสนอภายหลัง\n\n{comment}",
+            "Dear {name},\n\nCongratulations: your paper \"{title}\" ({code}) is accepted. The editors have taken your latest file as the camera-ready version, so you do not need to send another one. We will let you know your presentation slot.\n\n{comment}",
+        ],
         'decision_revise' => [
             'บทความ {code}: ขอให้แก้ไข', 'Your paper {code}: revision requested',
             "เรียน {name}\n\nบรรณาธิการขอให้แก้ไขบทความ \"{title}\" ({code}) ตามความเห็นของผู้ประเมิน กรุณาส่งฉบับแก้ไขภายในวันที่ {due}\n\n{comment}",
@@ -116,6 +127,26 @@ class EmailTemplate extends Model
             "เรียน {name}\n\nบทความ \"{title}\" ({code}) มีกำหนดนำเสนอ {date} ห้อง {room} กรุณาอัปโหลดสไลด์นำเสนอในระบบ",
             "Dear {name},\n\nYour paper \"{title}\" ({code}) presents on {date}, room {room}. Please upload your slides in the system.",
         ],
+        'slides_reminder' => [
+            'เตือน: อัปโหลดสไลด์นำเสนอ (บทความ {code})', 'Reminder: please upload your slides ({code})',
+            "เรียน {name}\n\nบทความ \"{title}\" ({code}) มีกำหนดนำเสนอ {date} ห้อง {room} ระบบยังไม่ได้รับสไลด์นำเสนอของท่าน กรุณาอัปโหลดภายใน {due}: {link}",
+            "Dear {name},\n\nYour paper \"{title}\" ({code}) presents on {date}, room {room}. We have not received your slides yet. Please upload them by {due}: {link}",
+        ],
+        'revision_reminder' => [
+            'เตือน: กรุณาส่งฉบับแก้ไข (บทความ {code})', 'Reminder: please send your revision of {code}',
+            "เรียน {name}\n\nบรรณาธิการรอฉบับแก้ไขของบทความ \"{title}\" ({code}) กำหนดส่งวันที่ {due} กรุณาส่งฉบับแก้ไขในระบบ: {link}",
+            "Dear {name},\n\nThe editors are waiting for your revision of \"{title}\" ({code}), due on {due}. Please send it in the system: {link}",
+        ],
+        'revision_closed' => [
+            'บทความ {code}: ปิดรับฉบับแก้ไข', 'Your paper {code}: revision closed',
+            "เรียน {name}\n\nบรรณาธิการไม่ได้รับฉบับแก้ไขของบทความ \"{title}\" ({code}) ภายในกำหนด จึงปิดรับฉบับแก้ไข และบทความไม่ผ่านการพิจารณาในครั้งนี้\n\n{comment}",
+            "Dear {name},\n\nThe editors did not receive the revision of \"{title}\" ({code}) in time, so the revision is closed and the paper is not accepted this time.\n\n{comment}",
+        ],
+        'camera_ready_reminder' => [
+            'เตือน: กรุณาส่งไฟล์ฉบับสมบูรณ์ (บทความ {code})', 'Reminder: please upload the camera-ready file of {code}',
+            "เรียน {name}\n\nบทความ \"{title}\" ({code}) ผ่านการประเมินแล้ว และยังรอไฟล์ฉบับสมบูรณ์ของท่าน กรุณาอัปโหลดในระบบ: {link}",
+            "Dear {name},\n\nYour paper \"{title}\" ({code}) is accepted and we are still waiting for its camera-ready file. Please upload it in the system: {link}",
+        ],
         'reviewer_assigned' => [
             'ขอเรียนเชิญประเมินบทความ {code}', 'Please review paper {code}',
             "เรียน {name}\n\nขอเรียนเชิญท่านประเมินบทความ \"{title}\" ({code}) กรุณาส่งผลการประเมินภายในวันที่ {due}",
@@ -125,6 +156,16 @@ class EmailTemplate extends Model
             'เตือนการประเมินบทความ {code}', 'Reminder: review of {code}',
             "เรียน {name}\n\nขอเตือนการประเมินบทความ \"{title}\" ({code}) ซึ่งครบกำหนดวันที่ {due} หากไม่สะดวกประเมิน กรุณาแจ้งในระบบ",
             "Dear {name},\n\nThis is a reminder about your review of \"{title}\" ({code}), due on {due}. If you cannot review it, please say so in the system.",
+        ],
+        'reviewer_removed' => [
+            'ยกเลิกการประเมินบทความ {code}', 'Review cancelled: {code}',
+            "เรียน {name}\n\nบรรณาธิการได้ยกเลิกการประเมินบทความ \"{title}\" ({code}) ของท่านแล้ว ท่านไม่ต้องประเมินบทความนี้ต่อ ขอขอบคุณที่สละเวลา",
+            "Dear {name},\n\nThe editors have cancelled your review of \"{title}\" ({code}). You do not need to continue with it. Thank you for your time.",
+        ],
+        'review_due_changed' => [
+            'วันครบกำหนดประเมินบทความ {code} เปลี่ยนแล้ว', 'New due date for your review of {code}',
+            "เรียน {name}\n\nวันครบกำหนดประเมินบทความ \"{title}\" ({code}) เปลี่ยนเป็นวันที่ {due} กรุณาส่งผลการประเมินในระบบ: {link}",
+            "Dear {name},\n\nThe due date for your review of \"{title}\" ({code}) is now {due}. Please send your evaluation in the system: {link}",
         ],
         'camera_ready_approved' => [
             'ฉบับสมบูรณ์ของบทความ {code} ผ่านการตรวจแล้ว', 'Your camera-ready paper {code} has been approved',
@@ -140,11 +181,6 @@ class EmailTemplate extends Model
             'ยกเลิกการตอบรับบทความ {code}', 'Acceptance of your paper {code} withdrawn',
             "เรียน {name}\n\nบรรณาธิการยกเลิกการตอบรับบทความ \"{title}\" ({code}) ด้วยเหตุผลดังนี้\n\n{comment}",
             "Dear {name},\n\nThe editors have withdrawn the acceptance of \"{title}\" ({code}) for this reason:\n\n{comment}",
-        ],
-        'became_author' => [
-            'บัญชีของท่านส่งผลงานได้แล้ว', 'You can now submit papers',
-            "เรียน {name}\n\nบัญชีของท่านเปลี่ยนเป็นผู้เข้าร่วมงานและส่งผลงานแล้ว เข้าสู่ระบบด้วยรหัสผ่านเดิม แล้วส่งบทความได้ที่เมนูบทความของฉัน: {link}",
-            "Dear {name},\n\nYour account can now submit papers. Sign in with your current password and submit under My submissions: {link}",
         ],
     ];
 
@@ -170,16 +206,20 @@ class EmailTemplate extends Model
             : ['subject_th' => $subjectTh, 'subject_en' => $subjectEn, 'body_th' => $bodyTh, 'body_en' => $bodyEn];
     }
 
-    /** Fill the placeholders: [subject, body_th, body_en]; unknown or empty placeholders become blank. */
-    public static function render(string $key, array $vars): array
+    /**
+     * Fill the placeholders: [subject, body_th, body_en]; unknown or empty placeholders become blank.
+     * $varsEn overrides values in the English text (2026-11-13: the English title and dates, not the Thai ones).
+     */
+    public static function render(string $key, array $vars, array $varsEn = []): array
     {
         $text = self::textOf($key);
-        $fill = fn (string $s) => trim(preg_replace("/\n{3,}/", "\n\n", preg_replace_callback('/\{(\w+)\}/', fn ($m) => (string) ($vars[$m[1]] ?? ''), $s)));
+        $fill = fn (string $s, array $with) => trim(preg_replace("/\n{3,}/", "\n\n", preg_replace_callback('/\{(\w+)\}/', fn ($m) => (string) ($with[$m[1]] ?? ''), $s)));
+        $en = [...$vars, ...$varsEn];
 
         return [
-            'subject' => $fill($text['subject_th']).' / '.$fill($text['subject_en']),
-            'body_th' => $fill($text['body_th']),
-            'body_en' => $fill($text['body_en']),
+            'subject' => $fill($text['subject_th'], $vars).' / '.$fill($text['subject_en'], $en),
+            'body_th' => $fill($text['body_th'], $vars),
+            'body_en' => $fill($text['body_en'], $en),
         ];
     }
 }

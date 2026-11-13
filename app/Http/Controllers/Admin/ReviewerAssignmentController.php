@@ -64,6 +64,7 @@ class ReviewerAssignmentController extends Controller
         if ($from !== $data['due_date']) {
             $submission->log(SubmissionAction::ReviewDueChanged, $request->user(), meta: [
                 'reviewer' => $review->reviewer->name,
+                'reviewer_id' => $review->reviewer_id,
                 'from' => $from,
                 'to' => $data['due_date'],
             ]);
@@ -92,8 +93,9 @@ class ReviewerAssignmentController extends Controller
         $this->ensureEditable($submission, $review);
 
         $name = $review->reviewer->name;
+        $reviewerId = $review->reviewer_id;
         $review->delete();
-        $submission->log(SubmissionAction::ReviewerRemoved, $request->user(), meta: ['reviewer' => $name]);
+        $submission->log(SubmissionAction::ReviewerRemoved, $request->user(), meta: ['reviewer' => $name, 'reviewer_id' => $reviewerId]);
 
         return back()->with('success', 'reviews.removed');
     }

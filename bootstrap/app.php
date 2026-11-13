@@ -19,6 +19,7 @@ return Application::configure(basePath: dirname(__DIR__))
             GuardImpersonation::class,
             SignOutSuspended::class,
             HandleInertiaRequests::class,
+            \App\Http\Middleware\CloseSite::class,
         ]);
 
         $middleware->alias([

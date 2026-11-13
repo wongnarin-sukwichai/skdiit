@@ -13,6 +13,13 @@ class MealCompanionTest extends TestCase
 {
     use DatabaseTransactions;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // Sign-up must be open whatever the real schedule says (Settings › กำหนดการ, row "registration")
+        \App\Support\SchedulePlan::put('registration', ['start' => now()->subDay()->toDateString(), 'end' => now()->addDay()->toDateString(), 'mode' => 'lock', 'public' => true]);
+    }
+
     private function signUp(array $fields): \Illuminate\Testing\TestResponse
     {
         return $this->post('/register', [

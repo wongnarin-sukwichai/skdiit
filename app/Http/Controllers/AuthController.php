@@ -2,21 +2,21 @@
 
 namespace App\Http\Controllers;
 
-use App\Mail\LoginPassword;
+use App\Models\ActivityLog;
 use App\Models\Affiliation;
+use App\Models\EmailLog;
 use App\Models\MealOption;
 use App\Models\Submission;
 use App\Models\User;
-use App\Support\WorkflowMail;
+use App\Support\SchedulePlan;
+use App\Support\SiteClosure;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
-use Throwable;
 
 class AuthController extends Controller
 {
@@ -52,6 +52,7 @@ class AuthController extends Controller
 
         if (! Auth::attempt($credentials, $request->boolean('remember'))) {
             RateLimiter::hit($throttleKey, 60);
+            ActivityLog::record('auth', 'login_failed', Str::lower($credentials['email']));
 
             throw ValidationException::withMessages([
                 'email' => 'auth.failed',
@@ -60,6 +61,12 @@ class AuthController extends Controller
 
         /** @var User $user */
         $user = Auth::user();
+
+        // System closed (Settings › ปิดระบบ): only admin may sign in
+        if (SiteClosure::isClosed() && $user->accessRole() !== 'admin') {
+            Auth::logout();
+            throw ValidationException::withMessages(['email' => 'auth.siteClosed']);
+        }
 
         // Suspended accounts cannot sign in (checked after the password, so it reveals nothing to guessers)
         if ($user->suspended_at) {
@@ -70,6 +77,7 @@ class AuthController extends Controller
         $request->session()->regenerate();
 
         RateLimiter::clear($throttleKey);
+        ActivityLog::record('auth', 'login', $user->email, null, $user);
 
         // Signing in with the emailed password proves the email works (not a password admin passed on)
         if (! $user->email_verified_at && ! $user->password_by_admin) {
@@ -86,6 +94,10 @@ class AuthController extends Controller
 
     public function register(Request $request): RedirectResponse
     {
+        // Settings › กำหนดการ, row "registration" (locked outside its dates)
+        if (! SchedulePlan::registrationOpen()) {
+            throw ValidationException::withMessages(['email' => 'auth.registrationClosed']);
+        }
         $data = $request->validate([
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'name' => ['required', 'string', 'max:255'],
@@ -93,8 +105,8 @@ class AuthController extends Controller
             'affiliation_other' => ['nullable', 'required_if:affiliation,'.Affiliation::OTHER, 'string', 'max:255'],
             // Optional: lets the editors (who coordinate) call when email does not get through
             'phone' => ['nullable', 'string', 'max:30'],
-            // The sign-up form only offers attend_submit since 2026-11-01 (client request); 'attend' stays for admin
-            'participation' => ['required', Rule::in(['attend', 'attend_submit'])],
+            // Authors only (2026-11-13: attend-only removed everywhere)
+            'participation' => ['required', Rule::in(['attend_submit'])],
             // Own meal, plus one optional companion (name + meal)
             ...MealOption::rules(),
             // PDPA: consent to the privacy policy (/privacy) is required to register
@@ -111,6 +123,7 @@ class AuthController extends Controller
             'role' => 'user',
         ]);
         $user->forceFill(['pdpa_accepted_at' => now(), 'registered_year' => Submission::conferenceYear()])->save();
+        ActivityLog::record('account', 'registered', $user->email, null, $user);
         $this->mailPassword($user, $password, 'registered');
 
         return back()->with('passwordSent', $this->sentFlash($user->email, $password));
@@ -137,6 +150,7 @@ class AuthController extends Controller
 
         if ($user) {
             $password = $user->emailNewPassword();
+            ActivityLog::record('auth', 'password_requested', $user->email, null, $user);
         }
 
         return back()->with('passwordSent', $this->sentFlash($email, $password));
@@ -160,6 +174,7 @@ class AuthController extends Controller
     {
         $user = $request->user();
         abort_unless($user->role === 'user', 403);
+        abort_unless(SchedulePlan::registrationOpen(), 403);
         $user->forceFill(['registered_year' => Submission::conferenceYear()])->save();
 
         return back();
@@ -176,12 +191,8 @@ class AuthController extends Controller
 
     private function mailPassword(User $user, string $password, string $kind): void
     {
-        try {
-            Mail::to($user)->send(new LoginPassword($user, $password, $kind));
-        } catch (Throwable $e) {
-            // The account is kept; the registrant can ask for a new password from the login modal
-            report($e);
-        }
+        // A failed email is logged; the account is kept and the registrant can ask for a new password
+        EmailLog::password($user, $password, $kind);
     }
 
     /** Shown by the modal: where it went, plus the password itself only while testing without SMTP. */

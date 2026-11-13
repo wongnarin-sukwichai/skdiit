@@ -20,6 +20,14 @@ const user = computed(() => usePage().props.auth.user);
 const site = useSite();
 const conference = computed(() => site.value.conference);
 const { affiliationOf } = useAffiliations();
+// "27–28 January 2027" when the conference runs several days in one month, both dates in full otherwise
+const conferenceDays = computed(() => {
+    const { date, endDate } = conference.value;
+    const long = { day: 'numeric', month: 'long', year: 'numeric' };
+    if (!endDate || endDate === date) return formatDate(date, long);
+    const sameMonth = date.slice(0, 7) === endDate.slice(0, 7);
+    return `${formatDate(date, sameMonth ? { day: 'numeric' } : long)} – ${formatDate(endDate, long)}`;
+});
 const { form, perPage, page, total, lastPage, rows, search, reset } = useRegistrantTable(computed(() => props.registrants), { affiliationText: affiliationOf });
 </script>
 
@@ -54,7 +62,7 @@ const { form, perPage, page, total, lastPage, rows, search, reset } = useRegistr
                 <ul class="mt-6 flex flex-wrap gap-x-7 gap-y-3 text-sm text-neutral-200">
                     <li class="flex items-center gap-2">
                         <Fa icon="calendar-days" class="text-lg text-gold-400" />
-                        {{ formatDate(conference.date, { day: 'numeric', month: 'long', year: 'numeric' }) }}
+                        {{ conferenceDays }}
                     </li>
                     <li class="flex items-center gap-2">
                         <Fa icon="location-dot" class="text-lg text-gold-400" />

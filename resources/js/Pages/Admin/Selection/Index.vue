@@ -6,7 +6,9 @@ import PageHeader from '@/Components/Admin/PageHeader.vue';
 import DeadlineNotice from '@/Components/Admin/DeadlineNotice.vue';
 import Pagination from '@/Components/Pagination.vue';
 import FirstGateTable from '@/Components/Admin/Journal/FirstGateTable.vue';
+import BulkReminderModal from '@/Components/Admin/BulkReminderModal.vue';
 import { useI18n } from '@/i18n';
+import { useModules } from '@/composables/useModules';
 
 // Selection (admin, editors and the journal role alike, 2026-11-11): the first gate. After the submission deadline each
 // paper gets its track and is offered to a partner journal (the author accepts or declines) or sent to the conference
@@ -18,6 +20,7 @@ const props = defineProps({
     journals: { type: Array, required: true }, // every partner journal, with `active`
     journalDeadline: { type: String, default: null }, // the first gate should be done by then (a warning only)
     answerDays: { type: Number, required: true },
+    pendingOffers: { type: Object, default: () => ({ total: 0, overdue: 0 }) }, // offers waiting for the author's answer
     showUrl: { type: String, required: true },
     deadline: { type: String, default: null },
     isOpen: { type: Boolean, required: true },
@@ -26,6 +29,7 @@ const props = defineProps({
 });
 
 const { t, tr, formatDate, formatNumber, locale } = useI18n();
+const { accessTo } = useModules();
 
 const tabs = [
     { key: 'waiting', icon: 'inbox' },
@@ -59,6 +63,10 @@ const page = computed({
 });
 
 // Excel of every paper in this tab and filters (the server builds it, not only the page shown)
+// Remind every author who has not answered a journal offer (editors and admin; confirmed first)
+const canRemind = computed(() => accessTo('selection') === 'full');
+const remindOpen = ref(false);
+
 const exportUrl = computed(() => {
     const params = new URLSearchParams(Object.entries({ ...query(), lang: locale.value }).filter(([, v]) => v !== undefined));
     return `/admin/selection/export?${params}`;
@@ -80,6 +88,17 @@ const input = 'w-full rounded-lg border border-neutral-300 bg-neutral-50 px-3 py
 
     <Card class="space-y-6">
         <PageHeader icon="code-branch" :title="t('admin.menu.selection')" :subtitle="t('selection.subtitle')" />
+
+        <!-- Offers waiting for the author: nothing lapses on its own, the editors remind and move them -->
+        <div v-if="pendingOffers.total" class="flex flex-col gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm sm:flex-row sm:items-center dark:border-amber-500/40 dark:bg-amber-500/10">
+            <p class="flex-1 text-amber-800 dark:text-amber-200">
+                <Fa icon="hourglass-half" class="mr-2" />{{ t('selection.pending', { n: pendingOffers.total }) }}
+                <span v-if="pendingOffers.overdue" class="ml-1 font-semibold text-red-600 dark:text-red-300">{{ t('selection.overdueCount', { n: pendingOffers.overdue }) }}</span>
+            </p>
+            <button v-if="canRemind" type="button" class="flex shrink-0 items-center justify-center gap-2 rounded-lg border border-amber-500 px-4 py-2 font-medium text-amber-800 transition hover:bg-amber-100 dark:text-amber-200 dark:hover:bg-amber-500/20" @click="remindOpen = true">
+                <Fa icon="envelope" /> {{ t('selection.remind', { n: pendingOffers.total }) }}
+            </button>
+        </div>
 
         <div class="grid gap-3 lg:grid-cols-2">
             <DeadlineNotice :opens-at="opensAt" :deadline="deadline" :phase="phase" />
@@ -154,4 +173,13 @@ const input = 'w-full rounded-lg border border-neutral-300 bg-neutral-50 px-3 py
             <Pagination v-if="papers.last_page > 1" v-model="page" :last-page="papers.last_page" />
         </div>
     </Card>
+    <BulkReminderModal
+        :show="remindOpen"
+        :title="t('selection.remindTitle')"
+        :intro="t('selection.remindText', { n: pendingOffers.total })"
+        preview-url="/admin/selection/remind-offers/preview"
+        send-url="/admin/selection/remind-offers"
+        :confirm-label="t('selection.remind', { n: pendingOffers.total })"
+        @close="remindOpen = false"
+    />
 </template>

@@ -2,22 +2,25 @@
 
 namespace App\Http\Controllers\Admin;
 
-use App\Models\SubmissionFile;
-use Symfony\Component\HttpFoundation\BinaryFileResponse;
-use Illuminate\Support\Str;
 use App\Enums\SubmissionAction;
 use App\Enums\SubmissionStatus;
 use App\Http\Controllers\Controller;
+use App\Models\PresentationSession;
+use App\Models\Review;
 use App\Models\Setting;
 use App\Models\Submission;
+use App\Models\SubmissionFile;
 use App\Models\Track;
 use App\Models\User;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -39,11 +42,14 @@ class SubmissionController extends Controller
         if (! isset($filters['stage']) && isset(Submission::STAGE_OF_QUEUE[$request->query('queue')])) {
             $filters['stage'] = Submission::STAGE_OF_QUEUE[$request->query('queue')];
         }
-        $stage = in_array($filters['stage'] ?? null, Submission::STAGES, true) ? $filters['stage'] : null;
-        unset($filters['stage']);
-        if ($stage) {
-            $filters['stage'] = $stage;
+        $stageCounts = Submission::stageCounts();
+        // Opening the menu (no tab, no search or filter): the first tab with the editors' move, else "all" (2026-11-13)
+        if (! isset($filters['stage']) && ! array_filter($request->only('q', 'track', 'status'))) {
+            $filters['stage'] = collect(Submission::STAGES)->first(fn (string $key) => $stageCounts[$key]['count'] > 0) ?? 'all';
         }
+        $stage = in_array($filters['stage'] ?? null, Submission::STAGES, true) ? $filters['stage'] : null;
+        // The tab shown: a stage, or "all" (every paper, with the status filter)
+        $filters['stage'] = $stage ?? 'all';
         $search = fn ($query, string $q) => $query->where(fn ($query) => $query
             ->where('code', 'like', "%{$q}%")
             ->orWhere('title_th', 'like', "%{$q}%")
@@ -74,7 +80,7 @@ class SubmissionController extends Controller
                 'revisionCount' => $submission->revision_count,
                 // This round's reviewers at a glance (ReviewerStatusList): sent with the recommendation, or the due date
                 'reviewers' => $submission->reviews->where('round', $submission->review_round)->sortBy('id')->values()
-                    ->map(fn (\App\Models\Review $review) => [
+                    ->map(fn (Review $review) => [
                         'name' => $review->reviewer?->name,
                         'state' => $review->setRelation('submission', $submission)->state(),
                         'recommendation' => $review->isSubmitted() ? $review->recommendation?->value : null,
@@ -97,7 +103,7 @@ class SubmissionController extends Controller
             'atFirstGate' => ($filters['q'] ?? null) ? Submission::currentYear()->whereIn('status', self::FIRST_GATE)->when($filters['q'], $search)->count() : 0,
             // Only camera-ready files the editors approved go into the proceedings ZIP
             'cameraReadyCount' => Submission::currentYear()->whereNotNull('camera_ready_path')->whereNotNull('camera_ready_approved_at')->count(),
-            'stages' => Submission::stageCounts(),
+            'stages' => $stageCounts,
             ...Submission::window(),
         ]);
     }
@@ -130,8 +136,8 @@ class SubmissionController extends Controller
             'canSchedule' => $submission->canBeScheduled(),
             // Sessions to pick from (2026-11-12): the paper's track first, with the places left
             'sessionOptions' => $submission->canBeScheduled()
-                ? \App\Models\PresentationSession::currentYear()->ordered()->with('room', 'track')->withCount('papers')->get()
-                    ->map(fn (\App\Models\PresentationSession $session) => [...$session->toClient(), 'count' => $session->papers_count])
+                ? PresentationSession::currentYear()->ordered()->with('room', 'track')->withCount('papers')->get()
+                    ->map(fn (PresentationSession $session) => [...$session->toClient(), 'count' => $session->papers_count])
                     ->sortBy(fn ($session) => ($session['track']['id'] ?? null) === $submission->track_id ? 0 : 1)->values()
                 : [],
             'journal' => SelectionController::panel($request->user(), $submission),
@@ -191,6 +197,8 @@ class SubmissionController extends Controller
             'comment' => ['nullable', 'string', 'max:5000'],
             'revision_due_date' => ['required_if:decision,revise', 'nullable', 'date_format:Y-m-d', 'after_or_equal:today'],
             'attachment' => self::attachmentRule(),
+            // Accept and take the latest reviewed PDF as the approved camera-ready file (2026-11-13)
+            'use_latest' => ['nullable', 'boolean'],
         ], [
             ...self::ATTACHMENT_MESSAGES,
             'required' => 'validation.required',
@@ -206,13 +214,93 @@ class SubmissionController extends Controller
         $submission->save();
 
         $file = $submission->addEditorFile($request->file('attachment'), 'decision', $request->user());
+        $useLatest = $data['decision'] === 'accept' && ($data['use_latest'] ?? false);
         $meta = array_filter([
             'due' => $submission->revision_due_date?->toDateString(),
             'file' => $file,
+            'final_from_latest' => $useLatest ?: null, // the author is told no file is needed
         ]);
         $submission->log(SubmissionAction::Decided, $request->user(), $from, $data['comment'] ?? null, $meta ?: null);
+        if ($useLatest) {
+            $submission->useLatestAsCameraReady($request->user(), withDecision: true);
+        }
 
         return back()->with('success', 'submissions.decided');
+    }
+
+    /** Remind this paper's author (journal offer, revision or camera-ready file): one email, logged. */
+    public function remindAuthor(Request $request, Submission $submission): RedirectResponse
+    {
+        abort_unless($submission->authorCanBeRemindedBy($request->user()), 403);
+        $submission->remindAuthor($request->user());
+
+        return back()->with('success', ['key' => 'remindAuthor.sent', 'params' => ['code' => $submission->code]]);
+    }
+
+    /** Close a revision the author never sent: not accepted, with a reason the author reads (2026-11-13). */
+    public function closeRevision(Request $request, Submission $submission): RedirectResponse
+    {
+        abort_unless($submission->canCloseRevision(), 403);
+        $data = $request->validate(['comment' => ['required', 'string', 'max:5000']], ['required' => 'validation.required', 'max' => 'validation.too_long']);
+        $submission->closeRevision($request->user(), $data['comment']);
+
+        return back()->with('success', ['key' => 'closeRevision.done', 'params' => ['code' => $submission->code]]);
+    }
+
+    /** The "revision closed" email with the reason typed so far, shown before the editor confirms. */
+    public function closeRevisionPreview(Request $request, Submission $submission): JsonResponse
+    {
+        abort_unless($submission->canCloseRevision(), 403);
+
+        return response()->json($submission->previewMail(SubmissionAction::RevisionClosed, null, (string) $request->query('comment', ''), $submission->closedRevisionStatus()));
+    }
+
+    /**
+     * The email an editor's decision would send, with the words typed so far (2026-11-13), shown in the confirm
+     * dialog: step screen | decide | check | cancel, choice, comment, due (Y-m-d), use_latest.
+     */
+    public function mailPreview(Request $request, Submission $submission): JsonResponse
+    {
+        abort_unless($request->user()->moduleAccess('submissions') === 'full', 403);
+        $q = $request->validate([
+            'step' => ['required', Rule::in(['screen', 'decide', 'check', 'cancel'])],
+            'choice' => ['nullable', 'string'],
+            'comment' => ['nullable', 'string', 'max:5000'],
+            'due' => ['nullable', 'date_format:Y-m-d'],
+            'use_latest' => ['nullable', 'boolean'],
+        ]);
+        $choice = (string) ($q['choice'] ?? '');
+        $comment = $q['comment'] ?? null;
+
+        [$action, $to, $meta] = match ($q['step']) {
+            'screen' => [SubmissionAction::Screened, in_array($choice, ['pass', 'revise', 'reject'], true) ? SubmissionStatus::fromScreening($choice) : null, null],
+            'decide' => [SubmissionAction::Decided, in_array($choice, ['accept', 'revise', 'reject'], true) ? SubmissionStatus::fromDecision($choice) : null, array_filter([
+                'due' => $choice === 'revise' ? ($q['due'] ?? null) : null,
+                'final_from_latest' => $choice === 'accept' && ($q['use_latest'] ?? false) ? true : null,
+            ]) ?: null],
+            'check' => [$choice === 'fix' ? SubmissionAction::CameraReadyFixRequested : SubmissionAction::CameraReadyApproved, null, null],
+            'cancel' => [SubmissionAction::AcceptanceCancelled, null, null],
+        };
+        abort_if(in_array($q['step'], ['screen', 'decide'], true) && ! $to, 422);
+
+        return response()->json($submission->previewMail($action, $meta, $comment, $to));
+    }
+
+    /** The reminder email as it would go out (recipient, subject, both texts), shown before the editor confirms. */
+    public function remindAuthorPreview(Request $request, Submission $submission): JsonResponse
+    {
+        abort_unless($submission->authorCanBeRemindedBy($request->user()), 403);
+
+        return response()->json($submission->reminderPreview());
+    }
+
+    /** Accepted, the author has not sent a camera-ready file yet: take the latest reviewed PDF instead (2026-11-13). */
+    public function useLatestCameraReady(Request $request, Submission $submission): RedirectResponse
+    {
+        abort_unless($submission->status === SubmissionStatus::Accepted, 403);
+        $submission->useLatestAsCameraReady($request->user());
+
+        return back()->with('success', 'publication.check.approved');
     }
 
     /** Camera-ready check (step 3 of 3): the file goes into the proceedings. */
@@ -361,6 +449,6 @@ class SubmissionController extends Controller
         return $submission->user_id === $user->id
             || $user->moduleAccess('submissions')
             || $user->moduleAccess('selection') // admin, editors and the journal role see every paper at the first gate
-            || $submission->reviews()->where('reviewer_id', $user->id)->exists();
+            || ($submission->year === Submission::conferenceYear() && $submission->reviews()->where('reviewer_id', $user->id)->exists());
     }
 }

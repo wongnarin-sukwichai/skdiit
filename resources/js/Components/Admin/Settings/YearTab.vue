@@ -11,7 +11,7 @@ const props = defineProps({
 
 const { t, formatNumber } = useI18n();
 
-const form = useForm({ year: props.summary.year + 1, confirm: '' });
+const form = useForm({ year: props.summary.year + 1, confirm: '', suspend_reviewers: true });
 const confirmOpen = ref(false);
 const typedOk = computed(() => String(form.confirm).trim() === String(form.year));
 function start() {
@@ -77,6 +77,13 @@ const input = 'rounded-lg border border-neutral-300 bg-neutral-50 px-3 py-2.5 te
                     <input v-model="form.confirm" inputmode="numeric" class="w-40 rounded-lg border border-white/10 bg-ink-800 px-3 py-2.5 text-sm outline-none focus:border-gold-400">
                 </label>
                 <p v-if="form.errors.confirm" class="mt-1 text-xs text-red-400">{{ t(form.errors.confirm) }}</p>
+                <label v-if="summary.reviewers" class="mt-4 flex items-start gap-3 rounded-lg border border-white/10 p-3 text-sm">
+                    <input id="suspend-reviewers" v-model="form.suspend_reviewers" type="checkbox" class="mt-0.5 size-4 shrink-0 accent-gold-400">
+                    <span>
+                        <span class="block text-neutral-100">{{ t('admin.year.suspendReviewers', { n: formatNumber(summary.reviewers) }) }}</span>
+                        <span class="mt-0.5 block text-xs text-neutral-400">{{ t('admin.year.suspendReviewersHint') }}</span>
+                    </span>
+                </label>
                 <div class="mt-6 flex justify-end gap-2">
                     <button type="button" class="rounded-lg border border-white/20 px-4 py-2.5 text-sm transition hover:border-gold-400" @click="confirmOpen = false">{{ t('common.cancel') }}</button>
                     <button type="submit" class="flex items-center gap-2 rounded-lg bg-red-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-400 disabled:opacity-50" :disabled="!typedOk || form.processing">

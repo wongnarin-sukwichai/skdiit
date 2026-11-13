@@ -2,19 +2,19 @@
 
 namespace App\Http\Controllers\Admin;
 
-use Illuminate\Validation\ValidationException;
 use App\Enums\SubmissionAction;
 use App\Enums\SubmissionStatus;
 use App\Http\Controllers\Controller;
-use App\Models\SubmissionEvent;
 use App\Models\Setting;
 use App\Models\Submission;
+use App\Models\SubmissionEvent;
 use App\Models\Track;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -50,7 +50,6 @@ class MySubmissionController extends Controller
 
     public function index(Request $request): Response
     {
-        Submission::expireJournalOffers();
 
         return Inertia::render('Admin/MySubmissions/Index', [
             'submissions' => $request->user()->submissions()->with('track', 'authors', 'journal')->withReviewCounts()->withHadRevision()->latest()->get()
@@ -100,7 +99,6 @@ class MySubmissionController extends Controller
     public function show(Request $request, Submission $submission): Response
     {
         $this->authorizeOwner($request, $submission);
-        Submission::expireJournalOffers();
         $submission->refresh();
 
         return Inertia::render('Admin/MySubmissions/Show', [
@@ -129,9 +127,8 @@ class MySubmissionController extends Controller
     public function answerJournal(Request $request, Submission $submission): RedirectResponse
     {
         $this->authorizeOwner($request, $submission);
-        Submission::expireJournalOffers();
         $submission->refresh();
-        // Already answered, lapsed, or moved by an editor meanwhile
+        // Already answered, or moved by an editor meanwhile (a late answer still counts until an editor moves the paper)
         if ($submission->status !== SubmissionStatus::JournalSelected) {
             return back()->with('error', 'submissions.journalOffer.closed');
         }

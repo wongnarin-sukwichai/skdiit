@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Admin;
 
 use App\Enums\SubmissionStatus;
 use App\Http\Controllers\Controller;
+use App\Models\EmailLog;
 use App\Models\Review;
 use App\Models\Submission;
 use App\Models\SubmissionEvent;
 use App\Models\User;
+use App\Support\Reports;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -25,7 +27,7 @@ class DashboardController extends Controller
         $role = $request->user()->accessRole();
 
         return Inertia::render('Admin/Dashboard', [
-            'papers' => in_array($role, ['admin', 'editor'], true) ? $this->papers() : null,
+            'papers' => in_array($role, ['admin', 'editor'], true) ? $this->papers($request->user()) : null,
             'mine' => $role === 'reviewer' ? $this->reviewerWork($request->user()) : null,
             'myPapers' => $role === 'author' ? $this->authorPapers($request->user()) : null,
             'journal' => $role === 'journal' ? $this->journalWork() : null,
@@ -35,7 +37,6 @@ class DashboardController extends Controller
     /** The journal role's work (first gate): papers to route, offers waiting for the author's answer, accepted offers, late ones. */
     private function journalWork(): array
     {
-        Submission::expireJournalOffers();
         $waiting = Submission::currentYear()->where('status', SubmissionStatus::Submitted)->get();
 
         return [
@@ -73,7 +74,8 @@ class DashboardController extends Controller
     /** A reviewer's own work: open evaluations by due date, and how many are sent. */
     private function reviewerWork(User $reviewer): array
     {
-        $open = Review::where('reviewer_id', $reviewer->id)->whereNull('submitted_at')->with('submission')->orderBy('due_date')->get()
+        $thisYear = fn ($q) => $q->currentYear(); // a new conference year starts from zero
+        $open = Review::where('reviewer_id', $reviewer->id)->whereHas('submission', $thisYear)->whereNull('submitted_at')->with('submission')->orderBy('due_date')->get()
             ->reject(fn (Review $review) => $review->isClosed());
         $soon = today()->addDays(3);
 
@@ -82,7 +84,7 @@ class DashboardController extends Controller
                 'pendingReviews' => $open->reject->isUnavailable()->count(),
                 'dueSoon' => $open->filter(fn (Review $r) => ! $r->isOverdue() && ! $r->isUnavailable() && $r->due_date->lte($soon))->count(),
                 'overdueMine' => $open->filter(fn (Review $r) => $r->isOverdue() && ! $r->isUnavailable())->count(),
-                'doneReviews' => Review::where('reviewer_id', $reviewer->id)->whereNotNull('submitted_at')->count(),
+                'doneReviews' => Review::where('reviewer_id', $reviewer->id)->whereHas('submission', $thisYear)->whereNotNull('submitted_at')->count(),
             ],
             'reviews' => $open->map(fn (Review $review) => [
                 'id' => $review->id,
@@ -95,7 +97,7 @@ class DashboardController extends Controller
         ];
     }
 
-    private function papers(): array
+    private function papers(User $viewer): array
     {
         $overdue = Review::query()
             ->with('reviewer', 'submission', 'remindedBy')
@@ -123,6 +125,11 @@ class DashboardController extends Controller
                 'reminder' => $review->reminded_at ? ['at' => $review->reminded_at->toIso8601String(), 'by' => $review->remindedBy?->name] : null,
             ]),
             'reviewersNotSignedIn' => $quietReviewers->count(),
+            // Registrants (today, in all, never signed in, sign-ups of the last 14 days), emails that failed (editors:
+            // not the password ones) and papers that can present but have no session (2026-11-13, were sample data)
+            'people' => Reports::peopleNumbers(),
+            'failedEmails' => EmailLog::visibleTo($viewer)->where('status', 'failed')->count(),
+            'noSession' => Submission::currentYear()->schedulable()->whereNull('presentation_session_id')->count(),
             // Latest paper activity with who did it (staff view; authors never see editor names)
             'activity' => SubmissionEvent::with('user', 'submission:id,code')->latest()->latest('id')->limit(10)->get()
                 ->map(fn (SubmissionEvent $event) => [

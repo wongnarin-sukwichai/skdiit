@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useForm, usePage } from '@inertiajs/vue3';
 import Modal from '@/Components/Modal.vue';
 import FormField from '@/Components/FormField.vue';
@@ -16,8 +16,11 @@ const props = defineProps({
 });
 const emit = defineEmits(['close', 'switch']);
 
-const { t } = useI18n();
+const { t, formatDate } = useI18n();
 const page = usePage();
+// Settings › กำหนดการ, row "registration": outside its dates the form is replaced by a notice
+const registration = computed(() => page.props.registration ?? { state: 'open' });
+const longDate = (d) => (d ? formatDate(d, { day: 'numeric', month: 'long', year: 'numeric' }) : '—');
 const { loginEmail } = useAuthModal();
 
 // The system emails a 6-digit password; registrants do not choose one (config/registration.php)
@@ -72,6 +75,20 @@ function goToLogin() {
                     type="button"
                     class="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-gold-400 py-2.5 font-semibold text-black transition hover:bg-gold-300"
                     @click="goToLogin"
+                >
+                    <Fa icon="right-to-bracket" /> {{ t('auth.login') }}
+                </button>
+            </div>
+            <div v-else-if="registration.state !== 'open'" key="closed" class="p-6 text-center sm:p-8">
+                <span class="mx-auto mb-4 grid size-12 place-items-center rounded-xl bg-gold-400/15 text-lg text-gold-400">
+                    <Fa icon="calendar-days" />
+                </span>
+                <h2 class="text-2xl font-semibold">{{ t(registration.state === 'upcoming' ? 'auth.registrationUpcoming' : 'auth.registrationClosed') }}</h2>
+                <p class="mt-2 text-sm text-neutral-400">{{ t('auth.registrationClosedText', { start: longDate(registration.start), end: longDate(registration.end) }) }}</p>
+                <button
+                    type="button"
+                    class="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-gold-400 py-2.5 font-semibold text-black transition hover:bg-gold-300"
+                    @click="emit('switch')"
                 >
                     <Fa icon="right-to-bracket" /> {{ t('auth.login') }}
                 </button>

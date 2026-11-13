@@ -4,15 +4,17 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\AcademicTitle;
+use App\Models\ActivityLog;
 use App\Models\Affiliation;
 use App\Models\Journal;
 use App\Models\MealOption;
 use App\Models\ReviewCriterion;
-use App\Models\SiteDocument;
-use App\Models\User;
 use App\Models\Setting;
+use App\Models\SiteDocument;
 use App\Models\Submission;
+use App\Models\User;
 use App\Support\SchedulePlan;
+use App\Support\SiteClosure;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -62,6 +64,8 @@ class SettingsController extends Controller
                 ...$title->only('id', 'short_en', 'short_th', 'name_en', 'name_th'),
                 'users' => $title->users_count,
             ]),
+            // Closing the whole system when the conference is over (SiteClosure)
+            'closure' => ['closed' => SiteClosure::isClosed(), 'message' => SiteClosure::message()],
             // Conference year: what a new year would do (ConferenceYearController)
             'yearSummary' => ConferenceYearController::summary(),
             // Downloadable documents of the public site (the texts come with the shared `site` prop)
@@ -91,6 +95,20 @@ class SettingsController extends Controller
                 'users' => $meal->usersCount(),
             ]),
         ]);
+    }
+
+    /** Settings › ปิดระบบ: switch the whole system off (only admin gets in) and the message everyone else sees. */
+    public function updateClosure(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'closed' => ['required', 'boolean'],
+            'message.th' => ['nullable', 'string', 'max:2000'],
+            'message.en' => ['nullable', 'string', 'max:2000'],
+        ], ['max' => 'validation.too_long']);
+        SiteClosure::put((bool) $data['closed'], $data['message'] ?? []);
+        ActivityLog::record('system', $data['closed'] ? 'site_closed' : 'site_opened');
+
+        return back()->with('success', $data['closed'] ? 'admin.closure.closedToast' : 'admin.closure.openedToast');
     }
 
     /** Settings › ตั้งค่า: the upload limit and the days an author has to answer a journal offer. */
