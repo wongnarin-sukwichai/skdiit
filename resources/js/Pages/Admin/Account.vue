@@ -14,6 +14,9 @@ const props = defineProps({
 
 const { t, tr, formatDate } = useI18n();
 const { titles, titleOf } = useAcademicTitles();
+const { affiliations } = useAffiliations();
+// Registrants must keep an affiliation; reviewers may leave it empty
+const showAffiliation = props.account.isRegistrant || props.account.isReviewer;
 
 const profile = useForm({
     name: props.account.name,
@@ -21,6 +24,7 @@ const profile = useForm({
     phone: props.account.phone ?? '',
     affiliation: props.account.affiliation ?? '',
     affiliation_other: props.account.affiliation_other ?? '',
+    faculty: props.account.faculty ?? '',
 });
 
 function saveProfile() {
@@ -29,8 +33,9 @@ function saveProfile() {
             ...data,
             academic_title_id: data.academic_title_id || null,
             phone: data.phone || null,
-            affiliation: props.account.isRegistrant ? data.affiliation : undefined,
-            affiliation_other: props.account.isRegistrant && data.affiliation === OTHER_AFFILIATION ? data.affiliation_other : undefined,
+            affiliation: showAffiliation ? data.affiliation || null : undefined,
+            affiliation_other: showAffiliation && data.affiliation === OTHER_AFFILIATION ? data.affiliation_other : undefined,
+            faculty: props.account.isReviewer ? data.faculty || null : undefined,
         }))
         .put('/admin/account', { preserveScroll: true, onSuccess: () => profile.defaults() });
 }
@@ -119,10 +124,13 @@ const errorClass = 'mt-1 block text-xs text-red-500 dark:text-red-400';
                         </div>
                     </div>
 
-                    <div v-if="account.isRegistrant">
-                        <label for="acc-affiliation" :class="label">{{ t('auth.affiliation') }}</label>
+                    <div v-if="showAffiliation">
+                        <label for="acc-affiliation" :class="label">
+                            {{ t('auth.affiliation') }}
+                            <span v-if="account.isReviewer" class="font-normal text-neutral-500 dark:text-neutral-400">({{ t('admin.accounts.optional') }})</span>
+                        </label>
                         <select id="acc-affiliation" v-model="profile.affiliation" :class="[input, border(profile.errors.affiliation)]">
-                            <option value="" disabled>{{ t('auth.selectAffiliation') }}</option>
+                            <option value="" :disabled="account.isRegistrant">{{ account.isReviewer ? t('admin.accounts.noTitle') : t('auth.selectAffiliation') }}</option>
                             <option v-for="a in affiliations" :key="a.code" :value="a.code">{{ tr(a.name) }}</option>
                             <option :value="OTHER_AFFILIATION">{{ t('auth.affiliationOther') }}</option>
                         </select>
@@ -133,6 +141,15 @@ const errorClass = 'mt-1 block text-xs text-red-500 dark:text-red-400';
                                 <span v-if="profile.errors.affiliation_other" :class="errorClass">{{ errorText(profile.errors.affiliation_other) }}</span>
                             </div>
                         </Transition>
+                    </div>
+
+                    <div v-if="account.isReviewer">
+                        <label for="acc-faculty" :class="label">
+                            {{ t('admin.accounts.faculty') }}
+                            <span class="font-normal text-neutral-500 dark:text-neutral-400">({{ t('admin.accounts.optional') }})</span>
+                        </label>
+                        <input id="acc-faculty" v-model="profile.faculty" maxlength="255" :placeholder="t('admin.accounts.facultyPlaceholder')" :class="[input, border(profile.errors.faculty)]">
+                        <span v-if="profile.errors.faculty" :class="errorClass">{{ errorText(profile.errors.faculty) }}</span>
                     </div>
 
                     <div>

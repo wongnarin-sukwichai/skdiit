@@ -942,6 +942,8 @@ export default {
             academicTitle: 'ตำแหน่งทางวิชาการ',
             noTitle: 'ไม่มี',
             optional: 'ไม่บังคับ',
+            faculty: 'คณะ / หน่วยงาน',
+            facultyPlaceholder: 'เช่น คณะวิทยาการสารสนเทศ',
             passwordHint: 'เว้นว่างไว้หากไม่ต้องการเปลี่ยนรหัสผ่าน',
             deleteNeedsSuspend: 'ต้องระงับบัญชีก่อน จึงจะลบได้',
             emailStatus: 'อีเมล',

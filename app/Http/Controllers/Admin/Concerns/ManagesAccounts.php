@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin\Concerns;
 
+use App\Models\Affiliation;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\RedirectResponse;
@@ -18,6 +19,8 @@ trait ManagesAccounts
     /** Validation messages are translation keys; the Vue client renders them in the active language. */
     protected const ACCOUNT_MESSAGES = [
         'required' => 'validation.required',
+        'required_if' => 'validation.required',
+        'affiliation.in' => 'validation.required',
         'email' => 'validation.email',
         'email.unique' => 'validation.email_taken',
         'password.min' => 'validation.password_min',
@@ -47,7 +50,7 @@ trait ManagesAccounts
     protected function accountRow(User $user): array
     {
         return [
-            ...$user->only('id', 'name', 'email', 'role', 'academic_title_id', 'phone'),
+            ...$user->only('id', 'name', 'email', 'role', 'academic_title_id', 'phone', 'affiliation', 'affiliation_other', 'faculty'),
             'emailVerified' => (bool) $user->email_verified_at,
             'suspended' => (bool) $user->suspended_at,
             'createdAt' => $user->created_at?->toDateString(),
@@ -62,7 +65,7 @@ trait ManagesAccounts
             'password' => ['required', 'string', 'min:6'],
         ], self::ACCOUNT_MESSAGES);
 
-        User::create([...$data, 'role' => $data['role'] ?? $this->roles()[0]])
+        User::create([...$this->withAffiliation($data), 'role' => $data['role'] ?? $this->roles()[0]])
             ->forceFill(['password_by_admin' => true])->save();
 
         return back()->with('success', 'admin.accounts.created');
@@ -86,7 +89,7 @@ trait ManagesAccounts
             unset($data['password']);
         }
 
-        $user->fill($data);
+        $user->fill($this->withAffiliation($data));
         if (isset($data['password'])) {
             $user->password_by_admin = true;
         }
@@ -154,6 +157,12 @@ trait ManagesAccounts
         abort_unless(in_array($user->role, $this->roles(), true), 404);
     }
 
+    /** Whether these accounts carry an optional affiliation and faculty (reviewers, 2026-11-16). */
+    protected function hasAffiliation(): bool
+    {
+        return false;
+    }
+
     /** Fields shared by create and update; the role picker only exists when there is more than one role. */
     private function accountRules(): array
     {
@@ -162,6 +171,24 @@ trait ManagesAccounts
             'academic_title_id' => ['nullable', 'integer', 'exists:academic_titles,id'],
             'phone' => ['nullable', 'string', 'max:30'],
             ...(count($this->roles()) > 1 ? ['role' => ['required', Rule::in($this->roles())]] : []),
+            ...($this->hasAffiliation() ? [
+                'affiliation' => ['nullable', Rule::in(Affiliation::codes())],
+                'affiliation_other' => ['nullable', 'required_if:affiliation,'.Affiliation::OTHER, 'string', 'max:255'],
+                'faculty' => ['nullable', 'string', 'max:255'],
+            ] : []),
         ];
+    }
+
+    /** The typed name only counts with "Other"; an empty choice clears both. */
+    private function withAffiliation(array $data): array
+    {
+        if (! $this->hasAffiliation()) {
+            return $data;
+        }
+        $data['affiliation'] = ($data['affiliation'] ?? null) ?: null;
+        $data['affiliation_other'] = $data['affiliation'] === Affiliation::OTHER ? trim($data['affiliation_other']) : null;
+        $data['faculty'] = trim($data['faculty'] ?? '') ?: null;
+
+        return $data;
     }
 }

@@ -942,6 +942,8 @@ export default {
             academicTitle: 'Academic title',
             noTitle: 'None',
             optional: 'Optional',
+            faculty: 'Faculty / unit',
+            facultyPlaceholder: 'e.g. Faculty of Informatics',
             passwordHint: 'Leave blank to keep the current password.',
             deleteNeedsSuspend: 'Suspend the account first, then it can be deleted.',
             emailStatus: 'Email',

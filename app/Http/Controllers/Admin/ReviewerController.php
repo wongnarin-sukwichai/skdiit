@@ -24,6 +24,11 @@ class ReviewerController extends Controller
         return ['reviewer'];
     }
 
+    protected function hasAffiliation(): bool
+    {
+        return true;
+    }
+
     public function index(Request $request): Response
     {
         $track = $request->integer('track') ?: null;

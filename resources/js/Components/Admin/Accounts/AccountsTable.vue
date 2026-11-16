@@ -10,6 +10,7 @@ import AccountDetailModal from '@/Components/Admin/Accounts/AccountDetailModal.v
 import RowMenu from '@/Components/Admin/RowMenu.vue';
 import { useI18n } from '@/i18n';
 import { useAcademicTitles } from '@/composables/useAcademicTitles';
+import { useAffiliations } from '@/composables/useAffiliations';
 
 /**
  * Account list for the Staff page (admin, editor, journal) and the Reviewers page.
@@ -30,6 +31,9 @@ const { titleOf } = useAcademicTitles();
 const inertiaPage = usePage();
 const me = computed(() => inertiaPage.props.auth.user);
 const multiRole = computed(() => props.roles.length > 1);
+// Reviewers carry an optional affiliation (ReviewerController::hasAffiliation)
+const withAffiliation = computed(() => props.roles.includes('reviewer'));
+const { affiliationOf } = useAffiliations();
 
 const q = ref(props.filters.q ?? '');
 const role = ref(props.filters.role ?? '');
@@ -199,6 +203,9 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
                                     </span>
                                 </span>
                                 <span class="block text-neutral-500 dark:text-neutral-400">{{ account.email }}</span>
+                                <span v-if="withAffiliation && (account.affiliation || account.faculty)" class="block text-xs text-neutral-500 dark:text-neutral-400">
+                                    <Fa icon="building-columns" class="mr-1" />{{ [account.faculty, affiliationOf(account)].filter(Boolean).join(' · ') }}
+                                </span>
                             </td>
                             <td class="px-4 py-3 whitespace-nowrap text-neutral-600 dark:text-neutral-300">{{ account.phone || '—' }}</td>
                             <td v-if="multiRole" class="px-4 py-3"><RoleBadge :role="account.role" /></td>
@@ -244,8 +251,8 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
             <Pagination v-if="accounts.last_page > 1" v-model="page" :last-page="accounts.last_page" />
         </div>
 
-        <AccountFormModal :show="formOpen" :account="editing" :roles="roles" :base-url="baseUrl" @close="formOpen = false" />
-        <AccountDetailModal :account="viewing" :track-names="viewingTracks" @close="viewing = null" />
+        <AccountFormModal :show="formOpen" :account="editing" :roles="roles" :base-url="baseUrl" :with-affiliation="withAffiliation" @close="formOpen = false" />
+        <AccountDetailModal :account="viewing" :track-names="viewingTracks" :with-affiliation="withAffiliation" @close="viewing = null" />
         <ConfirmModal
             :show="!!pending"
             :icon="confirmIcons[shownPending?.action]"

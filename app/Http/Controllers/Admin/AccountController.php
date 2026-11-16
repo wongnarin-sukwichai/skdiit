@@ -28,9 +28,10 @@ class AccountController extends Controller
 
         return Inertia::render('Admin/Account', [
             'account' => [
-                ...$user->only('name', 'email', 'academic_title_id', 'phone', 'affiliation', 'affiliation_other', 'participation'),
+                ...$user->only('name', 'email', 'academic_title_id', 'phone', 'affiliation', 'affiliation_other', 'faculty', 'participation'),
                 'role' => $user->accessRole(),
                 'isRegistrant' => $user->role === 'user',
+                'isReviewer' => $user->role === 'reviewer',
                 'emailVerified' => (bool) $user->email_verified_at,
                 'createdAt' => $user->created_at?->toDateString(),
             ],
@@ -46,9 +47,15 @@ class AccountController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'academic_title_id' => ['nullable', 'integer', 'exists:academic_titles,id'],
             'phone' => ['nullable', 'string', 'max:30'],
-            // Registrants chose an affiliation at sign-up; staff accounts have none
-            'affiliation' => $user->role === 'user' ? ['required', Rule::in(Affiliation::codes())] : ['prohibited'],
-            'affiliation_other' => $user->role === 'user' ? ['nullable', 'required_if:affiliation,'.Affiliation::OTHER, 'string', 'max:255'] : ['prohibited'],
+            // Registrants chose an affiliation at sign-up; reviewers may give one; other staff accounts have none
+            'affiliation' => match ($user->role) {
+                'user' => ['required', Rule::in(Affiliation::codes())],
+                'reviewer' => ['nullable', Rule::in(Affiliation::codes())],
+                default => ['prohibited'],
+            },
+            'affiliation_other' => in_array($user->role, ['user', 'reviewer'], true)
+                ? ['nullable', 'required_if:affiliation,'.Affiliation::OTHER, 'string', 'max:255'] : ['prohibited'],
+            'faculty' => $user->role === 'reviewer' ? ['nullable', 'string', 'max:255'] : ['prohibited'],
             // Registrants: own meal and the companion; sent by "My details" only, so other forms leave them as they are
             ...($user->role === 'user' && $request->has('meal') ? MealOption::rules() : []),
         ], [
@@ -60,8 +67,12 @@ class AccountController extends Controller
         ]);
 
         // The typed name only counts with "Other"; picking a list entry clears it
-        if (isset($data['affiliation'])) {
+        if (array_key_exists('affiliation', $data)) {
+            $data['affiliation'] = $data['affiliation'] ?: null;
             $data['affiliation_other'] = $data['affiliation'] === Affiliation::OTHER ? trim($data['affiliation_other']) : null;
+        }
+        if (array_key_exists('faculty', $data)) {
+            $data['faculty'] = trim($data['faculty'] ?? '') ?: null;
         }
         if (isset($data['meal'])) {
             $data = [...collect($data)->except('companion')->all(), ...MealOption::columns($data)];

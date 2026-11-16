@@ -11,6 +11,7 @@ import { OTHER_AFFILIATION, useAffiliations } from '@/composables/useAffiliation
 const props = defineProps({
     form: { type: Object, required: true },
     required: { type: Boolean, default: false },
+    optional: { type: Boolean, default: false }, // may stay empty (reviewers): labelled so, with an empty choice
 });
 
 const { t, tr } = useI18n();
@@ -31,7 +32,10 @@ const fieldClass = computed(() => [
 
 <template>
     <div>
-        <span class="mb-1.5 block text-sm text-neutral-300">{{ isOther ? t('auth.affiliationOtherName') : t('auth.affiliation') }}</span>
+        <span class="mb-1.5 block text-sm text-neutral-300">
+            {{ isOther ? t('auth.affiliationOtherName') : t('auth.affiliation') }}
+            <span v-if="optional" class="text-neutral-500">({{ t('admin.accounts.optional') }})</span>
+        </span>
         <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
             <span class="relative block min-w-0 flex-1 basis-56">
                 <Fa :icon="isOther ? 'pen' : 'building-columns'" class="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-sm text-neutral-500" />
@@ -49,7 +53,7 @@ const fieldClass = computed(() => [
                     >
                     <span v-else key="list" class="relative block">
                         <select v-model="form.affiliation" :class="[fieldClass, 'appearance-none pr-9', { 'text-neutral-500': !form.affiliation }]" :required="required">
-                            <option value="" disabled class="bg-ink-800">{{ t('auth.selectAffiliation') }}</option>
+                            <option value="" :disabled="!optional" class="bg-ink-800">{{ optional ? t('admin.accounts.noTitle') : t('auth.selectAffiliation') }}</option>
                             <option v-for="a in affiliations" :key="a.code" :value="a.code" class="bg-ink-800 text-white">{{ tr(a.name) }}</option>
                         </select>
                         <Fa icon="chevron-down" class="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 text-xs text-neutral-500" />

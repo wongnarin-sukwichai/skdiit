@@ -4,16 +4,19 @@ import Modal from '@/Components/Modal.vue';
 import RoleBadge from '@/Components/Admin/RoleBadge.vue';
 import { useI18n } from '@/i18n';
 import { useAcademicTitles } from '@/composables/useAcademicTitles';
+import { useAffiliations } from '@/composables/useAffiliations';
 
 // Staff or reviewer account (Admin\Concerns\ManagesAccounts::accountRow)
 const props = defineProps({
     account: { type: Object, default: null },
     trackNames: { type: Array, default: null }, // reviewers: names of their tracks
+    withAffiliation: { type: Boolean, default: false }, // reviewers: optional affiliation
 });
 const emit = defineEmits(['close']);
 
 const { t, formatDate } = useI18n();
 const { titleOf } = useAcademicTitles();
+const { affiliationOf } = useAffiliations();
 
 // Keep the last record so the content stays visible while the modal fades out
 const shown = ref(null);
@@ -55,6 +58,14 @@ watch(() => props.account, (value) => value && (shown.value = value), { immediat
                     <dd class="mt-0.5" :class="shown.emailVerified ? 'text-emerald-400' : 'text-amber-400'">
                         {{ shown.emailVerified ? t('admin.accounts.emailConfirmed') : t('admin.registrants.unverified') }}
                     </dd>
+                </div>
+                <div v-if="withAffiliation" class="sm:col-span-2">
+                    <dt class="text-neutral-400">{{ t('auth.affiliation') }}</dt>
+                    <dd class="mt-0.5">{{ affiliationOf(shown) || '—' }}</dd>
+                </div>
+                <div v-if="withAffiliation" class="sm:col-span-2">
+                    <dt class="text-neutral-400">{{ t('admin.accounts.faculty') }}</dt>
+                    <dd class="mt-0.5">{{ shown.faculty || '—' }}</dd>
                 </div>
                 <div v-if="trackNames" class="sm:col-span-2">
                     <dt class="text-neutral-400">{{ t('admin.accounts.tracks') }}</dt>

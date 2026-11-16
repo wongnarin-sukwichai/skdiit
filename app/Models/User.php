@@ -29,6 +29,7 @@ class User extends Authenticatable
         'role',
         'affiliation',
         'affiliation_other',
+        'faculty',
         'participation',
         'academic_title_id',
         'phone',

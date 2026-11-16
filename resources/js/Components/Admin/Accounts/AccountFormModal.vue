@@ -3,6 +3,7 @@ import { computed, watch } from 'vue';
 import { useForm } from '@inertiajs/vue3';
 import Modal from '@/Components/Modal.vue';
 import FormField from '@/Components/FormField.vue';
+import AffiliationField from '@/Components/AffiliationField.vue';
 import { useI18n } from '@/i18n';
 import { useAcademicTitles } from '@/composables/useAcademicTitles';
 
@@ -12,12 +13,13 @@ const props = defineProps({
     account: { type: Object, default: null }, // null = create
     roles: { type: Array, required: true }, // one role = no picker
     baseUrl: { type: String, required: true },
+    withAffiliation: { type: Boolean, default: false }, // reviewers: optional affiliation
 });
 const emit = defineEmits(['close']);
 
 const { t, tr } = useI18n();
 const { titles } = useAcademicTitles();
-const form = useForm({ name: '', academic_title_id: '', email: '', phone: '', role: '', password: '' });
+const form = useForm({ name: '', academic_title_id: '', email: '', phone: '', affiliation: '', affiliation_other: '', faculty: '', role: '', password: '' });
 
 const isCreate = computed(() => !props.account);
 const multiRole = computed(() => props.roles.length > 1);
@@ -30,6 +32,9 @@ watch(() => props.show, (open) => {
         academic_title_id: props.account?.academic_title_id ?? '',
         email: props.account?.email ?? '',
         phone: props.account?.phone ?? '',
+        affiliation: props.account?.affiliation ?? '',
+        affiliation_other: props.account?.affiliation_other ?? '',
+        faculty: props.account?.faculty ?? '',
         role: props.account?.role ?? props.roles[0],
         password: '',
     });
@@ -42,6 +47,9 @@ function submit() {
         ...data,
         academic_title_id: data.academic_title_id || null,
         phone: data.phone || null,
+        affiliation: props.withAffiliation ? data.affiliation || null : undefined,
+        affiliation_other: props.withAffiliation ? data.affiliation_other || null : undefined,
+        faculty: props.withAffiliation ? data.faculty || null : undefined,
         role: multiRole.value ? data.role : undefined,
     }));
     isCreate.value
@@ -71,6 +79,12 @@ function submit() {
                 <FormField :label="t('admin.accounts.phone')" icon="phone" :error="form.errors.phone" v-slot="{ inputClass }">
                     <input v-model="form.phone" type="tel" autocomplete="off" :class="inputClass" :placeholder="t('admin.accounts.optional')">
                 </FormField>
+                <template v-if="withAffiliation">
+                    <AffiliationField class="sm:col-span-2" :form="form" optional />
+                    <FormField class="sm:col-span-2" :label="`${t('admin.accounts.faculty')} (${t('admin.accounts.optional')})`" icon="building-columns" :error="form.errors.faculty" v-slot="{ inputClass }">
+                        <input v-model="form.faculty" maxlength="255" autocomplete="off" :class="inputClass" :placeholder="t('admin.accounts.facultyPlaceholder')">
+                    </FormField>
+                </template>
                 <FormField class="sm:col-span-2" :label="t('auth.email')" icon="envelope" :error="form.errors.email" v-slot="{ inputClass }">
                     <input v-model="form.email" type="email" autocomplete="off" :class="inputClass" required>
                 </FormField>
