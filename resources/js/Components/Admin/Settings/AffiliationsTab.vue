@@ -10,8 +10,9 @@ const props = defineProps({
     typed: { type: Array, required: true }, // { name, users } typed under "Other"
 });
 
-const { t, formatNumber } = useI18n();
-const fields = ['name_th', 'name_en'];
+const { t, tr, formatNumber } = useI18n();
+// English first (required); Thai is optional and falls back to English (international conference)
+const fields = ['name_en', 'name_th'];
 const options = { preserveScroll: true, preserveState: true };
 
 // Editable copy of each row, refreshed when the server sends new data
@@ -19,9 +20,9 @@ const drafts = reactive({});
 const errors = reactive({});
 const busy = reactive({});
 watch(() => props.affiliations, (list) => {
-    list.forEach((a) => (drafts[a.id] = { name_th: a.name_th, name_en: a.name_en }));
+    list.forEach((a) => (drafts[a.id] = { name_en: a.name_en, name_th: a.name_th ?? '' }));
 }, { immediate: true });
-const isDirty = (a) => fields.some((f) => drafts[a.id][f] !== a[f]);
+const isDirty = (a) => fields.some((f) => drafts[a.id][f] !== (a[f] ?? ''));
 
 function save(a) {
     router.put(`/admin/settings/affiliations/${a.id}`, drafts[a.id], {
@@ -34,7 +35,7 @@ function save(a) {
 }
 const move = (a, direction) => router.put(`/admin/settings/affiliations/${a.id}/move`, { direction }, options);
 
-const form = useForm({ name_th: '', name_en: '' });
+const form = useForm({ name_en: '', name_th: '' });
 const add = () => form.post('/admin/settings/affiliations', { ...options, onSuccess: () => form.reset() });
 
 // Delete (only unused ones)
@@ -45,10 +46,10 @@ const destroy = () => router.delete(`/admin/settings/affiliations/${removing.val
 
 // "Other" names: add one to the list and move everyone who typed it
 const adopting = ref(null);
-const adoptForm = useForm({ typed: '', name_th: '', name_en: '' });
+const adoptForm = useForm({ typed: '', name_en: '', name_th: '' });
 function openAdopt(item) {
     adoptForm.clearErrors();
-    Object.assign(adoptForm, { typed: item.name, name_th: item.name, name_en: item.name });
+    Object.assign(adoptForm, { typed: item.name, name_en: item.name, name_th: '' });
     adopting.value = item;
 }
 const adopt = () => adoptForm.post('/admin/settings/affiliations/adopt', { ...options, onSuccess: () => (adopting.value = null) });
@@ -69,8 +70,7 @@ const darkInput = 'w-full rounded-lg border border-white/10 bg-ink-800 px-3 py-2
                     <thead class="bg-neutral-50 text-left text-neutral-500 dark:bg-white/5 dark:text-neutral-400">
                         <tr>
                             <th class="w-20 px-4 py-3 font-medium">{{ t('admin.academicTitles.order') }}</th>
-                            <th class="px-2 py-3 font-medium">{{ t('admin.affiliations.name_th') }}</th>
-                            <th class="px-2 py-3 font-medium">{{ t('admin.affiliations.name_en') }}</th>
+                            <th v-for="field in fields" :key="field" class="px-2 py-3 font-medium">{{ t(`admin.affiliations.${field}`) }}</th>
                             <th class="px-2 py-3 text-center font-medium">{{ t('admin.affiliations.users') }}</th>
                             <th class="px-4 py-3"><span class="sr-only">{{ t('registrants.actions') }}</span></th>
                         </tr>
@@ -84,7 +84,7 @@ const darkInput = 'w-full rounded-lg border border-white/10 bg-ink-800 px-3 py-2
                                 </div>
                             </td>
                             <td v-for="field in fields" :key="field" class="px-2 py-3">
-                                <input v-model="drafts[a.id][field]" :class="[input, border(errors[a.id]?.[field])]" @keydown.enter="isDirty(a) && save(a)">
+                                <input v-model="drafts[a.id][field]" :placeholder="field === 'name_th' ? drafts[a.id].name_en : ''" :class="[input, border(errors[a.id]?.[field])]" @keydown.enter="isDirty(a) && save(a)">
                             </td>
                             <td class="px-2 py-3 text-center">{{ formatNumber(a.users) }}</td>
                             <td class="px-4 py-3">
@@ -119,7 +119,7 @@ const darkInput = 'w-full rounded-lg border border-white/10 bg-ink-800 px-3 py-2
                             <td class="px-4 py-3 text-right">
                                 <button
                                     class="inline-flex items-center gap-2 rounded-lg border border-gold-400 px-3 py-2 text-xs font-semibold text-gold-600 transition hover:bg-gold-400 hover:text-black disabled:opacity-40 dark:text-gold-400"
-                                    :disabled="form.processing || fields.some((f) => !form[f].trim())"
+                                    :disabled="form.processing || !form.name_en.trim()"
                                     @click="add"
                                 >
                                     <Fa icon="plus" /> {{ t('admin.academicTitles.add') }}
@@ -154,7 +154,7 @@ const darkInput = 'w-full rounded-lg border border-white/10 bg-ink-800 px-3 py-2
         icon="trash-can"
         danger
         :title="t('admin.affiliations.confirmTitle')"
-        :message="shownRemoving ? t('admin.affiliations.confirmText', { name: shownRemoving.name_th }) : ''"
+        :message="shownRemoving ? t('admin.affiliations.confirmText', { name: tr({ en: shownRemoving.name_en, th: shownRemoving.name_th }) }) : ''"
         :confirm-label="t('admin.affiliations.delete')"
         @close="removing = null"
         @confirm="destroy"
@@ -171,15 +171,10 @@ const darkInput = 'w-full rounded-lg border border-white/10 bg-ink-800 px-3 py-2
         @confirm="adopt"
     >
         <div class="mt-4 space-y-3">
-            <label class="block text-sm">
-                <span class="mb-1 block text-neutral-300">{{ t('admin.affiliations.name_th') }}</span>
-                <input v-model="adoptForm.name_th" :class="darkInput">
-                <span v-if="adoptForm.errors.name_th" class="mt-1 block text-xs text-red-400">{{ t(adoptForm.errors.name_th) }}</span>
-            </label>
-            <label class="block text-sm">
-                <span class="mb-1 block text-neutral-300">{{ t('admin.affiliations.name_en') }}</span>
-                <input v-model="adoptForm.name_en" :class="darkInput">
-                <span v-if="adoptForm.errors.name_en" class="mt-1 block text-xs text-red-400">{{ t(adoptForm.errors.name_en) }}</span>
+            <label v-for="field in fields" :key="field" class="block text-sm">
+                <span class="mb-1 block text-neutral-300">{{ t(`admin.affiliations.${field}`) }}</span>
+                <input v-model="adoptForm[field]" :class="darkInput">
+                <span v-if="adoptForm.errors[field]" class="mt-1 block text-xs text-red-400">{{ t(adoptForm.errors[field]) }}</span>
             </label>
         </div>
     </ConfirmModal>

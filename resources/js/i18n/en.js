@@ -882,10 +882,10 @@ export default {
         },
         affiliations: {
             intro: 'The list registrants choose from when they sign up. Registrants whose organisation is not listed pick "Other" and type its name.',
-            name_th: 'Name (Thai)',
+            name_th: 'Name (Thai, optional)',
             name_en: 'Name (English)',
             users: 'Accounts',
-            placeholder: { name_th: 'e.g. มหาวิทยาลัยขอนแก่น', name_en: 'e.g. Khon Kaen University' },
+            placeholder: { name_th: 'Optional, the English name is shown instead', name_en: 'e.g. Khon Kaen University' },
             delete: 'Delete affiliation',
             inUse: 'Accounts use this affiliation, so it cannot be deleted.',
             otherNote: '"Other (please specify)" is always offered last in the sign-up form; it is not part of this list.',

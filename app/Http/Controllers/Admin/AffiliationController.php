@@ -79,7 +79,7 @@ class AffiliationController extends Controller
             $affiliation = Affiliation::create([
                 'code' => Affiliation::newCode($data['name_en']),
                 'name_en' => $data['name_en'],
-                'name_th' => $data['name_th'],
+                'name_th' => $data['name_th'] ?? null,
                 'sort_order' => (int) Affiliation::max('sort_order') + 1,
             ]);
             User::where('affiliation', Affiliation::OTHER)->where('affiliation_other', $data['typed'])
@@ -92,8 +92,9 @@ class AffiliationController extends Controller
     private function rules(): array
     {
         return [
-            'name_th' => ['required', 'string', 'max:255'],
+            // International conference: English is required, Thai is optional (shown in English when empty)
             'name_en' => ['required', 'string', 'max:255'],
+            'name_th' => ['nullable', 'string', 'max:255'],
         ];
     }
 
