@@ -41,7 +41,7 @@ const day = (value) => formatDate(value, { day: 'numeric', month: 'short', year:
                     <tr v-for="review in reviews" :key="review.id" class="transition hover:bg-gold-50 dark:hover:bg-gold-400/5">
                         <td class="px-4 py-3 font-mono text-xs whitespace-nowrap text-gold-600 dark:text-gold-400">{{ review.paper.code }}</td>
                         <td class="max-w-md px-4 py-3">
-                            <Link :href="`/admin/reviews/${review.id}`" class="line-clamp-2 font-medium hover:text-gold-600 dark:hover:text-gold-400">{{ tr(review.paper.title) }}</Link>
+                            <Link :href="$url(`/admin/reviews/${review.id}`)" class="line-clamp-2 font-medium hover:text-gold-600 dark:hover:text-gold-400">{{ tr(review.paper.title) }}</Link>
                             <span v-if="review.round > 1" class="text-xs text-neutral-500 dark:text-neutral-400">{{ t('reviews.round', { round: review.round }) }}</span>
                         </td>
                         <td class="px-4 py-3 whitespace-nowrap text-neutral-600 dark:text-neutral-300">{{ tr(review.paper.track.name) }}</td>
@@ -55,7 +55,7 @@ const day = (value) => formatDate(value, { day: 'numeric', month: 'short', year:
                         </td>
                         <td class="px-4 py-3 text-right">
                             <Link
-                                :href="`/admin/reviews/${review.id}`"
+                                :href="$url(`/admin/reviews/${review.id}`)"
                                 :class="review.state === 'submitted'
                                     ? 'border border-neutral-300 hover:border-gold-400 dark:border-white/20'
                                     : 'bg-gold-400 font-semibold text-black hover:bg-gold-300'"

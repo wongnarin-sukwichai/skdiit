@@ -88,7 +88,7 @@ const box = 'rounded-xl border border-neutral-200 p-4 dark:border-white/10';
         <PageHeader icon="file-lines" :title="t('admin.menu.submissions')" :subtitle="submission.code" />
 
         <div class="flex flex-wrap items-center justify-between gap-3">
-            <Link href="/admin/submissions" class="inline-flex items-center gap-2 rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition hover:border-gold-400 dark:border-white/20">
+            <Link :href="$url('/admin/submissions')" class="inline-flex items-center gap-2 rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition hover:border-gold-400 dark:border-white/20">
                 <Fa icon="chevron-left" class="text-xs" /> {{ t('submissions.back') }}
             </Link>
             <InternalNotes :submission-id="submission.id" :notes="notes" />

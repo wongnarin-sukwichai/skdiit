@@ -133,7 +133,7 @@ const sectionTitle = 'mb-4 flex items-center gap-2 text-lg font-semibold';
                         <p class="mb-1 text-xs font-semibold text-neutral-500 dark:text-neutral-400">{{ t('reviews.feedback.reviewer', { n: review.number }) }} · {{ t(`reviews.recommendation.${review.recommendation}`) }}</p>
                         <p v-if="review.comment" class="max-h-48 overflow-y-auto whitespace-pre-line text-neutral-700 dark:text-neutral-200">{{ review.comment }}</p>
                         <p v-else-if="!review.file" class="text-neutral-400 italic">{{ t('versions.noComment') }}</p>
-                        <a v-if="review.file" :href="review.file.url" class="mt-2 inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-xs transition hover:border-gold-400 dark:border-white/15 dark:bg-ink-900"><Fa icon="paperclip" class="text-gold-500" /> {{ review.file.name }}</a>
+                        <a v-if="review.file" :href="$url(review.file.url)" class="mt-2 inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-xs transition hover:border-gold-400 dark:border-white/15 dark:bg-ink-900"><Fa icon="paperclip" class="text-gold-500" /> {{ review.file.name }}</a>
                     </div>
                     <label class="block">
                         <span class="mb-1 block text-xs font-semibold text-gold-700 dark:text-gold-300">{{ t('versions.form.answer', { n: review.number }) }} <span v-if="!form.response_file" :class="required">*</span></span>
@@ -265,7 +265,7 @@ const sectionTitle = 'mb-4 flex items-center gap-2 text-lg font-semibold';
                     <div>
                         <FilePick v-model="form.supplementary_files" multiple :types="['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'jpg', 'jpeg', 'png', 'zip']" :max-mb="maxMb" icon="paperclip" :label="t('submissions.files.supplementary')" :hint="t('submissions.files.supplementaryHint')" :error="supplementaryError" />
                         <ul v-if="current.supplementary?.length" class="mt-2 space-y-1 text-xs text-neutral-500 dark:text-neutral-400">
-                            <li v-for="file in current.supplementary" :key="file.id"><Fa icon="paperclip" class="mr-1" /><a :href="file.url" class="text-gold-600 hover:underline dark:text-gold-400">{{ file.name }}</a></li>
+                            <li v-for="file in current.supplementary" :key="file.id"><Fa icon="paperclip" class="mr-1" /><a :href="$url(file.url)" class="text-gold-600 hover:underline dark:text-gold-400">{{ file.name }}</a></li>
                         </ul>
                     </div>
                 </div>
@@ -283,7 +283,7 @@ const sectionTitle = 'mb-4 flex items-center gap-2 text-lg font-semibold';
                     <Fa :icon="isEdit && !isRevision ? 'floppy-disk' : 'paper-plane'" /> {{ isRevision ? t('submissions.revision.submit') : isEdit ? t('common.save') : t('submissions.form.submit') }}
                 </button>
                 <Link
-                    :href="isEdit ? `/admin/my-submissions/${submission.id}` : '/admin/my-submissions'"
+                    :href="$url(isEdit ? `/admin/my-submissions/${submission.id}` : '/admin/my-submissions')"
                     class="rounded-lg border border-neutral-300 px-5 py-2.5 text-sm transition hover:border-gold-400 dark:border-white/20"
                 >
                     {{ t('common.cancel') }}

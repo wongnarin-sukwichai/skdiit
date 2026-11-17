@@ -76,7 +76,7 @@ const message = computed(() => {
         </ul>
         <p v-else-if="current" class="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
             {{ t('submissions.form.currentFile') }}
-            <a :href="current.url" class="text-gold-600 hover:underline dark:text-gold-400">{{ current.name }}</a>
+            <a :href="$url(current.url)" class="text-gold-600 hover:underline dark:text-gold-400">{{ current.name }}</a>
             ({{ formatFileSize(current.size) }})
         </p>
         <span v-if="message" class="mt-1 block text-xs text-red-500 dark:text-red-400">{{ message }}</span>

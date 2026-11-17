@@ -84,7 +84,7 @@ const iconBtn = 'grid size-8 place-items-center rounded-md text-neutral-500 tran
                         </td>
                         <td class="max-w-72 px-3 py-3">
                             <p class="font-medium">{{ j.name }}</p>
-                            <a v-if="j.url" :href="j.url" target="_blank" rel="noopener" class="mt-0.5 inline-flex max-w-full items-center gap-1 text-xs text-sky-700 hover:underline dark:text-sky-300">
+                            <a v-if="j.url" :href="$url(j.url)" target="_blank" rel="noopener" class="mt-0.5 inline-flex max-w-full items-center gap-1 text-xs text-sky-700 hover:underline dark:text-sky-300">
                                 <span class="truncate">{{ j.url.replace(/^https?:\/\//, '') }}</span> <Fa icon="arrow-up-right-from-square" class="shrink-0 text-[0.6rem]" />
                             </a>
                         </td>

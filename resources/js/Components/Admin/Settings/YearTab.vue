@@ -61,7 +61,7 @@ const input = 'rounded-lg border border-neutral-300 bg-neutral-50 px-3 py-2.5 te
         <section class="space-y-3 border-t border-neutral-200 pt-6 dark:border-white/10">
             <h3 class="flex items-center gap-2 font-semibold"><Fa icon="database" class="text-gold-500" /> {{ t('admin.year.backup') }}</h3>
             <p class="text-sm text-neutral-600 dark:text-neutral-300">{{ t('admin.year.backupText') }}</p>
-            <a href="/admin/settings/year/backup" class="inline-flex items-center gap-2 rounded-lg bg-gold-400 px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-gold-300">
+            <a :href="$url('/admin/settings/year/backup')" class="inline-flex items-center gap-2 rounded-lg bg-gold-400 px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-gold-300">
                 <Fa icon="download" /> {{ t('admin.year.backupDownload') }}
             </a>
             <p class="text-xs text-neutral-500 dark:text-neutral-400"><Fa icon="circle-info" class="mr-1 text-gold-500" /> {{ t('admin.year.backupHint') }}</p>

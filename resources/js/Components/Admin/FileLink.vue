@@ -12,7 +12,7 @@ const { formatDate } = useI18n();
 </script>
 
 <template>
-    <a :href="file.url" class="flex items-center gap-3 rounded-lg border border-neutral-200 p-3 text-sm transition hover:border-gold-400 dark:border-white/10">
+    <a :href="$url(file.url)" class="flex items-center gap-3 rounded-lg border border-neutral-200 p-3 text-sm transition hover:border-gold-400 dark:border-white/10">
         <Fa :icon="icon" class="text-2xl text-emerald-500" />
         <span class="min-w-0 flex-1">
             <span class="block truncate font-medium">{{ file.name }}</span>

@@ -78,7 +78,7 @@ const box = 'rounded-xl border border-neutral-200 p-4 dark:border-white/10';
                 <section v-if="files" :class="box" class="space-y-2">
                     <p :class="label">{{ t('submissions.files.title') }}</p>
                     <template v-for="kind in ['pdf', 'word', 'turnitin']" :key="kind">
-                        <a v-if="files[kind]" :href="files[kind].url" class="flex items-center gap-3 rounded-lg border border-neutral-200 p-3 text-sm transition hover:border-gold-400 dark:border-white/10">
+                        <a v-if="files[kind]" :href="$url(files[kind].url)" class="flex items-center gap-3 rounded-lg border border-neutral-200 p-3 text-sm transition hover:border-gold-400 dark:border-white/10">
                             <Fa :icon="{ pdf: 'file-pdf', word: 'file-word', turnitin: 'file-circle-check' }[kind]" class="text-2xl text-gold-500" />
                             <span class="min-w-0 flex-1">
                                 <span class="block text-xs text-neutral-500 dark:text-neutral-400">{{ t(`submissions.files.${kind}`) }}</span>
@@ -91,7 +91,7 @@ const box = 'rounded-xl border border-neutral-200 p-4 dark:border-white/10';
                     </template>
                     <div v-if="files.supplementary.length">
                         <p class="mt-3 mb-1 text-xs text-neutral-500 dark:text-neutral-400">{{ t('submissions.files.supplementary') }}</p>
-                        <a v-for="file in files.supplementary" :key="file.id" :href="file.url" class="flex items-center gap-2 py-1 text-sm hover:text-gold-600 dark:hover:text-gold-400">
+                        <a v-for="file in files.supplementary" :key="file.id" :href="$url(file.url)" class="flex items-center gap-2 py-1 text-sm hover:text-gold-600 dark:hover:text-gold-400">
                             <Fa icon="paperclip" class="text-neutral-400" /> <span class="min-w-0 flex-1 truncate">{{ file.name }}</span>
                             <span class="text-xs text-neutral-500 dark:text-neutral-400">{{ formatFileSize(file.size) }}</span>
                         </a>
@@ -99,7 +99,7 @@ const box = 'rounded-xl border border-neutral-200 p-4 dark:border-white/10';
                 </section>
                 <section v-else :class="box">
                     <p :class="label">{{ t('submissions.fields.file') }}</p>
-                    <a :href="submission.file.url" class="mt-1 flex items-center gap-3 rounded-lg border border-neutral-200 p-3 text-sm transition hover:border-gold-400 dark:border-white/10">
+                    <a :href="$url(submission.file.url)" class="mt-1 flex items-center gap-3 rounded-lg border border-neutral-200 p-3 text-sm transition hover:border-gold-400 dark:border-white/10">
                         <Fa :icon="submission.file.name.toLowerCase().endsWith('.pdf') ? 'file-pdf' : 'file-word'" class="text-2xl text-gold-500" />
                         <span class="min-w-0 flex-1">
                             <span class="block truncate font-medium">{{ submission.file.name }}</span>

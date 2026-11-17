@@ -1,9 +1,16 @@
 import { createApp, h } from 'vue';
-import { createInertiaApp } from '@inertiajs/vue3';
+import { createInertiaApp, http } from '@inertiajs/vue3';
 import { FontAwesomeIcon } from '@/plugins/fontawesome';
 import { i18n } from '@/i18n';
 import FrontLayout from '@/Layouts/FrontLayout.vue';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+import { url, urlAbsolute } from '@/utils/url';
+
+// Served under a sub-path (e.g. /skdiit)? Every Inertia visit and fetch() in the code uses root paths
+// like '/admin/...'; add the prefix here once instead of at each call.
+http.onRequest((config) => ({ ...config, url: urlAbsolute(config.url) }));
+const nativeFetch = window.fetch.bind(window);
+window.fetch = (input, init) => nativeFetch(typeof input === 'string' ? url(input) : input, init);
 
 const pages = import.meta.glob('./Pages/**/*.vue', { eager: true });
 
@@ -18,8 +25,9 @@ createInertiaApp({
         return page;
     },
     setup({ el, App, props, plugin }) {
-        createApp({ render: () => h(App, props) })
-            .use(plugin)
+        const app = createApp({ render: () => h(App, props) });
+        app.config.globalProperties.$url = url; // templates: :href="$url('/admin')"
+        app.use(plugin)
             .use(i18n)
             .component('Fa', FontAwesomeIcon)
             .mount(el);

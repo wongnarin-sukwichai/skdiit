@@ -10,6 +10,7 @@ import EditorTimeline from '@/Components/Admin/Journey/EditorTimeline.vue';
 import { useI18n } from '@/i18n';
 import { useTheme } from '@/composables/useTheme';
 import { useModules } from '@/composables/useModules';
+import { stripBase } from '@/utils/url';
 
 const page = usePage();
 const { t } = useI18n();
@@ -32,7 +33,7 @@ const menuGroups = computed(() => modules.value.reduce((groups, item) => {
     return groups;
 }, []));
 
-const path = computed(() => page.url.split('?')[0]);
+const path = computed(() => stripBase(page.url.split('?')[0]));
 const isActive = (href) => (href === '/admin' ? path.value === '/admin' : path.value.startsWith(href));
 
 watch(() => page.url, () => {
@@ -61,14 +62,14 @@ function logout() {
             >
                 <Fa :icon="sidebarOpen ? 'xmark' : 'bars'" />
             </button>
-            <Link href="/admin" class="relative">
+            <Link :href="$url('/admin')" class="relative">
                 <Logo tagline class="hidden sm:inline-flex" />
                 <Logo class="sm:hidden" />
             </Link>
 
             <div class="relative ml-auto flex items-center gap-2 sm:gap-3">
                 <Link
-                    href="/"
+                    :href="$url('/')"
                     class="flex items-center gap-2 rounded-lg border border-gold-400/60 px-3 py-2 text-sm text-gold-300 transition hover:bg-gold-400 hover:text-black"
                     :title="t('admin.backHome')"
                 >
@@ -134,7 +135,7 @@ function logout() {
                     <Link
                         v-for="item in group.items"
                         :key="item.key"
-                        :href="item.href"
+                        :href="$url(item.href)"
                         :class="isActive(item.href)
                             ? 'bg-linear-to-r from-gold-400 to-gold-300 font-semibold text-black shadow-[0_0_20px_rgba(255,204,41,.25)]'
                             : 'text-neutral-700 hover:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-white/5'"
@@ -147,7 +148,7 @@ function logout() {
 
                 <hr class="mx-3 my-4 border-neutral-200 dark:border-white/10">
 
-                <Link href="/" class="flex items-center gap-3 rounded-lg px-4 py-3 text-neutral-700 transition hover:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-white/5">
+                <Link :href="$url('/')" class="flex items-center gap-3 rounded-lg px-4 py-3 text-neutral-700 transition hover:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-white/5">
                     <Fa icon="arrow-up-right-from-square" class="w-5 text-lg text-neutral-500 dark:text-neutral-400" />
                     {{ t('admin.menu.website') }}
                 </Link>
@@ -159,7 +160,7 @@ function logout() {
 
         <main class="p-4 sm:p-6 lg:ml-80 print:m-0 print:p-0">
             <!-- The system is closed to everyone but admin (Settings › ปิดระบบ) -->
-            <Link v-if="page.props.siteClosed" href="/admin/settings?tab=closure" class="mb-4 flex items-center gap-3 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 print:hidden dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
+            <Link v-if="page.props.siteClosed" :href="$url('/admin/settings?tab=closure')" class="mb-4 flex items-center gap-3 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 print:hidden dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
                 <Fa icon="power-off" /> <span class="flex-1">{{ t('admin.closure.banner') }}</span> <Fa icon="chevron-right" class="text-xs" />
             </Link>
             <!-- Not on the home page, which shows the same stages in full (EditorTimelineCard) -->

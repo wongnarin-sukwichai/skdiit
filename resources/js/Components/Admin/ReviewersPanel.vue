@@ -136,7 +136,7 @@ function toggleShare(review) {
                     </span>
 
                     <div class="flex gap-1.5">
-                        <a v-if="review.attachment" :href="review.attachment.url" :class="iconBtn" :title="`${t('reviews.form.attachment')}: ${review.attachment.name}`"><Fa icon="paperclip" class="text-xs" /></a>
+                        <a v-if="review.attachment" :href="$url(review.attachment.url)" :class="iconBtn" :title="`${t('reviews.form.attachment')}: ${review.attachment.name}`"><Fa icon="paperclip" class="text-xs" /></a>
                         <!-- The reviewer's file goes to the author (default) unless held back here -->
                         <button
                             v-if="review.attachment && review.state === 'submitted'"

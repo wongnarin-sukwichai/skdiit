@@ -41,7 +41,7 @@ const hadRevision = computed(() => props.history.some((e) => e.action === 'resub
     <Card class="space-y-6">
         <PageHeader icon="file-arrow-up" :title="t('admin.menu.my-submissions')" :subtitle="submission.code" />
 
-        <Link href="/admin/my-submissions" class="inline-flex items-center gap-2 rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition hover:border-gold-400 dark:border-white/20">
+        <Link :href="$url('/admin/my-submissions')" class="inline-flex items-center gap-2 rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition hover:border-gold-400 dark:border-white/20">
             <Fa icon="chevron-left" class="text-xs" /> {{ t('submissions.back') }}
         </Link>
 

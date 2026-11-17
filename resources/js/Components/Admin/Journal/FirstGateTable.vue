@@ -82,7 +82,7 @@ const iconBtn = 'inline-grid size-8 place-items-center rounded-md border border-
                         <!-- Red bar: still waiting past the first-gate deadline -->
                         <td :class="item.pastDeadline ? 'border-red-500' : 'border-transparent'" class="border-l-4 px-4 py-3 font-mono text-xs whitespace-nowrap text-gold-600 dark:text-gold-400">{{ item.code }}</td>
                         <td class="max-w-md px-4 py-3">
-                            <Link :href="`${showUrl}/${item.id}`" class="line-clamp-2 font-medium hover:text-gold-600 dark:hover:text-gold-400">{{ tr(item.title) }}</Link>
+                            <Link :href="$url(`${showUrl}/${item.id}`)" class="line-clamp-2 font-medium hover:text-gold-600 dark:hover:text-gold-400">{{ tr(item.title) }}</Link>
                             <span class="block truncate text-xs text-neutral-500 dark:text-neutral-400">{{ item.authors.map((a) => a.name).join(', ') }}</span>
                         </td>
                         <td class="px-4 py-3 text-neutral-600 dark:text-neutral-300">
@@ -125,7 +125,7 @@ const iconBtn = 'inline-grid size-8 place-items-center rounded-md border border-
                                 <a
                                     v-for="kind in fileKinds.filter((k) => item.files[k.key])"
                                     :key="kind.key"
-                                    :href="fileHref(item.files[kind.key])"
+                                    :href="$url(fileHref(item.files[kind.key]))"
                                     :target="item.files[kind.key].isPdf ? '_blank' : undefined"
                                     rel="noopener"
                                     :title="item.files[kind.key].name"
@@ -160,7 +160,7 @@ const iconBtn = 'inline-grid size-8 place-items-center rounded-md border border-
                         </td>
                         <td class="px-4 py-3 whitespace-nowrap text-neutral-500 dark:text-neutral-400">{{ formatDate(item.submittedAt) }}</td>
                         <td class="px-4 py-3 text-right">
-                            <Link :href="`${showUrl}/${item.id}`" :class="iconBtn" :title="t('registrants.view')"><Fa icon="eye" class="text-xs" /></Link>
+                            <Link :href="$url(`${showUrl}/${item.id}`)" :class="iconBtn" :title="t('registrants.view')"><Fa icon="eye" class="text-xs" /></Link>
                         </td>
                     </tr>
                     <tr v-if="!papers.length">

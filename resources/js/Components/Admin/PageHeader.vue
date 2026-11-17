@@ -21,7 +21,7 @@ const { t } = useI18n();
             </div>
         </div>
         <nav class="flex items-center gap-2 text-sm text-neutral-500 sm:ml-auto dark:text-neutral-400" aria-label="Breadcrumb">
-            <Link href="/admin" class="flex items-center gap-1.5 hover:text-gold-500">
+            <Link :href="$url('/admin')" class="flex items-center gap-1.5 hover:text-gold-500">
                 <Fa icon="house" class="text-gold-400" /> {{ t('admin.menu.dashboard') }}
             </Link>
             <template v-if="title !== t('admin.menu.dashboard')">

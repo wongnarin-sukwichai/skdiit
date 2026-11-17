@@ -26,7 +26,7 @@ const items = computed(() => [
             :is="item.href ? 'a' : 'div'"
             v-for="item in items"
             :key="item.icon"
-            :href="item.href"
+            :href="$url(item.href)"
             class="flex items-start gap-4 rounded-2xl border border-gold-400/20 bg-ink-900/80 p-6 transition hover:border-gold-400/50"
         >
             <span class="grid size-12 shrink-0 place-items-center rounded-full bg-gold-400 text-lg text-black">

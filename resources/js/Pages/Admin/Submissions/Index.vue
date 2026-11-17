@@ -105,7 +105,7 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
             <DeadlineNotice :opens-at="opensAt" :deadline="deadline" :phase="phase" class="flex-1" />
             <!-- Every camera-ready file in one ZIP, for compiling the Proceeding -->
             <a
-                href="/admin/submissions/export/camera-ready"
+                :href="$url('/admin/submissions/export/camera-ready')"
                 :class="cameraReadyCount ? 'hover:border-gold-400 hover:text-gold-600 dark:hover:text-gold-400' : 'pointer-events-none opacity-50'"
                 class="flex shrink-0 items-center justify-center gap-2 rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition dark:border-white/20"
                 :aria-disabled="!cameraReadyCount"
@@ -158,7 +158,7 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
         <Transition name="fade">
             <p v-if="atFirstGate && filters.q" class="flex flex-wrap items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200">
                 <Fa icon="code-branch" /> {{ t('submissions.manage.atFirstGate', { n: formatNumber(atFirstGate) }) }}
-                <Link :href="`/admin/selection?tab=all&q=${encodeURIComponent(filters.q)}`" class="font-semibold underline">{{ t('submissions.manage.openSelection') }}</Link>
+                <Link :href="$url(`/admin/selection?tab=all&q=${encodeURIComponent(filters.q)}`)" class="font-semibold underline">{{ t('submissions.manage.openSelection') }}</Link>
             </p>
         </Transition>
 
@@ -200,7 +200,7 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
                             <!-- Gold bar on the left: the editors' move -->
                             <td :class="item.waitingOn.who === 'editor' ? 'border-gold-400' : 'border-transparent'" class="border-l-4 px-4 py-3 font-mono text-xs whitespace-nowrap text-gold-600 dark:text-gold-400">{{ item.code }}</td>
                             <td class="max-w-md px-4 py-3">
-                                <Link :href="`/admin/submissions/${item.id}`" class="line-clamp-2 font-medium hover:text-gold-600 dark:hover:text-gold-400">{{ tr(item.title) }}</Link>
+                                <Link :href="$url(`/admin/submissions/${item.id}`)" class="line-clamp-2 font-medium hover:text-gold-600 dark:hover:text-gold-400">{{ tr(item.title) }}</Link>
                                 <span class="block truncate text-xs text-neutral-500 dark:text-neutral-400">
                                     <span v-if="item.notes" class="mr-1.5 inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 text-amber-700 dark:bg-amber-400/15 dark:text-amber-300" :title="t('notes.count', { n: item.notes })"><Fa icon="note-sticky" class="text-[0.65rem]" />{{ item.notes }}</span>{{ item.authors.map((a) => a.name).join(', ') }}
                                 </span>
@@ -224,7 +224,7 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
                             <td class="px-4 py-3 whitespace-nowrap text-neutral-500 dark:text-neutral-400">{{ formatDate(item.submittedAt) }}</td>
                             <td class="px-4 py-3">
                                 <div class="flex items-center justify-end gap-1.5">
-                                    <Link :href="`/admin/submissions/${item.id}`" :class="[iconBtn, 'inline-grid']" :title="t('registrants.view')"><Fa icon="eye" class="text-xs" /></Link>
+                                    <Link :href="$url(`/admin/submissions/${item.id}`)" :class="[iconBtn, 'inline-grid']" :title="t('registrants.view')"><Fa icon="eye" class="text-xs" /></Link>
                                 </div>
                             </td>
                         </tr>
@@ -247,7 +247,7 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
                 <ul class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                     <li v-for="item in group.papers" :key="item.id">
                         <Link
-                            :href="`/admin/submissions/${item.id}`"
+                            :href="$url(`/admin/submissions/${item.id}`)"
                             :class="item.waitingOn.who === 'editor' ? 'border-l-gold-400' : 'border-l-neutral-200 dark:border-l-white/10'"
                             class="flex h-full flex-col gap-2 rounded-xl border border-l-4 border-neutral-200 p-3 transition hover:border-gold-400 hover:bg-gold-50/50 dark:border-white/10 dark:hover:bg-gold-400/5"
                         >

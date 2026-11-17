@@ -20,7 +20,7 @@ const { t, tr } = useI18n();
         <a
             v-for="doc in documents"
             :key="doc.id"
-            :href="doc.url"
+            :href="$url(doc.url)"
             class="flex items-center gap-4 rounded-2xl border border-white/10 bg-ink-900/80 p-5 transition hover:border-gold-400/40"
         >
             <span class="grid size-12 shrink-0 place-items-center rounded-xl bg-gold-400/15 text-xl text-gold-400">

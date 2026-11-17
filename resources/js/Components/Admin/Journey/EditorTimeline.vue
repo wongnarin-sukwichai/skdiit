@@ -41,7 +41,7 @@ const dot = (s) => (s.late ? 'bg-red-500 text-white' : s.state === 'active' ? 'b
         <ol class="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto">
             <li v-for="(s, i) in stages" :key="s.key" class="flex shrink-0 items-center">
                 <Fa v-if="i" icon="chevron-right" class="mx-0.5 text-[9px] text-neutral-300 dark:text-white/20" />
-                <Link :href="s.href" :title="tip(s)" :class="chip(s)" class="flex items-center gap-1.5 rounded-full border px-2 py-1 transition hover:border-gold-400">
+                <Link :href="$url(s.href)" :title="tip(s)" :class="chip(s)" class="flex items-center gap-1.5 rounded-full border px-2 py-1 transition hover:border-gold-400">
                     <span :class="dot(s)" class="grid size-4.5 place-items-center rounded-full text-[10px] font-semibold">
                         <Fa v-if="s.state === 'done' && !s.late" icon="check" class="text-[9px]" />
                         <template v-else>{{ i + 1 }}</template>
@@ -63,7 +63,7 @@ const dot = (s) => (s.late ? 'bg-red-500 text-white' : s.state === 'active' ? 'b
             <template v-else-if="next">{{ t('admin.editorTimeline.nextIn', { name: label(next), days: daysTo(next) }) }}</template>
             <template v-else>{{ t('admin.editorTimeline.allDone') }}</template>
         </span>
-        <Link v-if="accessTo('settings')" href="/admin/settings?tab=schedule" :title="t('admin.editorTimeline.schedule')" class="grid size-7 shrink-0 place-items-center rounded-md text-neutral-400 transition hover:bg-neutral-100 hover:text-gold-500 dark:hover:bg-white/5">
+        <Link v-if="accessTo('settings')" :href="$url('/admin/settings?tab=schedule')" :title="t('admin.editorTimeline.schedule')" class="grid size-7 shrink-0 place-items-center rounded-md text-neutral-400 transition hover:bg-neutral-100 hover:text-gold-500 dark:hover:bg-white/5">
             <Fa icon="calendar-days" />
         </Link>
     </nav>

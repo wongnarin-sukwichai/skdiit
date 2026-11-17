@@ -43,7 +43,7 @@ const { accessTo } = useModules();
             <Fa icon="circle-info" class="mr-1 text-gold-400" />{{ t('remindAuthor.templateHint') }}
             <Link
                 v-if="accessTo('announcements') && preview.template"
-                :href="`/admin/announcements?tab=templates&template=${preview.template}`"
+                :href="$url(`/admin/announcements?tab=templates&template=${preview.template}`)"
                 class="ml-1 inline-flex items-center gap-1 font-medium text-gold-400 underline-offset-2 hover:underline"
                 @click="emit('leave')"
             >

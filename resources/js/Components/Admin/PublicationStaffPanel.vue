@@ -137,7 +137,7 @@ const box = 'rounded-lg border border-neutral-200 p-4 dark:border-white/10';
                     <Fa icon="calendar-days" class="mr-1 text-gold-500" />{{ formatDate(publication.presentation.at, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) }} · {{ publication.presentation.room }}
                 </p>
                 <p v-if="!sessionOptions.length" class="text-sm text-neutral-500 dark:text-neutral-400">
-                    {{ t('publication.presentation.noSessions') }} <Link href="/admin/presentations" class="text-gold-600 underline dark:text-gold-400">{{ t('admin.menu.presentations') }}</Link>
+                    {{ t('publication.presentation.noSessions') }} <Link :href="$url('/admin/presentations')" class="text-gold-600 underline dark:text-gold-400">{{ t('admin.menu.presentations') }}</Link>
                 </p>
                 <div v-else class="grid gap-2 sm:grid-cols-[1fr_auto]">
                     <select v-model="slotForm.session_id" :class="[input, border(slotForm.errors.session_id)]" :aria-label="t('publication.presentation.session')">

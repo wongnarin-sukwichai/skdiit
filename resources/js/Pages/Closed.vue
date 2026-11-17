@@ -29,7 +29,7 @@ const field = 'w-full rounded-lg border border-white/10 bg-ink-800 px-3 py-2.5 t
 <template>
     <Head :title="t('closed.title')" />
 
-    <div class="dark flex min-h-screen flex-col bg-ink-950 bg-[url('/img/bg/bg.png')] bg-cover bg-top text-neutral-100">
+    <div class="dark flex min-h-screen flex-col bg-ink-950 bg-cover bg-top text-neutral-100" :style="`background-image: url('${$url('/img/bg/bg.png')}')`">
         <div class="flex justify-end p-4"><LangSwitch /></div>
         <main class="mx-auto flex w-full max-w-2xl flex-1 flex-col items-center justify-center gap-6 px-4 pb-16 text-center">
             <Logo />

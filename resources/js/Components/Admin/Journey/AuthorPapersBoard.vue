@@ -88,7 +88,7 @@ const statusTone = (paper) => (paper.place.failed
                 <ul v-if="column.papers.length" class="mt-2 ml-12 space-y-1.5 @3xl:mt-3 @3xl:ml-0">
                     <li v-for="paper in column.papers" :key="paper.id">
                         <Link
-                            :href="`/admin/my-submissions/${paper.id}`"
+                            :href="$url(`/admin/my-submissions/${paper.id}`)"
                             :title="`${paper.code} ${tr(paper.title)}`"
                             :class="paper.place.failed
                                 ? 'border-red-200 bg-red-50/60 dark:border-red-500/30 dark:bg-red-500/10'

@@ -48,7 +48,7 @@ const btn = 'flex items-center justify-center gap-2 rounded-lg border px-3 py-2.
                 <Fa icon="hourglass-half" class="mr-1" />{{ t('journal.panel.waitingAnswer', { date: formatDate(submission.journalAnswerDue) }) }}
             </p>
             <p v-else class="text-emerald-700 dark:text-emerald-300"><Fa icon="circle-check" class="mr-1" />{{ t('journal.panel.acceptedNote') }}</p>
-            <a v-if="submission.journal.url" :href="submission.journal.url" target="_blank" rel="noopener" class="mt-1 inline-flex items-center gap-1 text-xs text-sky-700 hover:underline dark:text-sky-300">
+            <a v-if="submission.journal.url" :href="$url(submission.journal.url)" target="_blank" rel="noopener" class="mt-1 inline-flex items-center gap-1 text-xs text-sky-700 hover:underline dark:text-sky-300">
                 {{ submission.journal.url }} <Fa icon="arrow-up-right-from-square" class="text-[0.6rem]" />
             </a>
         </div>

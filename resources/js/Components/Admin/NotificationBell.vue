@@ -59,7 +59,7 @@ function go(item) {
                     </li>
                     <li v-if="!latest.length" class="px-4 py-10 text-center text-sm text-neutral-500">{{ t('admin.notificationsPage.empty') }}</li>
                 </ul>
-                <Link :href="allHref" class="block border-t border-neutral-200 px-4 py-2.5 text-center text-sm font-medium text-gold-600 hover:bg-neutral-50 dark:border-white/10 dark:text-gold-400 dark:hover:bg-white/5" @click="open = false">
+                <Link :href="$url(allHref)" class="block border-t border-neutral-200 px-4 py-2.5 text-center text-sm font-medium text-gold-600 hover:bg-neutral-50 dark:border-white/10 dark:text-gold-400 dark:hover:bg-white/5" @click="open = false">
                     {{ t('admin.notificationsPage.viewAll') }}
                 </Link>
             </div>

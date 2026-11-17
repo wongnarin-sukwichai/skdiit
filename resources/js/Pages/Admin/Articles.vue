@@ -148,7 +148,7 @@ const typeBadge = {
                             <p class="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">{{ where(article) }} · {{ tr(article.track.name) }}</p>
                         </div>
                         <div class="flex shrink-0 flex-wrap items-center gap-2 sm:flex-col sm:items-end">
-                            <a :href="article.file.url" :class="smallBtn"><Fa icon="download" /> {{ article.file.name.split('.').pop().toUpperCase() }} · {{ formatFileSize(article.file.size) }}</a>
+                            <a :href="$url(article.file.url)" :class="smallBtn"><Fa icon="download" /> {{ article.file.name.split('.').pop().toUpperCase() }} · {{ formatFileSize(article.file.size) }}</a>
                             <button :class="smallBtn" @click="copyCitation(article)"><Fa icon="copy" /> {{ t('admin.articles.cite') }}</button>
                         </div>
                     </li>
@@ -195,7 +195,7 @@ const typeBadge = {
                 <button type="button" class="flex items-center gap-2 rounded-lg border border-white/20 px-4 py-2.5 text-sm transition hover:border-gold-400" @click="copyCitation(shown)">
                     <Fa icon="copy" /> {{ t('admin.articles.cite') }}
                 </button>
-                <a :href="shown.file.url" class="flex items-center gap-2 rounded-lg bg-gold-400 px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-gold-300">
+                <a :href="$url(shown.file.url)" class="flex items-center gap-2 rounded-lg bg-gold-400 px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-gold-300">
                     <Fa icon="download" /> {{ t('admin.publication.download') }}
                 </a>
             </div>

@@ -257,7 +257,7 @@ const err = (form, key) => (form.errors[key] ? t(form.errors[key]) : null);
                             <li v-for="(paper, i) in session.papers" :key="paper.id" class="flex gap-3 px-4 py-2.5 text-sm">
                                 <span class="w-11 shrink-0 font-mono text-xs text-neutral-500 dark:text-neutral-400">{{ paper.at }}</span>
                                 <div class="min-w-0 flex-1">
-                                    <Link :href="`/admin/submissions/${paper.id}`" class="line-clamp-2 hover:text-gold-600 dark:hover:text-gold-400">{{ tr(paper.title) }}</Link>
+                                    <Link :href="$url(`/admin/submissions/${paper.id}`)" class="line-clamp-2 hover:text-gold-600 dark:hover:text-gold-400">{{ tr(paper.title) }}</Link>
                                     <p class="text-xs text-neutral-500 dark:text-neutral-400">
                                         <span class="font-mono">{{ paper.code }}</span> · {{ paper.authors }}
                                         <span v-if="!paper.notified" class="ml-1 rounded-full bg-sky-100 px-2 py-0.5 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300" :title="t('admin.presentations.notNotifiedHint')"><Fa icon="envelope" class="mr-1" />{{ t('admin.presentations.notNotified') }}</span>
@@ -284,7 +284,7 @@ const err = (form, key) => (form.errors[key] ? t(form.errors[key]) : null);
             <TransitionGroup name="fade" tag="ul" class="divide-y divide-neutral-200 rounded-xl border border-neutral-200 dark:divide-white/5 dark:border-white/10">
                 <li v-for="paper in waiting" :key="paper.id" class="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
                     <div class="min-w-0 flex-1 text-sm">
-                        <Link :href="`/admin/submissions/${paper.id}`" class="font-medium hover:text-gold-600 dark:hover:text-gold-400">{{ tr(paper.title) }}</Link>
+                        <Link :href="$url(`/admin/submissions/${paper.id}`)" class="font-medium hover:text-gold-600 dark:hover:text-gold-400">{{ tr(paper.title) }}</Link>
                         <p class="text-xs text-neutral-500 dark:text-neutral-400">
                             <span class="font-mono">{{ paper.code }}</span> · {{ paper.authors }}
                             <template v-if="paper.track"> · {{ tr(paper.track.name) }}</template>

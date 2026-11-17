@@ -130,7 +130,7 @@ const accept = '.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.zip';
                     <div class="grid min-w-60 flex-1 gap-2 md:grid-cols-2">
                         <input v-model="drafts[doc.id].name_th" :placeholder="t('lang.th')" :class="[input, border(errors[doc.id]?.name_th)]">
                         <input v-model="drafts[doc.id].name_en" :placeholder="t('lang.en')" :class="[input, border(errors[doc.id]?.name_en)]">
-                        <a :href="doc.url" class="truncate text-xs text-gold-600 hover:underline dark:text-gold-400 md:col-span-2"><Fa icon="download" class="mr-1" />{{ doc.file_name }} · {{ formatFileSize(doc.size) }}</a>
+                        <a :href="$url(doc.url)" class="truncate text-xs text-gold-600 hover:underline dark:text-gold-400 md:col-span-2"><Fa icon="download" class="mr-1" />{{ doc.file_name }} · {{ formatFileSize(doc.size) }}</a>
                         <span v-if="errors[doc.id]?.file" class="text-xs text-red-500 md:col-span-2">{{ t(errors[doc.id].file, { max: maxMb }) }}</span>
                     </div>
                     <label class="cursor-pointer rounded-lg border border-neutral-300 px-3 py-2 text-xs transition hover:border-gold-400 dark:border-white/15" :title="t('admin.website.replaceFile')">

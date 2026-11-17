@@ -148,7 +148,7 @@ const row = 'flex items-center gap-3 rounded-lg px-3 py-2.5 transition hover:bg-
                 <h2 :class="h2"><Fa icon="list-check" class="text-gold-500" /> {{ t('admin.dash.todo') }}</h2>
                 <ul class="space-y-1">
                     <li v-for="task in data.tasks" :key="task.key">
-                        <Link :href="task.href" :class="row">
+                        <Link :href="$url(task.href)" :class="row">
                             <span class="grid size-9 shrink-0 place-items-center rounded-full bg-gold-100 text-gold-600 dark:bg-gold-400/15 dark:text-gold-400"><Fa :icon="task.icon" /></span>
                             <span class="flex-1 text-sm">{{ t(`admin.dash.task.${task.key}`) }}</span>
                             <span
@@ -185,7 +185,7 @@ const row = 'flex items-center gap-3 rounded-lg px-3 py-2.5 transition hover:bg-
                 <h2 :class="h2"><Fa icon="triangle-exclamation" class="text-red-500" /> {{ t('admin.dash.lateReviewers') }}</h2>
                 <ul class="divide-y divide-neutral-200 dark:divide-white/5">
                     <li v-for="item in data.overdue" :key="`${item.code}-${item.reviewer}`">
-                        <Link :href="`/admin/submissions/${item.submissionId}`" class="flex items-center gap-3 py-3 text-sm transition hover:text-gold-600 dark:hover:text-gold-400">
+                        <Link :href="$url(`/admin/submissions/${item.submissionId}`)" class="flex items-center gap-3 py-3 text-sm transition hover:text-gold-600 dark:hover:text-gold-400">
                             <span class="flex-1">
                                 <span class="block font-medium">{{ item.reviewer }}</span>
                                 <span class="font-mono text-xs text-neutral-500 dark:text-neutral-400">{{ item.code }}</span>
@@ -207,7 +207,7 @@ const row = 'flex items-center gap-3 rounded-lg px-3 py-2.5 transition hover:bg-
                 <h2 :class="h2"><Fa icon="clock-rotate-left" class="text-gold-500" /> {{ t('admin.dash.paperActivity') }}</h2>
                 <ul class="space-y-3">
                     <li v-for="event in data.activity" :key="event.id">
-                        <Link :href="`/admin/submissions/${event.submissionId}`" class="flex gap-3 text-sm transition hover:text-gold-600 dark:hover:text-gold-400">
+                        <Link :href="$url(`/admin/submissions/${event.submissionId}`)" class="flex gap-3 text-sm transition hover:text-gold-600 dark:hover:text-gold-400">
                             <Fa :icon="eventIcons[event.action] ?? 'circle-info'" class="mt-0.5 w-4 text-neutral-400" />
                             <span class="min-w-0 flex-1">
                                 <span class="block">{{ eventTitle(t, event) }} <span class="font-mono text-xs text-neutral-500 dark:text-neutral-400">{{ event.code }}</span></span>
@@ -229,11 +229,11 @@ const row = 'flex items-center gap-3 rounded-lg px-3 py-2.5 transition hover:bg-
             <Card>
                 <div class="mb-5 flex flex-wrap items-center justify-between gap-2">
                     <h2 :class="[h2, 'mb-0']"><Fa icon="chart-line" class="text-gold-500" /> {{ t('admin.dash.timeline') }}</h2>
-                    <Link v-if="data.papers.length" href="/admin/my-submissions" class="text-sm text-gold-600 hover:underline dark:text-gold-400">{{ t('admin.menu.my-submissions') }} <Fa icon="chevron-right" class="text-xs" /></Link>
+                    <Link v-if="data.papers.length" :href="$url('/admin/my-submissions')" class="text-sm text-gold-600 hover:underline dark:text-gold-400">{{ t('admin.menu.my-submissions') }} <Fa icon="chevron-right" class="text-xs" /></Link>
                 </div>
                 <div v-if="!data.papers.length" class="rounded-xl border border-dashed border-neutral-300 py-10 text-center text-sm text-neutral-500 dark:border-white/15">
                     {{ t('submissions.mine.empty') }}
-                    <Link href="/admin/my-submissions" class="mt-2 block text-gold-600 hover:underline dark:text-gold-400">{{ t('submissions.mine.new') }}</Link>
+                    <Link :href="$url('/admin/my-submissions')" class="mt-2 block text-gold-600 hover:underline dark:text-gold-400">{{ t('submissions.mine.new') }}</Link>
                 </div>
                 <AuthorPapersBoard v-else :papers="data.papers" />
             </Card>
@@ -258,13 +258,13 @@ const row = 'flex items-center gap-3 rounded-lg px-3 py-2.5 transition hover:bg-
                     <h2 :class="[h2, 'mb-0']"><Fa icon="bell" class="text-gold-500" /> {{ t('admin.menu.notifications') }}</h2>
                     <div class="flex items-center gap-4 text-sm">
                         <button v-if="unread" class="text-gold-600 hover:underline dark:text-gold-400" @click="markAllRead">{{ t('admin.notificationsPage.markAll') }}</button>
-                        <Link v-if="role === 'reviewer'" href="/admin/reviews" class="text-gold-600 hover:underline dark:text-gold-400">{{ t('admin.dash.allReviews') }} <Fa icon="chevron-right" class="text-xs" /></Link>
+                        <Link v-if="role === 'reviewer'" :href="$url('/admin/reviews')" class="text-gold-600 hover:underline dark:text-gold-400">{{ t('admin.dash.allReviews') }} <Fa icon="chevron-right" class="text-xs" /></Link>
                     </div>
                 </div>
                 <ul class="divide-y divide-neutral-200 rounded-xl border border-neutral-200 dark:divide-white/5 dark:border-white/10">
                     <li v-for="item in notifications" :key="item.id">
                         <Link
-                            :href="item.href"
+                            :href="$url(item.href)"
                             :class="item.read ? '' : 'bg-gold-50/60 dark:bg-gold-400/5'"
                             class="flex gap-3 p-3 transition hover:bg-gold-50 dark:hover:bg-gold-400/10"
                             @click="markRead(item)"

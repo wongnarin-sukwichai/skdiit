@@ -10,6 +10,7 @@ import RegisterModal from '@/Components/Front/RegisterModal.vue';
 import MyDetailsModal from '@/Components/Front/MyDetailsModal.vue';
 import { useI18n } from '@/i18n';
 import { useAuthModal } from '@/composables/useAuthModal';
+import { stripBase, url } from '@/utils/url';
 
 const page = usePage();
 const { t } = useI18n();
@@ -32,7 +33,9 @@ const joinYear = computed(() => {
     const user = page.props.auth.user;
     return user?.role === 'user' && !page.props.impersonation && (user.registered_year ?? 0) < page.props.site.year;
 });
-const isActive = (href) => (href === '/' ? page.url.split('?')[0] === '/' : page.url.startsWith(href));
+const path = computed(() => stripBase(page.url.split('?')[0]));
+const isActive = (href) => (href === '/' ? path.value === '/' : path.value.startsWith(href));
+const bgImage = `background-image: url('${url('/img/bg/bg.png')}')`;
 
 // Close menus whenever the page changes
 watch(() => page.url, () => {
@@ -48,7 +51,7 @@ watch(() => page.props.authModal, (value) => {
 // On /login or /register, keep the URL in step with the modal; closing it goes back to /
 function setModal(value) {
     modal.value = value;
-    if (['/login', '/register'].includes(window.location.pathname)) {
+    if (['/login', '/register'].includes(stripBase(window.location.pathname))) {
         router.visit(value ? `/${value}` : '/', { replace: true, preserveState: true, preserveScroll: true });
     }
 }
@@ -70,18 +73,18 @@ function logout() {
         <!-- Mobile/tablet: dimmed band at the top that fades into black, so the hero text stays readable -->
         <div
             class="pointer-events-none absolute inset-x-0 top-0 -z-10 h-130 bg-cover bg-top-right bg-no-repeat opacity-35 mask-b-from-40% lg:hidden"
-            style="background-image: url('/img/bg/bg.png')"
+            :style="bgImage"
             aria-hidden="true"
         />
         <!-- Desktop: full-page background -->
         <div
             class="pointer-events-none fixed inset-0 -z-10 hidden bg-cover bg-top-right bg-no-repeat opacity-100 lg:block"
-            style="background-image: url('/img/bg/bg.png')"
+            :style="bgImage"
             aria-hidden="true"
         />
         <header class="sticky top-0 z-40 border-b border-white/10 bg-ink-950/85 backdrop-blur">
             <div class="mx-auto flex max-w-[1600px] items-center gap-4 px-4 py-3 sm:px-6 lg:px-8">
-                <Link href="/" class="shrink-0" aria-label="SKDIIT home">
+                <Link :href="$url('/')" class="shrink-0" aria-label="SKDIIT home">
                     <Logo />
                 </Link>
 
@@ -89,7 +92,7 @@ function logout() {
                     <Link
                         v-for="item in navItems"
                         :key="item.key"
-                        :href="item.href"
+                        :href="$url(item.href)"
                         :class="isActive(item.href) ? 'text-gold-400' : 'text-neutral-200 hover:text-gold-300'"
                         class="relative px-3 py-2 text-[0.95rem] transition"
                     >
@@ -133,7 +136,7 @@ function logout() {
                             </button>
                             <Transition name="fade">
                                 <div v-if="userMenuOpen" class="absolute right-0 mt-2 w-52 overflow-hidden rounded-xl border border-white/10 bg-ink-900 py-1 shadow-xl">
-                                    <Link v-if="page.props.auth.modules.length" href="/admin" class="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-white/5">
+                                    <Link v-if="page.props.auth.modules.length" :href="$url('/admin')" class="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-white/5">
                                         <Fa icon="gauge" class="text-gold-400" /> {{ t('auth.backend') }}
                                     </Link>
                                     <button class="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-white/5" @click="openMyDetails">
@@ -165,7 +168,7 @@ function logout() {
                         <Link
                             v-for="item in navItems"
                             :key="item.key"
-                            :href="item.href"
+                            :href="$url(item.href)"
                             :class="isActive(item.href) ? 'text-gold-400' : 'text-neutral-200'"
                             class="py-2.5"
                         >
@@ -179,7 +182,7 @@ function logout() {
                             <button class="rounded-lg bg-gold-400 px-4 py-2 text-sm font-semibold text-black" @click="modal = 'register'">{{ t('auth.register') }}</button>
                         </template>
                         <template v-else>
-                            <Link v-if="page.props.auth.modules.length" href="/admin" class="rounded-lg border border-white/15 px-4 py-2 text-sm">{{ t('auth.backend') }}</Link>
+                            <Link v-if="page.props.auth.modules.length" :href="$url('/admin')" class="rounded-lg border border-white/15 px-4 py-2 text-sm">{{ t('auth.backend') }}</Link>
                             <button class="rounded-lg border border-white/15 px-4 py-2 text-sm" @click="openMyDetails">{{ t('auth.myDetails') }}</button>
                             <button class="rounded-lg border border-white/15 px-4 py-2 text-sm" @click="logout">{{ t('auth.logout') }}</button>
                         </template>
@@ -209,7 +212,7 @@ function logout() {
             <span class="glow-line flex-1" />
             <span class="text-center">
                 {{ t('brand.credit') }}
-                <Link href="/privacy" class="ml-2 whitespace-nowrap text-neutral-400 underline hover:text-gold-400">{{ t('privacy.title') }}</Link>
+                <Link :href="$url('/privacy')" class="ml-2 whitespace-nowrap text-neutral-400 underline hover:text-gold-400">{{ t('privacy.title') }}</Link>
             </span>
             <span class="glow-line flex-1" />
         </footer>

@@ -230,12 +230,12 @@ const nowStep = computed(() => steps.value.find((x) => ['current', 'failed'].inc
                 <!-- The journal offered: its terms and site, so the author can decide -->
                 <div v-if="card.answer && journal" class="mt-2 space-y-1 rounded-lg bg-white/70 px-3 py-2 text-sm text-neutral-700 dark:bg-black/20 dark:text-neutral-200">
                     <p v-if="journal.terms" class="whitespace-pre-line"><span class="font-semibold">{{ t('submissions.journalOffer.terms') }}:</span> {{ journal.terms }}</p>
-                    <a v-if="journal.url" :href="journal.url" target="_blank" rel="noopener" class="inline-flex items-center gap-1 text-sky-700 underline-offset-2 hover:underline dark:text-sky-300">
+                    <a v-if="journal.url" :href="$url(journal.url)" target="_blank" rel="noopener" class="inline-flex items-center gap-1 text-sky-700 underline-offset-2 hover:underline dark:text-sky-300">
                         {{ t('submissions.journalOffer.visit') }} <Fa icon="arrow-up-right-from-square" class="text-xs" />
                     </a>
                     <p class="text-xs opacity-80">{{ t('submissions.journalOffer.explain') }}</p>
                 </div>
-                <a v-if="messageFile && ['revise', 'cameraReady', 'cameraReadyFix', 'rejected'].includes(card.title)" :href="messageFile.url" class="mt-2 inline-flex items-center gap-1.5 rounded-md border border-current/30 bg-white/70 px-2.5 py-1 text-xs font-medium transition hover:bg-white dark:bg-black/20">
+                <a v-if="messageFile && ['revise', 'cameraReady', 'cameraReadyFix', 'rejected'].includes(card.title)" :href="$url(messageFile.url)" class="mt-2 inline-flex items-center gap-1.5 rounded-md border border-current/30 bg-white/70 px-2.5 py-1 text-xs font-medium transition hover:bg-white dark:bg-black/20">
                     <Fa icon="paperclip" /> {{ t('decision.attachedFile') }}: {{ messageFile.name }}
                 </a>
                 <blockquote v-if="message && ['revise', 'cameraReady', 'cameraReadyFix', 'rejected'].includes(card.title)" class="mt-2 rounded-lg bg-white/70 px-3 py-2 text-sm whitespace-pre-line text-neutral-700 dark:bg-black/20 dark:text-neutral-200">
@@ -251,13 +251,13 @@ const nowStep = computed(() => steps.value.find((x) => ['current', 'failed'].inc
                 </button>
             </div>
             <template v-if="card.action">
-                <a v-if="card.action.external" :href="card.action.href" target="_blank" rel="noopener" class="flex shrink-0 items-center justify-center gap-2 rounded-lg bg-gold-400 px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-gold-300">
+                <a v-if="card.action.external" :href="$url(card.action.href)" target="_blank" rel="noopener" class="flex shrink-0 items-center justify-center gap-2 rounded-lg bg-gold-400 px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-gold-300">
                     {{ t(`submissions.journey.action.${card.action.label}`) }} <Fa icon="arrow-up-right-from-square" class="text-xs" />
                 </a>
-                <a v-else-if="card.action.anchor" :href="card.action.href" class="flex shrink-0 items-center justify-center gap-2 rounded-lg bg-gold-400 px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-gold-300">
+                <a v-else-if="card.action.anchor" :href="$url(card.action.href)" class="flex shrink-0 items-center justify-center gap-2 rounded-lg bg-gold-400 px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-gold-300">
                     {{ t(`submissions.journey.action.${card.action.label}`) }} <Fa icon="arrow-right" class="text-xs" />
                 </a>
-                <Link v-else :href="card.action.href" class="flex shrink-0 items-center justify-center gap-2 rounded-lg bg-gold-400 px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-gold-300">
+                <Link v-else :href="$url(card.action.href)" class="flex shrink-0 items-center justify-center gap-2 rounded-lg bg-gold-400 px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-gold-300">
                     <Fa icon="pen" class="text-xs" /> {{ t(`submissions.journey.action.${card.action.label}`) }}
                 </Link>
             </template>

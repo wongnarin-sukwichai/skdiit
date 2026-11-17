@@ -24,7 +24,7 @@ const { t } = useI18n();
                         </div>
                         <p v-if="review.comment" class="text-sm whitespace-pre-line text-neutral-700 dark:text-neutral-200">{{ review.comment }}</p>
                         <p v-else-if="!review.file" class="text-sm text-neutral-400 italic">{{ t('versions.noComment') }}</p>
-                        <a v-if="review.file" :href="review.file.url" class="mt-2 inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-xs transition hover:border-gold-400 dark:border-white/15 dark:bg-ink-900"><Fa icon="paperclip" class="text-gold-500" /> {{ review.file.name }}</a>
+                        <a v-if="review.file" :href="$url(review.file.url)" class="mt-2 inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-xs transition hover:border-gold-400 dark:border-white/15 dark:bg-ink-900"><Fa icon="paperclip" class="text-gold-500" /> {{ review.file.name }}</a>
                     </li>
                 </ul>
             </div>

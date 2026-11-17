@@ -151,7 +151,7 @@ const input = 'w-full rounded-lg border border-neutral-300 bg-neutral-50 px-3 py
             <button type="submit" class="flex items-center justify-center gap-2 rounded-lg bg-gold-400 px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-gold-300 sm:col-span-2 xl:col-span-1">
                 <Fa icon="magnifying-glass" /> {{ t('registrants.search') }}
             </button>
-            <a :href="exportUrl" class="flex items-center justify-center gap-2 rounded-lg border border-neutral-300 px-4 py-2.5 text-sm whitespace-nowrap transition hover:border-gold-400 sm:col-span-2 xl:col-span-1 dark:border-white/20">
+            <a :href="$url(exportUrl)" class="flex items-center justify-center gap-2 rounded-lg border border-neutral-300 px-4 py-2.5 text-sm whitespace-nowrap transition hover:border-gold-400 sm:col-span-2 xl:col-span-1 dark:border-white/20">
                 <Fa icon="file-excel" class="text-emerald-600 dark:text-emerald-400" /> {{ t('selection.export') }}
             </a>
         </form>

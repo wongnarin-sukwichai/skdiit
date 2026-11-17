@@ -58,13 +58,13 @@ const btn = 'inline-flex items-center gap-1.5 rounded-lg border border-neutral-3
                         <p class="text-xs text-neutral-500 dark:text-neutral-400">{{ when(v.at) }}</p>
                     </div>
                     <div class="flex flex-wrap gap-1.5">
-                        <a :href="v.file.url" :class="btn" :title="v.file.name">
+                        <a :href="$url(v.file.url)" :class="btn" :title="v.file.name">
                             <Fa :icon="v.file.isPdf ? 'file-pdf' : 'file-word'" /> {{ t('versions.manuscript') }} · {{ formatFileSize(v.file.size) }}
                         </a>
-                        <a v-for="file in v.word ?? []" :key="file.id" :href="file.url" :class="btn" :title="file.name"><Fa icon="file-word" /> {{ t('versions.word') }}</a>
-                        <a v-for="file in v.turnitin ?? []" :key="file.id" :href="file.url" :class="btn" :title="file.name"><Fa icon="file-circle-check" /> {{ t('versions.turnitin') }}</a>
-                        <a v-for="file in v.supplementary ?? []" :key="file.id" :href="file.url" :class="btn" :title="file.name"><Fa icon="paperclip" /> {{ file.name }}</a>
-                        <a v-if="v.letter" :href="v.letter.url" :class="btn" :title="v.letter.name">
+                        <a v-for="file in v.word ?? []" :key="file.id" :href="$url(file.url)" :class="btn" :title="file.name"><Fa icon="file-word" /> {{ t('versions.word') }}</a>
+                        <a v-for="file in v.turnitin ?? []" :key="file.id" :href="$url(file.url)" :class="btn" :title="file.name"><Fa icon="file-circle-check" /> {{ t('versions.turnitin') }}</a>
+                        <a v-for="file in v.supplementary ?? []" :key="file.id" :href="$url(file.url)" :class="btn" :title="file.name"><Fa icon="paperclip" /> {{ file.name }}</a>
+                        <a v-if="v.letter" :href="$url(v.letter.url)" :class="btn" :title="v.letter.name">
                             <Fa icon="paperclip" /> {{ t('versions.letter') }}
                         </a>
                         <button v-if="canCompare(i)" type="button" :class="[btn, 'border-gold-400 text-gold-700 dark:text-gold-300']" @click="compare(i)">
@@ -87,7 +87,7 @@ const btn = 'inline-flex items-center gap-1.5 rounded-lg border border-neutral-3
                                 </p>
                                 <p v-if="r.comment" class="line-clamp-6 whitespace-pre-line text-neutral-600 dark:text-neutral-300" :title="r.comment">{{ r.comment }}</p>
                                 <p v-else-if="!r.file" class="text-neutral-400 italic">{{ t('versions.noComment') }}</p>
-                                <a v-if="r.file" :href="r.file.url" class="mt-2 inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-xs transition hover:border-gold-400 dark:border-white/15 dark:bg-ink-900"><Fa icon="paperclip" class="text-gold-500" /> {{ r.file.name }}</a>
+                                <a v-if="r.file" :href="$url(r.file.url)" class="mt-2 inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-xs transition hover:border-gold-400 dark:border-white/15 dark:bg-ink-900"><Fa icon="paperclip" class="text-gold-500" /> {{ r.file.name }}</a>
                             </div>
                             <div class="border-t border-gold-300 pt-2 @2xl:border-t-0 @2xl:border-l @2xl:pt-0 @2xl:pl-3 dark:border-gold-400/30">
                                 <p class="mb-1 text-xs font-semibold text-gold-700 dark:text-gold-300"><Fa icon="reply" class="mr-1" />{{ t('versions.answer') }}</p>
@@ -107,9 +107,9 @@ const btn = 'inline-flex items-center gap-1.5 rounded-lg border border-neutral-3
                     <figure v-for="(v, k) in [shown.left, shown.right]" :key="k" class="flex min-h-0 flex-col">
                         <figcaption class="mb-1.5 flex items-center justify-between text-xs text-neutral-400">
                             <span><b class="text-neutral-200">v{{ v.version }}</b> · {{ stageLabel(v) }} · {{ when(v.at) }}</span>
-                            <a :href="v.file.url" class="text-gold-400 hover:underline"><Fa icon="download" /></a>
+                            <a :href="$url(v.file.url)" class="text-gold-400 hover:underline"><Fa icon="download" /></a>
                         </figcaption>
-                        <iframe :src="`${v.file.url}?inline=1`" :title="`v${v.version}`" class="min-h-0 w-full flex-1 rounded-lg border border-white/10 bg-white" />
+                        <iframe :src="$url(`${v.file.url}?inline=1`)" :title="`v${v.version}`" class="min-h-0 w-full flex-1 rounded-lg border border-white/10 bg-white" />
                     </figure>
                 </div>
                 <p class="mt-2 text-xs text-neutral-500">{{ t('versions.compareHint') }}</p>

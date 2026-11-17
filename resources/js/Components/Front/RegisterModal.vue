@@ -125,7 +125,7 @@ function goToLogin() {
                         <input v-model="form.pdpa" type="checkbox" class="mt-0.5 size-4 shrink-0 accent-gold-400">
                         <span class="text-neutral-300">
                             {{ t('auth.pdpaConsent') }}
-                            <a href="/privacy" target="_blank" class="text-gold-400 underline hover:text-gold-300">{{ t('privacy.title') }}</a>
+                            <a :href="$url('/privacy')" target="_blank" class="text-gold-400 underline hover:text-gold-300">{{ t('privacy.title') }}</a>
                             <span v-if="form.errors.pdpa" class="mt-1 block text-xs text-red-400">{{ t(form.errors.pdpa) }}</span>
                         </span>
                     </label>

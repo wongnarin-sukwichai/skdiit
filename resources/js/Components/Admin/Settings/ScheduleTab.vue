@@ -67,7 +67,7 @@ const editingIssues = computed(() => issues.value.filter((i) => i.phase === edit
                     <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">{{ t('admin.timeline.intro') }}</p>
                 </div>
                 <div class="flex flex-wrap gap-2">
-                    <Link href="/admin/preview/author-journey" class="flex items-center gap-2 rounded-lg border border-neutral-300 px-3 py-2 text-xs transition hover:border-gold-400 dark:border-white/15">
+                    <Link :href="$url('/admin/preview/author-journey')" class="flex items-center gap-2 rounded-lg border border-neutral-300 px-3 py-2 text-xs transition hover:border-gold-400 dark:border-white/15">
                         <Fa icon="eye" /> {{ t('admin.timeline.authorPreview') }}
                     </Link>
                 </div>

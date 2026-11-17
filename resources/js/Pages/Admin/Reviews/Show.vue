@@ -88,7 +88,7 @@ const box = 'rounded-xl border border-neutral-200 p-4 dark:border-white/10';
         <PageHeader icon="clipboard-check" :title="t('admin.menu.reviews')" :subtitle="submission.code" />
 
         <div class="flex flex-wrap items-center gap-3">
-            <Link href="/admin/reviews" class="flex items-center gap-2 rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition hover:border-gold-400 dark:border-white/20">
+            <Link :href="$url('/admin/reviews')" class="flex items-center gap-2 rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition hover:border-gold-400 dark:border-white/20">
                 <Fa icon="chevron-left" class="text-xs" /> {{ t('submissions.back') }}
             </Link>
             <ReviewBadge kind="state" :value="review.state" />
@@ -126,7 +126,7 @@ const box = 'rounded-xl border border-neutral-200 p-4 dark:border-white/10';
                     <p v-if="review.outcome.final && review.outcome.final !== review.outcome.decision" class="mt-0.5">{{ t('reviews.outcome.final') }}: <b>{{ t(`submissions.status.${review.outcome.final}`) }}</b></p>
                 </div>
                 <p v-else class="text-xs text-neutral-500 dark:text-neutral-400"><Fa icon="hourglass-half" class="mr-1" />{{ t('reviews.outcome.waiting') }}</p>
-                <a v-if="review.attachment" :href="review.attachment.url" class="inline-flex items-center gap-2 text-sm text-gold-700 hover:underline dark:text-gold-400">
+                <a v-if="review.attachment" :href="$url(review.attachment.url)" class="inline-flex items-center gap-2 text-sm text-gold-700 hover:underline dark:text-gold-400">
                     <Fa icon="paperclip" /> {{ review.attachment.name }} · {{ formatFileSize(review.attachment.size) }}
                 </a>
                 <p class="text-xs text-neutral-500 dark:text-neutral-400"><Fa icon="lock" class="mr-1" /> {{ t('reviews.form.locked') }}</p>

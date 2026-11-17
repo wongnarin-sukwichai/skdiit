@@ -36,7 +36,7 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
 
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
             <DeadlineNotice :opens-at="opensAt" :deadline="deadline" :phase="phase" class="flex-1" />
-            <Link v-if="isOpen" href="/admin/my-submissions/create" :class="newBtn">
+            <Link v-if="isOpen" :href="$url('/admin/my-submissions/create')" :class="newBtn">
                 <Fa icon="plus" /> {{ t('submissions.mine.new') }}
             </Link>
             <button v-else type="button" :class="[newBtn, 'opacity-60']" @click="windowAlert = true">
@@ -76,7 +76,7 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
                             <!-- Blue bar on the left: the author's move -->
                             <td :class="item.next.mine ? 'border-sky-400' : 'border-transparent'" class="border-l-4 px-4 py-3 font-mono text-xs whitespace-nowrap text-gold-600 dark:text-gold-400">{{ item.code }}</td>
                             <td class="max-w-md px-4 py-3">
-                                <Link :href="`/admin/my-submissions/${item.id}`" class="line-clamp-2 font-medium hover:text-gold-600 dark:hover:text-gold-400">{{ tr(item.title) }}</Link>
+                                <Link :href="$url(`/admin/my-submissions/${item.id}`)" class="line-clamp-2 font-medium hover:text-gold-600 dark:hover:text-gold-400">{{ tr(item.title) }}</Link>
                             </td>
                             <td class="px-4 py-3 whitespace-nowrap text-neutral-600 dark:text-neutral-300">{{ item.track ? tr(item.track.name) : t('submissions.noTrack') }}</td>
                             <td class="px-4 py-3"><AuthorJourneyMini :status="item.status" :editable="item.canEdit && item.status === 'submitted'" :final-approved="!!item.cameraReadyApproved" /></td>
@@ -84,8 +84,8 @@ const iconBtn = 'grid size-8 place-items-center rounded-md border border-neutral
                             <td class="px-4 py-3 whitespace-nowrap text-neutral-500 dark:text-neutral-400">{{ formatDate(item.submittedAt) }}</td>
                             <td class="px-4 py-3">
                                 <div class="flex justify-end gap-1.5">
-                                    <Link :href="`/admin/my-submissions/${item.id}`" :class="iconBtn" :title="t('registrants.view')"><Fa icon="eye" class="text-xs" /></Link>
-                                    <Link v-if="item.canEdit" :href="`/admin/my-submissions/${item.id}/edit`" :class="iconBtn" :title="t('submissions.edit')"><Fa icon="pen" class="text-xs" /></Link>
+                                    <Link :href="$url(`/admin/my-submissions/${item.id}`)" :class="iconBtn" :title="t('registrants.view')"><Fa icon="eye" class="text-xs" /></Link>
+                                    <Link v-if="item.canEdit" :href="$url(`/admin/my-submissions/${item.id}/edit`)" :class="iconBtn" :title="t('submissions.edit')"><Fa icon="pen" class="text-xs" /></Link>
                                 </div>
                             </td>
                         </tr>

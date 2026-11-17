@@ -187,7 +187,7 @@ const input = 'rounded-lg border border-neutral-300 bg-neutral-50 py-2.5 pr-3 te
                                 </span>
                             </td>
                             <td class="px-3 py-2.5 font-mono text-xs break-all">
-                                <Link v-if="e.submissionId" :href="`/admin/submissions/${e.submissionId}`" class="text-gold-700 hover:underline dark:text-gold-400">{{ e.target }}</Link>
+                                <Link v-if="e.submissionId" :href="$url(`/admin/submissions/${e.submissionId}`)" class="text-gold-700 hover:underline dark:text-gold-400">{{ e.target }}</Link>
                                 <template v-else>{{ e.target ?? '—' }}</template>
                             </td>
                             <td class="px-3 py-2.5 text-neutral-600 dark:text-neutral-300">{{ detailLabel(e) }}</td>

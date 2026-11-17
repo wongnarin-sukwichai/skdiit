@@ -35,7 +35,7 @@ const until = (iso) => formatDate(iso, { day: 'numeric', month: 'long', year: 'n
             </p>
             <a
                 v-if="submission.journal?.url"
-                :href="submission.journal.url"
+                :href="$url(submission.journal.url)"
                 target="_blank"
                 rel="noopener"
                 class="inline-flex items-center gap-2 rounded-lg bg-gold-400 px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-gold-300"

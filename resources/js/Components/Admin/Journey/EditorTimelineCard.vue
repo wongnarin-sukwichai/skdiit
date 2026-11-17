@@ -38,12 +38,12 @@ const dot = (s) => (s.late ? 'bg-red-500 text-white' : s.state === 'active' ? 'b
                     <template v-else>{{ t('admin.editorTimeline.nothingNow') }}</template>
                 </p>
             </div>
-            <Link v-if="accessTo('settings')" href="/admin/settings?tab=schedule" class="text-xs text-gold-600 hover:underline dark:text-gold-400"><Fa icon="calendar-days" class="mr-1" />{{ t('admin.editorTimeline.schedule') }}</Link>
+            <Link v-if="accessTo('settings')" :href="$url('/admin/settings?tab=schedule')" class="text-xs text-gold-600 hover:underline dark:text-gold-400"><Fa icon="calendar-days" class="mr-1" />{{ t('admin.editorTimeline.schedule') }}</Link>
         </div>
 
         <ol class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
             <li v-for="(s, i) in stages" :key="s.key">
-                <Link :href="s.href" :class="box(s)" class="flex h-full flex-col gap-2 rounded-xl border p-3 transition hover:border-gold-400">
+                <Link :href="$url(s.href)" :class="box(s)" class="flex h-full flex-col gap-2 rounded-xl border p-3 transition hover:border-gold-400">
                     <div class="flex items-center gap-2">
                         <span :class="dot(s)" class="grid size-7 shrink-0 place-items-center rounded-full text-xs font-semibold">
                             <Fa v-if="s.state === 'done' && !s.late" icon="check" />
